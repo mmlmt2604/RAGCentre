@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "page_count": 2,
+    "title": "Pump Manual",
+    "source_name": "manual"
+  },
+  "pages": [
+    {
+      "page": 1,
+      "width": 600.0,
+      "height": 800.0
+    },
+    {
+      "page": 2,
+      "width": 600.0,
+      "height": 800.0
+    }
+  ],
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Pump Manual",
+      "page": 1,
+      "bbox": [
+        50.0,
+        40.0,
+        300.0,
+        60.0
+      ],
+      "id": "b1"
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "text": "Installation",
+      "page": 1,
+      "bbox": [
+        50.0,
+        100.0,
+        200.0,
+        120.0
+      ],
+      "id": "b2"
+    },
+    {
+      "type": "paragraph",
+      "text": "Mount the pump on a level surface.",
+      "page": 1,
+      "bbox": [
+        50.0,
+        140.0,
+        550.0,
+        160.0
+      ],
+      "id": "b3"
+    },
+    {
+      "type": "list_item",
+      "text": "Close the valve.",
+      "page": 1,
+      "bbox": [
+        60.0,
+        180.0,
+        300.0,
+        195.0
+      ],
+      "id": "b4"
+    },
+    {
+      "type": "heading",
+      "level": 3,
+      "text": "Specifications",
+      "page": 2,
+      "bbox": [
+        50.0,
+        40.0,
+        250.0,
+        60.0
+      ],
+      "id": "b5"
+    },
+    {
+      "type": "table",
+      "text": "| Flow     |\n|----------|\n| 40 l/min |",
+      "html": "<table><tbody><tr><th>Flow</th></tr><tr><td>40 l/min</td></tr></tbody></table>",
+      "page": 2,
+      "bbox": [
+        50.0,
+        100.0,
+        300.0,
+        200.0
+      ],
+      "id": "b6"
+    },
+    {
+      "type": "caption",
+      "text": "Figure 1: exploded view",
+      "page": 2,
+      "bbox": [
+        50.0,
+        400.0,
+        300.0,
+        420.0
+      ],
+      "id": "b7"
+    },
+    {
+      "type": "figure",
+      "text": "Figure 1: exploded view",
+      "page": 2,
+      "bbox": [
+        50.0,
+        220.0,
+        300.0,
+        380.0
+      ],
+      "id": "b8"
+    }
+  ]
+}

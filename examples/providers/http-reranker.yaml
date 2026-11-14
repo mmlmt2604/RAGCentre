@@ -1,0 +1,7 @@
+# A Cohere/Jina-style POST /rerank server (see docs/protocols/reranker-v1.md).
+name: reranker
+kind: reranker
+type: http
+config:
+  base_url: http://127.0.0.1:8702
+  model: BAAI/bge-reranker-v2-m3

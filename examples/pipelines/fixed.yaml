@@ -1,0 +1,31 @@
+# Fixed-size character windows. Identical to structure.yaml except for the chunk node, so an
+# evaluation of the two compares chunkers and nothing else.
+name: fixed
+nodes:
+  - id: parse
+    type: parse
+    routes:
+      - {mime: "text/*", provider: builtin-text}
+  - id: chunk
+    type: chunk
+    inputs: [parse]
+    strategy: fixed
+    options: {max_chars: 300, overlap_chars: 0}
+  - id: embed
+    type: embed
+    inputs: [chunk]
+    provider: hash-256
+  - id: vec
+    type: index_vector
+    inputs: [embed]
+    provider: local-sqlite
+    options: {metric: cosine}
+  - id: fts
+    type: index_fts
+    inputs: [chunk]
+retrieval:
+  sources:
+    - {id: dense, index: vec, top_k: 30}
+    - {id: sparse, index: fts, top_k: 30}
+  fusion: {method: rrf, k: 60}
+  top_k: 10

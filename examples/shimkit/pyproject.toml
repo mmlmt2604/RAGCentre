@@ -1,0 +1,36 @@
+[project]
+name = "shimkit"
+version = "0.1.0"
+description = "Shared pieces for the example ragcentre.parser/v1 shims: app factory, options, IR assembly, HTML helpers."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "python-multipart>=0.0.20",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["shimkit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+src = ["."]
+
+[tool.uv]
+# Shims depend on this package by path; without this uv only watches pyproject.toml, so edits to the
+# source would not reach an isolated test run (``uv run --isolated --with ../shimkit``).
+cache-keys = [{ file = "pyproject.toml" }, { file = "shimkit/**/*.py" }]

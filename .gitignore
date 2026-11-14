@@ -1,0 +1,50 @@
+# Runtime data (never commit)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Web UI build output and dependencies
+ui/node_modules/
+ui/dist/
+ui/playwright-report/
+ui/test-results/
+src/ragcentre/ui_dist/
+
+# Agent and design-skill working files (kept locally, not versioned)
+.impeccable/config.json
+.impeccable/design.json
+.impeccable/surfaces/
+.impeccable/review/
+.impeccable/mocks/ref/
+.impeccable/config.local.json
+.impeccable/hook.cache.json
+.impeccable/questions/
+
+# Agent-generated markdown
+IMPLEMENTATION_PLAN.md
+DECISIONS.md
+CONTRACT_CHANGES.md
+PRODUCT.md
+DESIGN.md
+docs/plans/
+examples/*/NOTES.md
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

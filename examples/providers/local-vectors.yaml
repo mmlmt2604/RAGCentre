@@ -1,0 +1,5 @@
+# The default vector store: SQLite with sqlite-vec, in <data dir>/vectors.db.
+name: local-sqlite
+kind: vector_store
+type: sqlite_vec
+config: {}

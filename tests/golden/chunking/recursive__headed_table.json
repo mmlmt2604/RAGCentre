@@ -1,0 +1,107 @@
+[
+ {
+  "ordinal": 0,
+  "text": "Service manual\n\nCalibration should be repeated after the unit is moved to another room. The companion app stores usage history for ninety days unless you export it. Calibration should be repeated after the unit is moved to another room. Do not expose the unit to direct sunlight for extended periods.\n\nSafety\n\nElectrical\n\nReplacement filters can be ordered from authorised resellers only. Calibration should be repeated after the unit is moved to another room. Firmware updates are delivered over the air and install automatically at night. A factory reset erases every saved profile and restores the default schedule. The device must be charged for at least four hours before first use.\n\nUnplug the unit before opening the case.\n\nUse only the supplied power adapter.\n\nError codes\n\nThe table below lists every error code the display can show.\n\n| Code | Meaning | Action |\n|---|---|---|\n| E100 | Overheat on module 0 | Check the cable |\n| E101 | Overheat on module 1 | Restart the unit |",
+  "context": null,
+  "block_ids": [
+   "b2",
+   "b3",
+   "b4",
+   "b5",
+   "b6",
+   "b7",
+   "b8",
+   "b9",
+   "b10",
+   "b11"
+  ],
+  "page_start": null,
+  "page_end": null,
+  "heading_path": [
+   "Service manual"
+  ],
+  "metadata": {}
+ },
+ {
+  "ordinal": 1,
+  "text": "E100 | Overheat on module 0 | Check the cable |\n| E101 | Overheat on module 1 | Restart the unit |\n| E102 | Sensor fault on module 2 | Check the cable |\n| E103 | Low battery on module 3 | Contact support |\n| E104 | Low battery on module 4 | Check the cable |\n| E105 | Network lost on module 5 | Restart the unit |\n| E106 | Sensor fault on module 6 | Contact support |\n| E107 | Overheat on module 7 | Contact support |\n| E108 | Filter worn on module 8 | Check the cable |\n| E109 | Filter worn on module 9 | Check the cable |\n| E110 | Sensor fault on module 10 | Restart the unit |\n| E111 | Overheat on module 11 | Check the cable |\n| E112 | Sensor fault on module 12 | Restart the unit |\n| E113 | Overheat on module 13 | Check the cable |\n| E114 | Overheat on module 14 | Check the cable |\n| E115 | Overheat on module 15 | Restart the unit |\n| E116 | Network lost on module 16 | Contact support |\n| E117 | Low battery on module 17 | Restart the unit |",
+  "context": null,
+  "block_ids": [
+   "b11"
+  ],
+  "page_start": null,
+  "page_end": null,
+  "heading_path": [
+   "Service manual",
+   "Error codes"
+  ],
+  "metadata": {}
+ },
+ {
+  "ordinal": 2,
+  "text": "lost on module 16 | Contact support |\n| E117 | Low battery on module 17 | Restart the unit |\n| E118 | Network lost on module 18 | Restart the unit |\n| E119 | Low battery on module 19 | Contact support |\n| E120 | Low battery on module 20 | Replace the filter |\n| E121 | Network lost on module 21 | Check the cable |\n| E122 | Network lost on module 22 | Restart the unit |\n| E123 | Low battery on module 23 | Check the cable |\n| E124 | Network lost on module 24 | Contact support |\n| E125 | Low battery on module 25 | Check the cable |\n| E126 | Filter worn on module 26 | Contact support |\n| E127 | Network lost on module 27 | Contact support |\n| E128 | Network lost on module 28 | Replace the filter |\n| E129 | Low battery on module 29 | Restart the unit |\n| E130 | Low battery on module 30 | Replace the filter |\n| E131 | Low battery on module 31 | Replace the filter |\n| E132 | Sensor fault on module 32 | Check the cable |\n| E133 | Filter worn on module 33 | Replace the filter |",
+  "context": null,
+  "block_ids": [
+   "b11"
+  ],
+  "page_start": null,
+  "page_end": null,
+  "heading_path": [
+   "Service manual",
+   "Error codes"
+  ],
+  "metadata": {}
+ },
+ {
+  "ordinal": 3,
+  "text": "fault on module 32 | Check the cable |\n| E133 | Filter worn on module 33 | Replace the filter |\n| E134 | Overheat on module 34 | Contact support |\n| E135 | Sensor fault on module 35 | Replace the filter |\n| E136 | Network lost on module 36 | Contact support |\n| E137 | Filter worn on module 37 | Contact support |\n| E138 | Low battery on module 38 | Restart the unit |\n| E139 | Network lost on module 39 | Check the cable |\n| E140 | Network lost on module 40 | Check the cable |\n| E141 | Network lost on module 41 | Restart the unit |\n| E142 | Network lost on module 42 | Check the cable |\n| E143 | Sensor fault on module 43 | Replace the filter |\n| E144 | Sensor fault on module 44 | Replace the filter |\n\nConfiguration\n\nset option_0 = 451  # tuned for profile 0\nset option_1 = 166  # tuned for profile 1\nset option_2 = 112  # tuned for profile 2\nset option_3 = 348  # tuned for profile 3\nset option_4 = 615  # tuned for profile 4\nset option_5 = 53  # tuned for profile 5",
+  "context": null,
+  "block_ids": [
+   "b11",
+   "b12",
+   "b13"
+  ],
+  "page_start": null,
+  "page_end": null,
+  "heading_path": [
+   "Service manual",
+   "Error codes"
+  ],
+  "metadata": {}
+ },
+ {
+  "ordinal": 4,
+  "text": "for profile 3\nset option_4 = 615  # tuned for profile 4\nset option_5 = 53  # tuned for profile 5\nset option_6 = 104  # tuned for profile 6\nset option_7 = 0  # tuned for profile 0\nset option_8 = 580  # tuned for profile 1\nset option_9 = 154  # tuned for profile 2\nset option_10 = 549  # tuned for profile 3\nset option_11 = 103  # tuned for profile 4\nset option_12 = 971  # tuned for profile 5\nset option_13 = 372  # tuned for profile 6\nset option_14 = 628  # tuned for profile 0\nset option_15 = 26  # tuned for profile 1\nset option_16 = 72  # tuned for profile 2\nset option_17 = 895  # tuned for profile 3\nset option_18 = 212  # tuned for profile 4\nset option_19 = 628  # tuned for profile 5\nset option_20 = 385  # tuned for profile 6\nset option_21 = 152  # tuned for profile 0\nset option_22 = 649  # tuned for profile 1\nset option_23 = 258  # tuned for profile 2\nset option_24 = 978  # tuned for profile 3\nset option_25 = 355  # tuned for profile 4\nset option_26 = 616  # tuned for profile 5",
+  "context": null,
+  "block_ids": [
+   "b13"
+  ],
+  "page_start": null,
+  "page_end": null,
+  "heading_path": [
+   "Service manual",
+   "Configuration"
+  ],
+  "metadata": {}
+ },
+ {
+  "ordinal": 5,
+  "text": "for profile 3\nset option_25 = 355  # tuned for profile 4\nset option_26 = 616  # tuned for profile 5\nset option_27 = 372  # tuned for profile 6\nset option_28 = 485  # tuned for profile 0\nset option_29 = 125  # tuned for profile 1\nset option_30 = 118  # tuned for profile 2\nset option_31 = 869  # tuned for profile 3\nset option_32 = 499  # tuned for profile 4\nset option_33 = 477  # tuned for profile 5\nset option_34 = 491  # tuned for profile 6\nset option_35 = 495  # tuned for profile 0\nset option_36 = 319  # tuned for profile 1\nset option_37 = 87  # tuned for profile 2\nset option_38 = 147  # tuned for profile 3\nset option_39 = 104  # tuned for profile 4\n\nIf the status light blinks amber, the battery temperature is outside the safe range. A factory reset erases every saved profile and restores the default schedule. The companion app stores usage history for ninety days unless you export it.\n\n\n\nSmall table\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nAppendix",
+  "context": null,
+  "block_ids": [
+   "b13",
+   "b14",
+   "b15",
+   "b16",
+   "b17",
+   "b19"
+  ],
+  "page_start": null,
+  "page_end": null,
+  "heading_path": [
+   "Service manual",
+   "Configuration"
+  ],
+  "metadata": {}
+ }
+]

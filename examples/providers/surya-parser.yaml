@@ -1,0 +1,9 @@
+# The example Surya parser service in examples/surya_shim (ragcentre.parser/v1).
+# Start the service first: RAGCentre reads its /info when the provider is created.
+name: surya
+kind: parser
+type: http
+config:
+  base_url: http://127.0.0.1:8704
+  timeout_seconds: 600
+  max_concurrency: 2

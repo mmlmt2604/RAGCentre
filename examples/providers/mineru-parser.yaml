@@ -1,0 +1,9 @@
+# The example MinerU parser service in examples/mineru_shim (ragcentre.parser/v1).
+# Start the service first: RAGCentre reads its /info when the provider is created.
+name: mineru
+kind: parser
+type: http
+config:
+  base_url: http://127.0.0.1:8702
+  timeout_seconds: 600
+  max_concurrency: 1

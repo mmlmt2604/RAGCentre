@@ -1,0 +1,120 @@
+# Surya parser shim
+
+A small standalone service that lets RAGCentre parse PDFs and images with the
+[Surya](https://github.com/datalab-to/surya) OCR 2.5 model, which does layout analysis, text
+recognition and table recognition in one vision-language model. It speaks the parser protocol
+(`docs/protocols/parser-v1.md`) and returns RAGCentre's Document IR.
+
+It is an example, not part of the `ragcentre` package: it has its own dependencies and downloads
+the model on first use, so the shim lives in its own environment. It uses the shared helpers in
+`examples/shimkit/`.
+
+## Run it
+
+```sh
+cd examples/surya_shim
+uv sync
+uv run uvicorn surya_shim.app:app --host 127.0.0.1 --port 8704
+```
+
+The `surya-ocr` package is light (no PyTorch). The model runs in a separate **inference server**
+that Surya starts on the first parse:
+
+- **CPU and Apple Silicon**: `llama-server` from [llama.cpp](https://github.com/ggml-org/llama.cpp)
+  must be on `PATH` (`brew install llama.cpp`). A one-page document took about ten seconds on an Apple Silicon Mac, including starting the
+  server. The first parse downloads the GGUF model and its projector (about 1.3 GB).
+- **NVIDIA GPUs**: Surya uses `vllm` in Docker.
+- **A server you already run**: set `SURYA_INFERENCE_BACKEND` and `SURYA_INFERENCE_URL`.
+
+Surya picks the backend itself (`SURYA_INFERENCE_BACKEND` overrides it). The shim stops the server
+it started when the service stops.
+
+Then register it with RAGCentre and route files to it (from the repository root):
+
+```sh
+uv run ragcentre provider add -f examples/providers/surya-parser.yaml
+```
+
+```yaml
+# in a pipeline's parse node
+routes:
+  - {mime: "text/*", provider: builtin-text}
+  - {mime: "application/pdf", provider: surya, options: {}}
+  - {mime: "image/*", provider: surya, options: {}}
+```
+
+If the inference server cannot start or cannot be reached, the shim answers `503`, which RAGCentre
+retries.
+
+## Options
+
+The parse route's `options` are passed to the service:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `include_page_images` | `false` | Return each rendered page as a base64 PNG in `pages[].image`. Its pixels are the unit of the boxes |
+| `ocr_figures` | `false` | Also read text inside pictures, figures and diagrams (otherwise they are left empty) |
+| `dpi` | `192` | Render resolution for PDF pages, an integer from 72 to 400 |
+
+The shim does not serialise parses: it is a client of the inference server. The provider file sets
+`max_concurrency: 2`. Only the first frame of a multi-page TIFF is read.
+
+## Authentication
+
+Set `SURYA_SHIM_API_KEY` to require `Authorization: Bearer <key>` on `/parse`, and give RAGCentre
+the same value as the provider's `api_key` secret:
+
+```sh
+uv run ragcentre provider set-secret surya api_key --env SURYA_SHIM_API_KEY
+```
+
+`GET /info` stays open: RAGCentre reads it without credentials when it creates the provider.
+
+## Versioning
+
+`/info` reports `0.1.0+surya.<surya-ocr version>.<model>`, for example
+`0.1.0+surya.0.24.0.surya-ocr-2.5` (the model is the last segment of `SURYA_MODEL_CHECKPOINT`).
+RAGCentre records that version when the provider is created and refuses to parse with a service
+reporting a different one (unless the provider's `on_version_drift` is `warn`). Upgrading Surya or
+changing the model therefore means creating a new provider and a new pipeline.
+
+## How Surya output maps to the IR
+
+See the table at the top of `surya_shim/convert.py`. Surya returns each block as HTML; the shim
+reads it with the standard library. In short: section headers become headings (level from the
+`<hn>` tag the model wrote), lists and tables of contents become one `list_item` per `<li>`, tables
+become Markdown (spans expanded) with the HTML alongside, equations become `formula` blocks (the
+LaTeX inside `<math>`), pictures, figures and diagrams become `figure` blocks, and captions,
+footnotes, page headers and page footers keep their names. Blocks come in reading order.
+
+- **Positions** are the pixels of the rendered page (a US-letter PDF at 192 DPI is 1632 x 2112),
+  and `pages[].width/height` use the same unit.
+- **No document title.** Surya has no title label, so a document has a level-1 heading only when
+  the model wrote an `<h1>`. Nothing is promoted.
+- **Captions** are separate `caption` blocks next to the figure or table they belong to.
+
+## Licence
+
+The Surya code is Apache 2.0. The **model weights use a modified OpenRAIL-M licence**: free for
+research, personal use and organisations under USD 5 million in funding or revenue; broader
+commercial use needs a licence from Datalab (see the Surya README and
+<https://www.datalab.to/pricing>). Check the current terms before you deploy it.
+
+## Tests
+
+The conversion works on plain dicts and the engine tests use a stand-in for `surya`, so the tests
+need only `fastapi`, `httpx` and `pytest`, not Surya, a model or Pillow:
+
+```sh
+uv run --isolated --no-project --with ../shimkit --with fastapi --with python-multipart --with httpx --with pytest pytest
+```
+
+`tests/test_live.py` parses a small generated PDF through the real engine. It is skipped unless
+`SHIM_LIVE=1` and Surya is installed (and an inference server can start):
+
+```sh
+SHIM_LIVE=1 uv run pytest tests/test_live.py -s
+```
+
+`tests/golden/sample_ir.json` is the IR for a sample document; RAGCentre's own suite validates it
+(`tests/test_parser_shim_goldens.py`). Regenerate it with `UPDATE_GOLDEN=1 uv run pytest`.

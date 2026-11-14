@@ -1,0 +1,6 @@
+# A zero-setup lexical embedder: hashed word and CJK-bigram features, no model download.
+name: hash-256
+kind: embedder
+type: builtin_hash
+config:
+  dimensions: 256

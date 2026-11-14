@@ -1,0 +1,177 @@
+{
+ "schema_version": "1.0",
+ "metadata": {
+  "title": "Quarterly report",
+  "page_count": 4
+ },
+ "pages": [
+  {
+   "page": 1,
+   "width": 612.0,
+   "height": 792.0
+  },
+  {
+   "page": 2,
+   "width": 612.0,
+   "height": 792.0
+  },
+  {
+   "page": 3,
+   "width": 612.0,
+   "height": 792.0
+  },
+  {
+   "page": 4,
+   "width": 612.0,
+   "height": 792.0
+  }
+ ],
+ "blocks": [
+  {
+   "type": "page_header",
+   "text": "Quarterly report",
+   "page": 1
+  },
+  {
+   "type": "heading",
+   "level": 1,
+   "text": "Quarterly report",
+   "page": 1
+  },
+  {
+   "type": "paragraph",
+   "text": "A factory reset erases every saved profile and restores the default schedule. Do not expose the unit to direct sunlight for extended periods.",
+   "page": 1
+  },
+  {
+   "type": "paragraph",
+   "text": "Calibration should be repeated after the unit is moved to another room. Do not expose the unit to direct sunlight for extended periods.",
+   "page": 1
+  },
+  {
+   "type": "page_footer",
+   "text": "1",
+   "page": 1
+  },
+  {
+   "type": "page_header",
+   "text": "Quarterly report",
+   "page": 2
+  },
+  {
+   "type": "paragraph",
+   "text": "Firmware updates are delivered over the air and install automatically at night. The companion app stores usage history for ninety days unless you export it. If the status light blinks amber, the battery temperature is outside the safe range. A factory reset erases every saved profile and restores the default schedule.",
+   "page": 2
+  },
+  {
+   "type": "paragraph",
+   "text": "The warranty period is 24 months from the date of purchase. If the status light blinks amber, the battery temperature is outside the safe range. Support tickets receive a first response within one business day. If the status light blinks amber, the battery temperature is outside the safe range.",
+   "page": 2
+  },
+  {
+   "type": "paragraph",
+   "text": "Cleaning the sensor window with a dry microfibre cloth improves accuracy. Calibration should be repeated after the unit is moved to another room. If the status light blinks amber, the battery temperature is outside the safe range.",
+   "page": 2
+  },
+  {
+   "type": "paragraph",
+   "text": "A factory reset erases every saved profile and restores the default schedule. Replacement filters can be ordered from authorised resellers only. The companion app stores usage history for ninety days unless you export it.",
+   "page": 2
+  },
+  {
+   "type": "caption",
+   "text": "Figure 2: revenue by month"
+  },
+  {
+   "type": "page_footer",
+   "text": "2",
+   "page": 2
+  },
+  {
+   "type": "page_header",
+   "text": "Quarterly report",
+   "page": 3
+  },
+  {
+   "type": "heading",
+   "level": 2,
+   "text": "Regional results",
+   "page": 3
+  },
+  {
+   "type": "paragraph",
+   "text": "Calibration should be repeated after the unit is moved to another room. The device must be charged for at least four hours before first use. The device must be charged for at least four hours before first use. Do not expose the unit to direct sunlight for extended periods. Replacement filters can be ordered from authorised resellers only. Do not expose the unit to direct sunlight for extended periods. If the status light blinks amber, the battery temperature is outside the safe range. Calibration should be repeated after the unit is moved to another room.",
+   "page": 3
+  },
+  {
+   "type": "paragraph",
+   "text": "Support tickets receive a first response within one business day. The companion app stores usage history for ninety days unless you export it. Replacement filters can be ordered from authorised resellers only. Calibration should be repeated after the unit is moved to another room. The companion app stores usage history for ninety days unless you export it. The companion app stores usage history for ninety days unless you export it. Warranty claims are handled by the regional service centre listed on the back cover. If the status light blinks amber, the battery temperature is outside the safe range.",
+   "page": 3
+  },
+  {
+   "type": "paragraph",
+   "text": "Warranty claims are handled by the regional service centre listed on the back cover. If the status light blinks amber, the battery temperature is outside the safe range. Replacement filters can be ordered from authorised resellers only. If the status light blinks amber, the battery temperature is outside the safe range. The companion app stores usage history for ninety days unless you export it. If the status light blinks amber, the battery temperature is outside the safe range. Replacement filters can be ordered from authorised resellers only. Support tickets receive a first response within one business day.",
+   "page": 3
+  },
+  {
+   "type": "paragraph",
+   "text": "Support tickets receive a first response within one business day. The device must be charged for at least four hours before first use. Replacement filters can be ordered from authorised resellers only. The warranty period is 24 months from the date of purchase. The companion app stores usage history for ninety days unless you export it. The warranty period is 24 months from the date of purchase. Warranty claims are handled by the regional service centre listed on the back cover. The warranty period is 24 months from the date of purchase.",
+   "page": 3
+  },
+  {
+   "type": "paragraph",
+   "text": "Warranty claims are handled by the regional service centre listed on the back cover. Cleaning the sensor window with a dry microfibre cloth improves accuracy. Calibration should be repeated after the unit is moved to another room. If the status light blinks amber, the battery temperature is outside the safe range. Replacement filters can be ordered from authorised resellers only. Firmware updates are delivered over the air and install automatically at night. Cleaning the sensor window with a dry microfibre cloth improves accuracy. The warranty period is 24 months from the date of purchase.",
+   "page": 3
+  },
+  {
+   "type": "paragraph",
+   "text": "The companion app stores usage history for ninety days unless you export it. Warranty claims are handled by the regional service centre listed on the back cover. Calibration should be repeated after the unit is moved to another room. Cleaning the sensor window with a dry microfibre cloth improves accuracy. Replacement filters can be ordered from authorised resellers only. Cleaning the sensor window with a dry microfibre cloth improves accuracy. Calibration should be repeated after the unit is moved to another room. Warranty claims are handled by the regional service centre listed on the back cover.",
+   "page": 3
+  },
+  {
+   "type": "paragraph",
+   "text": "Calibration should be repeated after the unit is moved to another room. Firmware updates are delivered over the air and install automatically at night. Firmware updates are delivered over the air and install automatically at night. Firmware updates are delivered over the air and install automatically at night. The device must be charged for at least four hours before first use. Firmware updates are delivered over the air and install automatically at night. Support tickets receive a first response within one business day. Replacement filters can be ordered from authorised resellers only.",
+   "page": 3
+  },
+  {
+   "type": "paragraph",
+   "text": "The warranty period is 24 months from the date of purchase. Firmware updates are delivered over the air and install automatically at night. Support tickets receive a first response within one business day. Support tickets receive a first response within one business day. Replacement filters can be ordered from authorised resellers only. The warranty period is 24 months from the date of purchase. The companion app stores usage history for ninety days unless you export it. Firmware updates are delivered over the air and install automatically at night.",
+   "page": 3
+  },
+  {
+   "type": "page_footer",
+   "text": "3",
+   "page": 3
+  },
+  {
+   "type": "page_header",
+   "text": "Quarterly report",
+   "page": 4
+  },
+  {
+   "type": "paragraph",
+   "text": "The device must be charged for at least four hours before first use. The device must be charged for at least four hours before first use. Calibration should be repeated after the unit is moved to another room.",
+   "page": 4
+  },
+  {
+   "type": "paragraph",
+   "text": "A factory reset erases every saved profile and restores the default schedule. Calibration should be repeated after the unit is moved to another room.",
+   "page": 4
+  },
+  {
+   "type": "paragraph",
+   "text": "Cleaning the sensor window with a dry microfibre cloth improves accuracy. If the status light blinks amber, the battery temperature is outside the safe range. If the status light blinks amber, the battery temperature is outside the safe range.",
+   "page": 4
+  },
+  {
+   "type": "paragraph",
+   "text": "Do not expose the unit to direct sunlight for extended periods. If the status light blinks amber, the battery temperature is outside the safe range.",
+   "page": 4
+  },
+  {
+   "type": "page_footer",
+   "text": "4",
+   "page": 4
+  }
+ ]
+}

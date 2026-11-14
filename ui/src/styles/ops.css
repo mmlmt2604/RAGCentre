@@ -1,0 +1,86 @@
+/* Activity and Admin: node-run table and server/gc panels. */
+
+.activity__toolbar {
+  flex-wrap: wrap;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+.activity__toolbar .pl-search {
+  flex: 0 1 280px;
+}
+.activity__tablewrap {
+  overflow-x: auto;
+}
+.activity__table {
+  min-width: 1080px;
+}
+.activity__table td {
+  vertical-align: top;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+.activity__doc {
+  max-width: 260px;
+  overflow-wrap: anywhere;
+}
+.activity__error code {
+  font-family: var(--font-mono);
+  color: var(--danger);
+  font-size: var(--text-xs);
+}
+.activity__errmsg {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.activity__row[data-status="failed"] td {
+  background: var(--danger-soft);
+}
+.activity__row[data-status="running"] .rc-status,
+.activity__row[data-status="pending"] .rc-status {
+  color: var(--warn);
+}
+
+/* Admin */
+.admin .facts-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), max-content));
+  row-gap: var(--space-5);
+}
+.gc-report {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6) var(--space-8);
+  margin: 0;
+}
+.gc-report > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.gc-report dt {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+.gc-report dd {
+  margin: 0;
+  color: var(--num);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+.gc-indexes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.gc-indexes li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--seam);
+  border-radius: var(--radius);
+  font-size: var(--text-xs);
+}

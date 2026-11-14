@@ -1,0 +1,112 @@
+/* Design tokens. Dark-first graphite console; the daylight theme mirrors every role.
+   Colour roles do jobs only: --accent = primary action and selection, --ok = succeeded,
+   --warn = building/blocked, --danger = failed/destructive, --num = counts and metrics.
+   --fp-0..7 colour fingerprint tokens (the signature move) and are never used for state. */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0d1117;
+  --panel: #151a22;
+  --elevated: #1b212b;
+  --hover: #202733;
+  --seam: #262c36;
+  --seam-strong: #353d4a;
+  --text: #e6edf3;
+  --text-2: #9ba5b2;
+  --text-3: #85909e;
+  --accent: #79c0ff;
+  --accent-fill: #1d5fd0;
+  --accent-fill-hover: #2a6fe0;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(121 192 255 / 0.12);
+  --ok: #56d364;
+  --ok-soft: rgb(86 211 100 / 0.12);
+  --warn: #e3b341;
+  --warn-soft: rgb(227 179 65 / 0.12);
+  --danger: #fa554e;
+  --danger-soft: rgb(248 81 73 / 0.12);
+  --num: #d2a8ff;
+  --focus: #79c0ff;
+  --selection: rgb(121 192 255 / 0.28);
+  --scrim: rgb(1 4 9 / 0.66);
+  --shadow-pop: 0 8px 24px rgb(1 4 9 / 0.55), 0 1px 0 rgb(255 255 255 / 0.03) inset;
+
+  --fp-0: #56b6c2;
+  --fp-1: #c3a6ff;
+  --fp-2: #ff9bce;
+  --fp-3: #7ee0c4;
+  --fp-4: #a5d6ff;
+  --fp-5: #ffb38a;
+  --fp-6: #a5a5ff;
+  --fp-7: #e0c9a6;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ground: #f6f7f9;
+  --panel: #ffffff;
+  --elevated: #f6f8fa;
+  --hover: #eef1f5;
+  --seam: #d6dce3;
+  --seam-strong: #c3cbd5;
+  --text: #1f2328;
+  --text-2: #57606a;
+  --text-3: #626b75;
+  --accent: #0960cc;
+  --accent-fill: #0960cc;
+  --accent-fill-hover: #0753b4;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(9 96 204 / 0.09);
+  --ok: #1a7f37;
+  --ok-soft: rgb(26 127 55 / 0.1);
+  --warn: #8a5d00;
+  --warn-soft: rgb(191 135 0 / 0.13);
+  --danger: #cf222e;
+  --danger-soft: rgb(207 34 46 / 0.09);
+  --num: #7b3fd0;
+  --focus: #0960cc;
+  --selection: rgb(9 96 204 / 0.2);
+  --scrim: rgb(31 35 40 / 0.4);
+  --shadow-pop: 0 8px 24px rgb(31 35 40 / 0.14), 0 1px 3px rgb(31 35 40 / 0.08);
+
+  --fp-0: #0a7480;
+  --fp-1: #6f42c1;
+  --fp-2: #b3306f;
+  --fp-3: #0e7458;
+  --fp-4: #0550ae;
+  --fp-5: #a8460c;
+  --fp-6: #4b4bc2;
+  --fp-7: #725a33;
+}
+
+:root {
+  --font-ui: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Fixed rem scale, ratio ~1.15, for dense product UI */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.8125rem; /* 13px — base */
+  --text-md: 0.9375rem; /* 15px */
+  --text-lg: 1.0625rem; /* 17px */
+  --text-xl: 1.3125rem; /* 21px */
+
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 3px;
+  --radius: 5px;
+  --radius-lg: 8px;
+
+  --row-h: 40px;
+  --control-h: 28px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur: 160ms;
+}

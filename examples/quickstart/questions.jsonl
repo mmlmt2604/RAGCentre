@@ -1,0 +1,24 @@
+{"question": "How long is the warranty on a carbon frame?", "targets": [{"document": "warranty.md", "text_contains": "Carbon frames are covered for seven years"}]}
+{"question": "Are suspension fork seals covered by the warranty?", "targets": [{"document": "warranty.md", "text_contains": "Seals, bushings and oil are wear parts"}]}
+{"question": "When is an e-bike battery considered defective?", "targets": [{"document": "warranty.md", "text_contains": "less than 60 percent of its rated capacity"}]}
+{"question": "Where is the frame serial number?", "targets": [{"document": "warranty.md", "text_contains": "stamped under the bottom bracket"}]}
+{"question": "What discount do I get on a replacement frame after a crash?", "targets": [{"document": "warranty.md", "text_contains": "40 percent off the current list price"}]}
+{"question": "Does fitting a motor kit void the warranty?", "targets": [{"document": "warranty.md", "text_contains": "fitting a motor kit to a non-electric frame"}]}
+{"question": "How many days do I have to return a bicycle?", "targets": [{"document": "returns-and-refunds.md", "text_contains": "Bicycles can be returned within 14 days"}]}
+{"question": "Can I return a helmet?", "targets": [{"document": "returns-and-refunds.md", "text_contains": "Helmets, gloves and bib shorts"}]}
+{"question": "How much does return postage cost?", "targets": [{"document": "returns-and-refunds.md", "text_contains": "flat 6 euro fee"}]}
+{"question": "How quickly are refunds paid?", "targets": [{"document": "returns-and-refunds.md", "text_contains": "within five working days of receiving the return"}]}
+{"question": "How do I exchange clothing for a different size?", "targets": [{"document": "returns-and-refunds.md", "text_contains": "return the original item and place a new order"}]}
+{"question": "What does express delivery cost?", "targets": [{"document": "shipping.md", "text_contains": "Express parcel | 9.95 euro"}]}
+{"question": "Do you ship bicycles abroad?", "targets": [{"document": "shipping.md", "text_contains": "Bicycles and e-bike batteries ship only within the country"}]}
+{"question": "What should I do if my parcel arrives damaged?", "targets": [{"document": "shipping.md", "text_contains": "contact us within 48 hours"}]}
+{"question": "How long are undelivered parcels held at the courier point?", "targets": [{"document": "shipping.md", "text_contains": "held at the nearest courier point for seven days"}]}
+{"question": "What tyre pressure should a gravel bike run?", "targets": [{"document": "bike-care.md", "text_contains": "gravel tyres between 2 and 3.5 bar"}]}
+{"question": "How often should I lubricate the chain?", "targets": [{"document": "bike-care.md", "text_contains": "every 150 to 300 kilometres"}]}
+{"question": "Can I use a pressure washer to clean my bike?", "targets": [{"document": "bike-care.md", "text_contains": "Never point a pressure washer at the bearings"}]}
+{"question": "How should I store an e-bike battery over winter?", "targets": [{"document": "bike-care.md", "text_contains": "charged to between 30 and 60 percent"}]}
+{"question": "When is the free first service?", "targets": [{"document": "bike-care.md", "text_contains": "six weeks after purchase, is free"}, {"document": "workshop-procedures.md", "text_contains": "The free first service covers"}]}
+{"question": "What torque for the stem bolts on the handlebar clamp?", "targets": [{"document": "workshop-procedures.md", "text_contains": "Stem bolts (handlebar clamp) | 5 Nm"}]}
+{"question": "Where do damaged e-bike batteries go in the workshop?", "targets": [{"document": "workshop-procedures.md", "text_contains": "fireproof battery cabinet"}]}
+{"question": "Can a mechanic repair a frame before the warranty claim is approved?", "targets": [{"document": "workshop-procedures.md", "text_contains": "Do not repair a frame under warranty before the supplier"}]}
+{"question": "What must be recorded when booking in a bike?", "targets": [{"document": "workshop-procedures.md", "text_contains": "Record the frame serial number"}]}

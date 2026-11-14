@@ -1,0 +1,31 @@
+# Chunks follow the document's headings, with the heading path as context. The parse node is
+# identical to fixed.yaml's, so creating this pipeline second reuses every parse run.
+name: structure
+nodes:
+  - id: parse
+    type: parse
+    routes:
+      - {mime: "text/*", provider: builtin-text}
+  - id: chunk
+    type: chunk
+    inputs: [parse]
+    strategy: structure
+    options: {max_chars: 1200, include_heading_path: true}
+  - id: embed
+    type: embed
+    inputs: [chunk]
+    provider: hash-256
+  - id: vec
+    type: index_vector
+    inputs: [embed]
+    provider: local-sqlite
+    options: {metric: cosine}
+  - id: fts
+    type: index_fts
+    inputs: [chunk]
+retrieval:
+  sources:
+    - {id: dense, index: vec, top_k: 30}
+    - {id: sparse, index: fts, top_k: 30}
+  fusion: {method: rrf, k: 60}
+  top_k: 10

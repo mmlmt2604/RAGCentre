@@ -1,0 +1,9 @@
+# The example PaddleOCR parser service in examples/paddleocr_shim (ragcentre.parser/v1).
+# Start the service first: RAGCentre reads its /info when the provider is created.
+name: paddleocr
+kind: parser
+type: http
+config:
+  base_url: http://127.0.0.1:8703
+  timeout_seconds: 600
+  max_concurrency: 1

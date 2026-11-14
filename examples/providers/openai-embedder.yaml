@@ -1,0 +1,11 @@
+# Any server with an OpenAI-compatible POST /embeddings (OpenAI, vLLM, Ollama, TEI, LiteLLM, ...).
+# The API key is read from the environment when the provider is used; it is never stored here.
+name: openai-small
+kind: embedder
+type: openai_compatible
+config:
+  base_url: https://api.openai.com/v1
+  model: text-embedding-3-small
+  batch_size: 64
+secrets:
+  api_key: {env: OPENAI_API_KEY}

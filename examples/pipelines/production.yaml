@@ -1,0 +1,36 @@
+# A fuller pipeline: PDFs through the Docling shim, a real embedding model, reranking and
+# neighbour expansion. Needs the providers in examples/providers/{docling-parser,
+# openai-embedder,http-reranker}.yaml and their services running.
+name: production
+nodes:
+  - id: parse
+    type: parse
+    routes:                                   # the first matching route wins
+      - {mime: "text/*", provider: builtin-text}
+      - {mime: "*/*", provider: docling, options: {ocr: true}}
+  - id: chunk
+    type: chunk
+    inputs: [parse]
+    strategy: structure
+    options: {max_chars: 1200, overlap_chars: 150, include_heading_path: true}
+  - id: embed
+    type: embed
+    inputs: [chunk]
+    provider: openai-small
+  - id: vec
+    type: index_vector
+    inputs: [embed]
+    provider: local-sqlite
+    options: {metric: cosine}
+  - id: fts
+    type: index_fts
+    inputs: [chunk]
+    options: {tokenizer: unicode61}
+retrieval:
+  sources:
+    - {id: dense, index: vec, top_k: 30}
+    - {id: sparse, index: fts, top_k: 30}
+  fusion: {method: rrf, k: 60, weights: {dense: 1.0, sparse: 1.0}}
+  rerank: {provider: reranker, top_n: 30}
+  expand: {neighbors: 1}
+  top_k: 8

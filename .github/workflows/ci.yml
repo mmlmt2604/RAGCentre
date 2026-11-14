@@ -1,0 +1,123 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        # chroma is tested in the stores job: its onnxruntime dependency has no Python 3.15 wheel.
+        run: uv sync --frozen --extra qdrant --extra pgvector
+      - name: Lint
+        run: uv run ruff check && uv run ruff format --check
+      - name: Types
+        run: uv run mypy
+      - name: Tests
+        run: uv run pytest -m "not integration"
+
+  stores:
+    # The optional vector stores on Python 3.13 (every extra installs there), with pgvector
+    # against a real PostgreSQL service.
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.13"
+      RAGCENTRE_TEST_PGVECTOR_DSN: postgresql://ragcentre:ragcentre@127.0.0.1:54329/ragcentre
+    services:
+      pgvector:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: ragcentre
+          POSTGRES_PASSWORD: ragcentre
+          POSTGRES_DB: ragcentre
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U ragcentre -d ragcentre"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: uv sync --frozen --all-extras
+      - name: Types
+        run: uv run mypy
+      - name: Store tests
+        run: uv run pytest tests/test_m2_sqlite_vec.py tests/test_m9_qdrant.py tests/test_m9_chroma.py tests/test_m9_pgvector.py tests/test_m9_optional_extras.py tests/test_no_ml_imports.py
+
+  docling-shim:
+    # The example parser service's tests. They need docling-core (the document model), not
+    # Docling's models, and run outside the ragcentre environment because the two pin
+    # incompatible typer versions.
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.13"
+    defaults:
+      run:
+        working-directory: examples/docling_shim
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tests
+        run: uv run --isolated --no-project --with docling-core --with fastapi --with python-multipart --with httpx --with pytest pytest
+
+  parser-shims:
+    # The tests of shimkit and of the MinerU, PaddleOCR and Surya example parser services. They need
+    # none of the engines or their models (the conversion works on plain dicts), and run outside the
+    # ragcentre environment because each engine pins its own dependencies.
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.13"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {dir: shimkit, shimkit: "."}
+          - {dir: mineru_shim, shimkit: ../shimkit}
+          - {dir: paddleocr_shim, shimkit: ../shimkit}
+          - {dir: surya_shim, shimkit: ../shimkit}
+    defaults:
+      run:
+        working-directory: examples/${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tests
+        run: uv run --isolated --no-project --with ${{ matrix.shimkit }} --with fastapi --with python-multipart --with httpx --with pytest pytest
+
+  ui:
+    # The web UI: lint, types, unit tests, the API contract check, the production build, and the
+    # Playwright tests against a real `ragcentre serve` serving that build.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install
+        run: npm ci && uv sync --frozen
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: API contract (generated types are current and match src/api/types.ts)
+        run: npm run check:contract
+      - name: Build
+        run: npm run build
+      - name: End-to-end against the real server
+        run: npx playwright install --with-deps chromium && npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: ui/playwright-report

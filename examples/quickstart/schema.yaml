@@ -1,0 +1,3 @@
+# Filterable metadata for the quickstart corpus. Every field needs a default.
+fields:
+  audience: {type: str, default: customer}
