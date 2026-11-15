@@ -78,6 +78,8 @@ The parse route's `options` are passed to the service:
 | `ocr_figures` | `false` | Also read text inside pictures, figures and diagrams (otherwise they are left empty) |
 | `dpi` | `192` | Render resolution for PDF pages, an integer from 72 to 400 |
 
+Options are strictly typed and unknown keys are rejected with `400 invalid_options` naming the key. `/info` reports the schema as `options_schema`.
+
 The shim does not serialise parses: it is a client of the inference server. The provider file sets
 `max_concurrency: 2`. Only the first frame of a multi-page TIFF is read.
 
@@ -94,8 +96,19 @@ uv run ragcentre provider set-secret surya api_key --env SURYA_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.1.0+surya.<surya-ocr version>.<model>`, for example
-`0.1.0+surya.0.24.0.surya-ocr-2.5` (the model is the last segment of `SURYA_MODEL_CHECKPOINT`).
+`/info` reports `0.2.0+surya.<surya-ocr version>.<model>.<backend>`, with `.gguf-<file>` added for a
+llama.cpp model file other than the default, for example `0.2.0+surya.0.24.0.surya-ocr-2.5.llamacpp`:
+
+- `<model>` is the last segment of `SURYA_MODEL_CHECKPOINT`.
+- `<backend>` is `SURYA_INFERENCE_BACKEND` if set, otherwise what Surya's own auto-detection picks
+  (`vllm` on an NVIDIA GPU, otherwise `llamacpp`). That detection is a private function
+  (`surya.inference._autodetect_backend`); if a Surya release removes it, the backend is reported
+  as `auto`.
+- `.gguf-<file>` appears only with the `llamacpp` backend and a file other than `surya-2.5.gguf`: the
+  base name of `SURYA_GGUF_LOCAL_MODEL_PATH` (Surya uses it only together with
+  `SURYA_GGUF_LOCAL_MMPROJ_PATH`), else `SURYA_GGUF_MODEL_FILE`. Characters outside `[A-Za-z0-9_-]`
+  become `-`.
+
 RAGCentre records that version when the provider is created and refuses to parse with a service
 reporting a different one (unless the provider's `on_version_drift` is `warn`). Upgrading Surya or
 changing the model therefore means creating a new provider and a new pipeline.

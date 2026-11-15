@@ -217,12 +217,27 @@ def post(client: TestClient, name: str = "m.pdf", options: Any = None) -> Any:
     return client.post("/parse", files={"file": (name, b"%PDF", "application/pdf")}, data=data)
 
 
+def test_unknown_option_is_400_and_named() -> None:
+    calls: list[Any] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    resp = post(client, options={"tables": True, "tabless": 1})
+    assert resp.status_code == 400
+    assert resp.json() == {"error": {"code": "invalid_options", "message": "option 'tabless' is not recognised"}}
+    assert post(client, options={"tables": "false"}).status_code == 400
+    assert calls == []
+
+
+def test_info_reports_the_options_schema() -> None:
+    schema = TestClient(create_app(fake_engine([]))).get("/info").json()["options_schema"]
+    assert schema["additionalProperties"] is False and "tables" in schema["properties"]
+
+
 def test_service_endpoints() -> None:
     calls: list[tuple[Any, ...]] = []
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "paddleocr-shim"
-    assert info["version"].startswith("0.1.0+paddleocr.")
+    assert info["version"].startswith("0.2.0+paddleocr.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/bmp", "image/tiff", "image/webp"]
     assert info["capabilities"] == {"page_images": False}
 
@@ -273,7 +288,7 @@ def test_lang_is_part_of_the_version(monkeypatch: pytest.MonkeyPatch) -> None:
     assert service_version("en").endswith(".lang-en")
     monkeypatch.setenv("PADDLEOCR_SHIM_LANG", "fr")
     info = TestClient(create_app(fake_engine([]))).get("/info").json()
-    assert info["version"].endswith(".lang-fr") and info["version"].startswith("0.1.0+paddleocr.")
+    assert info["version"].endswith(".lang-fr") and info["version"].startswith("0.2.0+paddleocr.")
 
 
 def test_api_key(monkeypatch: pytest.MonkeyPatch) -> None:

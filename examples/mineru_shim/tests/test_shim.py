@@ -246,12 +246,27 @@ def post(client: TestClient, name: str = "m.pdf", options: Any = None) -> Any:
     return client.post("/parse", files={"file": (name, b"%PDF", "application/pdf")}, data=data)
 
 
+def test_unknown_option_is_400_and_named() -> None:
+    calls: list[Any] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    resp = post(client, options={"tier": "basic", "tiers": 1})
+    assert resp.status_code == 400
+    assert resp.json() == {"error": {"code": "invalid_options", "message": "option 'tiers' is not recognised"}}
+    assert post(client, options={"ocr": "yes"}).status_code == 400
+    assert calls == []
+
+
+def test_info_reports_the_options_schema() -> None:
+    schema = TestClient(create_app(fake_engine([]))).get("/info").json()["options_schema"]
+    assert schema["additionalProperties"] is False and "tier" in schema["properties"]
+
+
 def test_service_endpoints() -> None:
     calls: list[tuple[Any, ...]] = []
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "mineru-shim"
-    assert info["version"].startswith("0.1.0+mineru.")
+    assert info["version"].startswith("0.2.0+mineru.")
     assert "application/pdf" in info["mime_types"] and "text/html" in info["mime_types"]
     assert info["mime_types"] == MIME_TYPES and info["capabilities"] == {"page_images": False}
 

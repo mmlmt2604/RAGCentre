@@ -24,18 +24,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI
-from shimkit import ShimError, bool_option, choice_option, file_extension
+from pydantic import Field
+from shimkit import ShimError, ShimOptions, file_extension
 from shimkit import create_app as create_shim_app
 
 from mineru_shim.convert import PageSizes, to_ir
 from mineru_shim.engine import SUPPORTED_EXTENSIONS, TIERED_EXTENSIONS, MineruEngine
 
-SHIM_VERSION = "0.1.0"
+SHIM_VERSION = "0.2.0"
 NAME = "mineru-shim"
-TIERS = ["flash", "basic", "standard", "advanced"]
 # mineru/filetypes.py (MIME_TYPE_BY_EXTENSION), for the extensions MinerU parses.
 MIME_TYPES = [
     "application/pdf",
@@ -64,6 +64,20 @@ MIME_TYPES = [
     "application/ofd",
 ]
 
+
+class Options(ShimOptions):
+    tier: Literal["flash", "basic", "standard", "advanced"] = Field(
+        "standard",
+        description="MinerU tier. Only PDFs and images support every tier; other formats are always parsed with flash.",
+    )
+    ocr: bool | Literal["auto"] = Field(
+        "auto", description='true forces OCR, false reads the text layer, "auto" decides.'
+    )
+    image_analysis: bool = Field(
+        False, description="Describe pictures with a vision model (MinerU's own default is true, which needs a VLM)."
+    )
+
+
 # (content, filename, options) -> (content list, page sizes) (see convert.py)
 Engine = Callable[[bytes, str, dict[str, Any]], tuple[list[dict[str, Any]], PageSizes]]
 
@@ -80,27 +94,23 @@ def service_version() -> str:
     return f"{SHIM_VERSION}+mineru.{_mineru_version()}"
 
 
-def _ocr_mode(options: dict[str, Any]) -> str:
-    value = options.get("ocr", "auto")
+def _ocr_mode(value: bool | str) -> str:
     if value is True:
         return "ocr"
     if value is False:
         return "txt"
-    if value == "auto":
-        return "auto"
-    raise ShimError(400, "invalid_options", "option 'ocr' must be true, false or \"auto\"")
+    return "auto"
 
 
 def create_app(engine: Engine | None = None) -> FastAPI:
     run = engine or MineruEngine()
 
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+    def parse(content: bytes, filename: str, options: Options) -> dict[str, Any]:
         extension = file_extension(filename)
-        tier = choice_option(options, "tier", TIERS, "standard")
         opts = {
-            "tier": tier if extension in TIERED_EXTENSIONS else "flash",
-            "ocr_mode": _ocr_mode(options),
-            "image_analysis": bool_option(options, "image_analysis", False),
+            "tier": options.tier if extension in TIERED_EXTENSIONS else "flash",
+            "ocr_mode": _ocr_mode(options.ocr),
+            "image_analysis": options.image_analysis,
         }
         if extension not in SUPPORTED_EXTENSIONS:
             raise ShimError(
@@ -116,6 +126,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         capabilities={"page_images": False},
         api_key_env="MINERU_SHIM_API_KEY",
         parse=parse,
+        options_model=Options,
         serialise=True,  # MinerU runs local models and may start an inference server
     )
 

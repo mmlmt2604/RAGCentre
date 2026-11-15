@@ -23,18 +23,21 @@ Environment: ``SURYA_SHIM_API_KEY`` requires ``Authorization: Bearer <key>`` (ex
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, bool_option, file_extension, int_option
+from pydantic import Field
+from shimkit import ShimError, ShimOptions, file_extension
 from shimkit import create_app as create_shim_app
 
 from surya_shim.convert import to_ir
 from surya_shim.engine import DEFAULT_DPI, SUPPORTED_EXTENSIONS, SuryaEngine
 
-SHIM_VERSION = "0.1.0"
+SHIM_VERSION = "0.2.0"
+DEFAULT_GGUF_FILE = "surya-2.5.gguf"  # surya.settings.SURYA_GGUF_MODEL_FILE
 NAME = "surya-shim"
 MIME_TYPES = [
     "application/pdf",
@@ -44,6 +47,13 @@ MIME_TYPES = [
     "image/bmp",
     "image/webp",
 ]
+
+
+class Options(ShimOptions):
+    include_page_images: bool = Field(False, description="Return each rendered page as a base64 PNG.")
+    ocr_figures: bool = Field(False, description="Also read text inside pictures, figures and diagrams.")
+    dpi: int = Field(DEFAULT_DPI, ge=72, le=400, description="Render resolution for PDF pages.")
+
 
 # (content, filename, options) -> reduced pages (see convert.py)
 Engine = Callable[[bytes, str, dict[str, Any]], list[dict[str, Any]]]
@@ -67,22 +77,65 @@ def _model_name() -> str | None:
         return None
 
 
+def _suffix(value: str) -> str:
+    """``value`` with every character outside ``[A-Za-z0-9_-]`` replaced by ``-``."""
+    return re.sub(r"[^A-Za-z0-9_-]", "-", value)
+
+
+def _backend() -> str | None:
+    """The inference backend Surya will use: ``SURYA_INFERENCE_BACKEND`` if set, else what Surya's
+    own auto-detection picks (vLLM on an NVIDIA GPU, otherwise llama.cpp). ``None`` when Surya is not
+    importable. ``surya.inference._autodetect_backend`` is private; if it goes missing the backend
+    is reported as ``auto``."""
+    try:
+        from surya.settings import settings
+
+        if settings.SURYA_INFERENCE_BACKEND:
+            return str(settings.SURYA_INFERENCE_BACKEND).lower()
+    except Exception:
+        return None
+    try:
+        from surya.inference import _autodetect_backend
+
+        return str(_autodetect_backend()).lower()
+    except Exception:
+        return "auto"
+
+
+def _gguf_name() -> str | None:
+    """The llama.cpp model file when it is not the default one. Surya uses
+    ``SURYA_GGUF_LOCAL_MODEL_PATH`` only together with ``SURYA_GGUF_LOCAL_MMPROJ_PATH``
+    (``surya/inference/backends/llamacpp.py``), so the path counts only when both are set."""
+    try:
+        from surya.settings import settings
+
+        if settings.SURYA_GGUF_LOCAL_MODEL_PATH and settings.SURYA_GGUF_LOCAL_MMPROJ_PATH:
+            name = str(settings.SURYA_GGUF_LOCAL_MODEL_PATH).replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+        else:
+            name = str(settings.SURYA_GGUF_MODEL_FILE)
+    except Exception:
+        return None
+    return name if name and name != DEFAULT_GGUF_FILE else None
+
+
 def service_version() -> str:
-    # RAGCentre pins this when the provider is created. A Surya upgrade or a different model changes
-    # the output, so both are part of the version.
-    model = _model_name()
-    return f"{SHIM_VERSION}+surya.{_surya_version()}" + (f".{model}" if model else "")
+    # RAGCentre pins this when the provider is created. A Surya upgrade, a different model, the
+    # inference backend or the llama.cpp model file changes the output, so all are part of the version.
+    version_ = f"{SHIM_VERSION}+surya.{_surya_version()}"
+    if model := _model_name():
+        version_ += f".{model}"
+    if backend := _backend():
+        version_ += f".{_suffix(backend)}"
+        if backend == "llamacpp" and (gguf := _gguf_name()):
+            version_ += f".gguf-{_suffix(gguf)}"
+    return version_
 
 
 def create_app(engine: Engine | None = None) -> FastAPI:
     run = engine or SuryaEngine()
 
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
-        opts = {
-            "include_page_images": bool_option(options, "include_page_images", False),
-            "ocr_figures": bool_option(options, "ocr_figures", False),
-            "dpi": int_option(options, "dpi", DEFAULT_DPI, minimum=72, maximum=400),
-        }
+    def parse(content: bytes, filename: str, options: Options) -> dict[str, Any]:
+        opts = options.model_dump()
         if file_extension(filename) not in SUPPORTED_EXTENSIONS:
             raise ShimError(415, "unsupported_media_type", f"{filename}: Surya reads PDF and image files only")
         pages = run(content, filename, opts)
@@ -95,6 +148,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         capabilities={"page_images": True},
         api_key_env="SURYA_SHIM_API_KEY",
         parse=parse,
+        options_model=Options,
         serialise=False,  # a client of the inference server, which does its own batching
         shutdown=getattr(run, "close", None),
     )

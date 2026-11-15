@@ -4,23 +4,31 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import Field
 
 from shimkit.service import (
     PROTOCOL,
     ShimError,
-    bool_option,
-    choice_option,
+    ShimOptions,
     create_app,
     file_extension,
-    int_option,
     temp_upload,
 )
 
 IR = {"schema_version": "1.0", "metadata": {}, "pages": [], "blocks": [{"type": "paragraph", "text": "hi", "id": "b1"}]}
+
+
+class Demo(ShimOptions):
+    tables: bool = Field(True, description="Table recognition.")
+    ocr: bool | Literal["auto"] = Field("auto", description="OCR mode.")
+    tier: Literal["flash", "standard"] = Field("standard", description="Tier.")
+    dpi: int = Field(192, ge=72, le=400, description="Resolution.")
+    scale: float = Field(1.0, gt=0, description="Scale.")
+    limit: int | None = Field(None, ge=1, description="At most this many.")
 
 
 def make_client(parse: Any = None, *, serialise: bool = False, version: Any = None) -> TestClient:
@@ -32,6 +40,7 @@ def make_client(parse: Any = None, *, serialise: bool = False, version: Any = No
             capabilities={"page_images": False},
             api_key_env="DEMO_SHIM_API_KEY",
             parse=parse or (lambda content, filename, options: IR),
+            options_model=Demo,
             serialise=serialise,
         )
     )
@@ -57,7 +66,16 @@ def test_info() -> None:
         "version": "0.1.0+demo.1",
         "mime_types": ["application/pdf"],
         "capabilities": {"page_images": False},
+        "options_schema": Demo.model_json_schema(),
     }
+
+
+def test_info_reports_the_options_schema() -> None:
+    schema = make_client().get("/info").json()["options_schema"]
+    assert set(schema["properties"]) == {"tables", "ocr", "tier", "dpi", "scale", "limit"}
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["dpi"]["minimum"] == 72 and schema["properties"]["dpi"]["maximum"] == 400
+    assert all(spec["description"] for spec in schema["properties"].values())
 
 
 def test_info_reads_the_version_per_request() -> None:
@@ -69,9 +87,9 @@ def test_info_reads_the_version_per_request() -> None:
 
 
 def test_parse_passes_content_filename_and_options() -> None:
-    calls: list[tuple[bytes, str, dict[str, Any]]] = []
+    calls: list[tuple[bytes, str, Demo]] = []
 
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+    def parse(content: bytes, filename: str, options: Demo) -> dict[str, Any]:
         calls.append((content, filename, options))
         return IR
 
@@ -80,7 +98,12 @@ def test_parse_passes_content_filename_and_options() -> None:
     assert resp.status_code == 200 and resp.json() == IR
     assert post(client).status_code == 200  # no options field
     assert post(client, options="").status_code == 200  # empty options string
-    assert calls == [(b"%PDF", "m.pdf", {"ocr": False}), (b"%PDF", "m.pdf", {}), (b"%PDF", "m.pdf", {})]
+    assert [(c, f, o.model_dump()["ocr"]) for c, f, o in calls] == [
+        (b"%PDF", "m.pdf", False),
+        (b"%PDF", "m.pdf", "auto"),
+        (b"%PDF", "m.pdf", "auto"),
+    ]
+    assert all(isinstance(o, Demo) for _, _, o in calls)
 
 
 @pytest.mark.parametrize("options", ["[1]", "3", '"x"', "null", "{not json"])
@@ -91,7 +114,7 @@ def test_options_must_be_a_json_object(options: str) -> None:
 
 
 def test_shim_error_becomes_the_protocol_error_body() -> None:
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+    def parse(content: bytes, filename: str, options: Demo) -> dict[str, Any]:
         raise ShimError(415, "unsupported_media_type", f"cannot read {filename}")
 
     resp = post(make_client(parse), name="m.xyz")
@@ -99,17 +122,54 @@ def test_shim_error_becomes_the_protocol_error_body() -> None:
     assert resp.json() == {"error": {"code": "unsupported_media_type", "message": "cannot read m.xyz"}}
 
 
-def test_shim_error_from_options_helper() -> None:
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
-        bool_option(options, "tables", True)
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ({"ocrr": True}, "option 'ocrr' is not recognised"),
+        ({"tables": "false"}, "option 'tables' must be true or false"),
+        ({"tables": 1}, "option 'tables' must be true or false"),
+        ({"tables": None}, "option 'tables' must be true or false"),
+        ({"dpi": True}, "option 'dpi' must be an integer from 72 to 400"),
+        ({"dpi": "150"}, "option 'dpi' must be an integer from 72 to 400"),
+        ({"dpi": 150.5}, "option 'dpi' must be an integer from 72 to 400"),
+        ({"dpi": 71}, "option 'dpi' must be an integer from 72 to 400"),
+        ({"dpi": 401}, "option 'dpi' must be an integer from 72 to 400"),
+        ({"tier": "fast"}, "option 'tier' must be flash or standard"),
+        ({"tier": 1}, "option 'tier' must be flash or standard"),
+        ({"ocr": "yes"}, "option 'ocr' must be true or false or auto"),
+        ({"scale": "1"}, "option 'scale' must be a number that is greater than 0"),
+        ({"limit": 0}, "option 'limit' must be an integer that is at least 1"),
+        ({"tables": True, "dpi": 9, "zzz": 1}, None),  # the first failure is named
+    ],
+)
+def test_invalid_options_are_400_and_name_the_key(options: dict[str, Any], message: str | None) -> None:
+    called: list[Demo] = []
+
+    def parse(content: bytes, filename: str, opts: Demo) -> dict[str, Any]:
+        called.append(opts)
         return IR
 
-    resp = post(make_client(parse), options='{"tables": "yes"}')
+    resp = post(make_client(parse), options=json.dumps(options))
     assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options"
+    got = resp.json()["error"]["message"]
+    assert got == message if message else ("'dpi'" in got or "'zzz'" in got)
+    assert called == []  # the parser never sees invalid options
+
+
+def test_valid_options_are_accepted() -> None:
+    seen: list[Demo] = []
+
+    def parse(content: bytes, filename: str, opts: Demo) -> dict[str, Any]:
+        seen.append(opts)
+        return IR
+
+    body = {"tables": False, "ocr": "auto", "tier": "flash", "dpi": 72, "scale": 2, "limit": 3}
+    assert post(make_client(parse), options=json.dumps(body)).status_code == 200
+    assert seen[0].model_dump() == {**body, "scale": 2.0}
 
 
 def test_other_exceptions_are_conversion_failed() -> None:
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+    def parse(content: bytes, filename: str, options: Demo) -> dict[str, Any]:
         raise RuntimeError("broken file")
 
     resp = post(make_client(parse), name="m.pdf")
@@ -118,7 +178,7 @@ def test_other_exceptions_are_conversion_failed() -> None:
 
 
 def test_503_is_passed_through() -> None:
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+    def parse(content: bytes, filename: str, options: Demo) -> dict[str, Any]:
         raise ShimError(503, "engine_unavailable", "model not loaded")
 
     assert post(make_client(parse)).status_code == 503
@@ -160,7 +220,7 @@ def _overlap(serialise: bool) -> int:
     peak = 0
     guard = threading.Lock()
 
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+    def parse(content: bytes, filename: str, options: Demo) -> dict[str, Any]:
         nonlocal running, peak
         with guard:
             running += 1
@@ -190,7 +250,7 @@ def test_without_serialise_parses_overlap() -> None:
 def test_serialise_releases_the_lock_after_an_error() -> None:
     fail = [True]
 
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+    def parse(content: bytes, filename: str, options: Demo) -> dict[str, Any]:
         if fail[0]:
             raise RuntimeError("boom")
         return IR
@@ -247,34 +307,6 @@ def test_temp_upload_never_uses_the_clients_path() -> None:
         assert path.name == "upload"
 
 
-def test_bool_option() -> None:
-    assert bool_option({}, "k", True) is True
-    assert bool_option({"k": False}, "k", True) is False
-    for bad in ("true", 1, 0, None, [], "false"):
-        with pytest.raises(ShimError) as err:
-            bool_option({"k": bad}, "k", True)
-        assert err.value.status == 400 and err.value.code == "invalid_options" and "'k'" in err.value.message
-
-
-def test_choice_option() -> None:
-    assert choice_option({}, "tier", ["flash", "standard"], "standard") == "standard"
-    assert choice_option({"tier": "flash"}, "tier", ["flash", "standard"], "standard") == "flash"
-    for bad in ("fast", "", 1, True, None, ["flash"]):
-        with pytest.raises(ShimError) as err:
-            choice_option({"tier": bad}, "tier", ["flash", "standard"], "standard")
-        assert err.value.code == "invalid_options" and "flash, standard" in err.value.message
-
-
-def test_int_option() -> None:
-    assert int_option({}, "dpi", 192, minimum=72, maximum=400) == 192
-    assert int_option({"dpi": 72}, "dpi", 192, minimum=72, maximum=400) == 72
-    assert int_option({"dpi": 400}, "dpi", 192, minimum=72, maximum=400) == 400
-    for bad in (71, 401, True, 150.5, "150", None):
-        with pytest.raises(ShimError) as err:
-            int_option({"dpi": bad}, "dpi", 192, minimum=72, maximum=400)
-        assert err.value.code == "invalid_options" and "72 to 400" in err.value.message
-
-
 def test_shutdown_hook_runs_when_the_server_stops() -> None:
     calls: list[str] = []
     app = create_app(
@@ -284,6 +316,7 @@ def test_shutdown_hook_runs_when_the_server_stops() -> None:
         capabilities={},
         api_key_env="DEMO_SHIM_API_KEY",
         parse=lambda content, filename, options: IR,
+        options_model=Demo,
         shutdown=lambda: calls.append("stopped"),
     )
     with TestClient(app) as client:

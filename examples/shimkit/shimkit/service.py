@@ -23,11 +23,13 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic_core import ErrorDetails
 
 PROTOCOL = "ragcentre.parser/v1"
 
-# (content, filename, options) -> Document IR
-ParseFunction = Callable[[bytes, str, dict[str, Any]], dict[str, Any]]
+# (content, filename, options) -> Document IR; ``options`` is an instance of the app's options model
+ParseFunction = Callable[[bytes, str, Any], dict[str, Any]]
 
 
 class ShimError(Exception):
@@ -47,30 +49,82 @@ def error_response(status: int, code: str, message: str) -> JSONResponse:
 # --- options ----------------------------------------------------------------------------------
 
 
+class ShimOptions(BaseModel):
+    """Base class for a shim's options. Unknown keys are rejected and types are strict, so ``"false"``
+    is not a boolean and ``true`` is not an integer. Give every field a ``description``: it is the help
+    text in the options schema that ``/info`` reports."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
 def _invalid(message: str) -> ShimError:
     return ShimError(400, "invalid_options", message)
 
 
-def bool_option(options: Mapping[str, Any], key: str, default: bool) -> bool:
-    value = options.get(key, default)
-    if not isinstance(value, bool):
-        raise _invalid(f"option {key!r} must be true or false")
-    return value
+def _bounds(model: type[BaseModel], key: str) -> dict[str, Any]:
+    """The ``ge``/``gt``/``le``/``lt`` constraints declared on field ``key``."""
+    field = model.model_fields.get(key)
+    found: dict[str, Any] = {}
+    for item in field.metadata if field else []:
+        for name in ("ge", "gt", "le", "lt"):
+            if hasattr(item, name):
+                found[name] = getattr(item, name)
+    return found
 
 
-def choice_option(options: Mapping[str, Any], key: str, allowed: Sequence[str], default: str) -> str:
-    value = options.get(key, default)
-    if not isinstance(value, str) or value not in allowed:
-        raise _invalid(f"option {key!r} must be one of: {', '.join(allowed)}")
-    return value
+def _range(noun: str, bounds: dict[str, Any]) -> str:
+    low = bounds.get("ge", bounds.get("gt"))
+    high = bounds.get("le", bounds.get("lt"))
+    if "ge" in bounds and "le" in bounds:
+        return f"{noun} from {low} to {high}"
+    parts = []
+    if "ge" in bounds:
+        parts.append(f"at least {low}")
+    if "gt" in bounds:
+        parts.append(f"greater than {low}")
+    if "le" in bounds:
+        parts.append(f"at most {high}")
+    if "lt" in bounds:
+        parts.append(f"less than {high}")
+    return f"{noun} that is {' and '.join(parts)}" if parts else noun
 
 
-def int_option(options: Mapping[str, Any], key: str, default: int, *, minimum: int, maximum: int) -> int:
-    value = options.get(key, default)
-    # bool is an int subclass; ``true`` is not a number of dots per inch.
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
-        raise _invalid(f"option {key!r} must be an integer from {minimum} to {maximum}")
-    return value
+def _expectation(model: type[BaseModel], error: ErrorDetails) -> str:
+    kind = error["type"]
+    ctx = error.get("ctx") or {}
+    key = str(error["loc"][0]) if error["loc"] else ""
+    bounds = _bounds(model, key)
+    if kind == "bool_type":
+        return "true or false"
+    if kind == "literal_error":
+        return str(ctx.get("expected", "one of the allowed values")).replace("'", "")
+    if kind in ("int_type", "int_parsing", "int_from_float"):
+        return _range("an integer", bounds)
+    if kind in ("float_type", "float_parsing"):
+        return _range("a number", bounds)
+    if kind in ("greater_than_equal", "greater_than", "less_than_equal", "less_than"):
+        field = model.model_fields.get(key)
+        is_int = field is not None and "int" in str(field.annotation) and "float" not in str(field.annotation)
+        return _range("an integer" if is_int else "a number", bounds)
+    simple = {"string_type": "a string", "list_type": "a list", "tuple_type": "a list", "dict_type": "an object"}
+    return simple.get(kind, str(error["msg"]))
+
+
+def options_message(model: type[BaseModel], exc: ValidationError) -> str:
+    """A short sentence about the first option that failed validation, written from the error's
+    ``loc``, ``type`` and ``ctx`` (not pydantic's own text)."""
+    errors = exc.errors()
+    first = errors[0]
+    top = first["loc"][0] if first["loc"] else None
+    key = str(top) if top is not None else "options"
+    if first["type"] == "extra_forbidden":
+        return f"option {key!r} is not recognised"
+    if first["type"] == "missing":
+        return f"option {key!r} is required"
+    # A union field reports one error per branch; describe them together.
+    same = [e for e in errors if e["loc"] and e["loc"][0] == top and e["type"] != "extra_forbidden"]
+    expected = " or ".join(dict.fromkeys(_expectation(model, e) for e in same))
+    return f"option {key!r} must be {expected}"
 
 
 # --- uploads ----------------------------------------------------------------------------------
@@ -119,12 +173,15 @@ def create_app(
     capabilities: Mapping[str, Any],
     api_key_env: str,
     parse: ParseFunction,
+    options_model: type[BaseModel],
     serialise: bool = False,
     shutdown: Callable[[], None] | None = None,
 ) -> FastAPI:
     """Build the service.
 
-        ``version`` is called on every ``/info`` request. With ``serialise``, calls to ``parse`` run
+    ``options_model`` validates the ``options`` object of every parse request (unknown keys and wrong
+    types are ``400 invalid_options``) and its JSON Schema is reported by ``/info`` as
+    ``options_schema``. ``version`` is called on every ``/info`` request. With ``serialise``, calls to ``parse`` run
         one at a time (for engines that cannot be used concurrently). When the environment variable
     ``api_key_env`` is set, every request except ``GET /info`` must carry
         ``Authorization: Bearer <value>``. ``shutdown`` runs when the server stops (to release an
@@ -132,6 +189,7 @@ def create_app(
     """
     api_key = os.environ.get(api_key_env) or None
     lock = threading.Lock() if serialise else None
+    schema = options_model.model_json_schema()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -159,13 +217,18 @@ def create_app(
             "version": version(),
             "mime_types": list(mime_types),
             "capabilities": dict(capabilities),
+            "options_schema": schema,
         }
 
     @app.post("/parse", response_model=None)
     def parse_endpoint(file: UploadFile = File(...), options: str = Form("{}")) -> dict[str, Any] | JSONResponse:
         filename = file.filename or "document"
         try:
-            opts = _read_options(options)
+            raw = _read_options(options)
+            try:
+                opts = options_model.model_validate(raw)
+            except ValidationError as exc:
+                raise _invalid(options_message(options_model, exc)) from None
             content = file.file.read()
             if lock is None:
                 return parse(content, filename, opts)

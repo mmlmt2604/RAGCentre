@@ -18,7 +18,8 @@ RAGCentre's provider type for this protocol is `parser/http`.
   "name": "docling-shim",
   "version": "0.1.0+docling.2.150.0",
   "mime_types": ["application/pdf", "image/*"],
-  "capabilities": {"page_images": true}
+  "capabilities": {"page_images": true},
+  "options_schema": {"type": "object", "properties": {"ocr": {"type": "boolean"}}, "additionalProperties": false}
 }
 ```
 
@@ -30,6 +31,8 @@ RAGCentre's provider type for this protocol is `parser/http`.
 - `mime_types` (optional) is informational. Which files reach the service is decided by the
   pipeline's parse routes.
 - `capabilities` (optional) is informational in version 1.
+- `options_schema` (optional) is a JSON Schema for the `options` object of `POST /parse`. It is
+  informational in this release.
 
 RAGCentre calls `/info` without credentials when the provider is created, and again (with
 credentials, cached for five minutes) before parsing. If the reported version differs from the
@@ -44,6 +47,11 @@ A `multipart/form-data` request:
 |---|---|
 | `file` | The document, with its filename and MIME type |
 | `options` | A JSON object, as a string: the parse route's `options` (may be `{}`) |
+
+A service should reject options it does not recognise, or whose type is wrong, with
+`400 invalid_options` and a message that names the option, rather than ignore them: options are part
+of the pipeline's fingerprint, so a mistyped one would otherwise re-parse every document and change
+nothing.
 
 The response is `200` with a Document IR. The call is synchronous; RAGCentre's default timeout
 for parser providers is 600 seconds (`timeout_seconds`).

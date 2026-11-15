@@ -77,6 +77,8 @@ The parse route's `options` are passed to the service. All are booleans.
 | `unwarp` | `false` | Flatten curved or photographed pages |
 | `heading_levels` | `false` | Rank section titles with PaddleX's own heading-level assignment. Off, every section title is level 2 and the document title (if PaddleOCR finds one) is level 1 |
 
+Options are strictly typed and unknown keys are rejected with `400 invalid_options` naming the key. `/info` reports the schema as `options_schema`.
+
 PaddleX loads models for a feature when a pipeline is *built*, so the shim builds and keeps one
 pipeline per combination of the first six options; a request can only use features its pipeline
 was built with. Using many different combinations holds many pipelines in memory.
@@ -101,7 +103,7 @@ uv run ragcentre provider set-secret paddleocr api_key --env PADDLEOCR_SHIM_API_
 
 ## Versioning
 
-`/info` reports `0.1.0+paddleocr.<paddleocr version>`, with `.lang-<lang>` added when
+`/info` reports `0.2.0+paddleocr.<paddleocr version>`, with `.lang-<lang>` added when
 `PADDLEOCR_SHIM_LANG` is set. RAGCentre records that version when the provider is created and
 refuses to parse with a service reporting a different one (unless the provider's
 `on_version_drift` is `warn`). Upgrading PaddleOCR or changing the language therefore means creating

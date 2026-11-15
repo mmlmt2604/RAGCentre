@@ -67,6 +67,8 @@ The parse route's `options` are passed to the service:
 | `ocr` | `"auto"` | `true` forces OCR, `false` reads the text layer only, `"auto"` lets MinerU decide |
 | `image_analysis` | `false` | Describe pictures with a vision model. MinerU's own default is on; it is off here so that a default run does not need a VLM for every picture |
 
+Options are strictly typed and unknown keys are rejected with `400 invalid_options` naming the key. `/info` reports the schema as `options_schema`.
+
 The shim serialises parses (one at a time) and the provider file sets `max_concurrency: 1`.
 
 ## Authentication
@@ -82,7 +84,7 @@ uv run ragcentre provider set-secret mineru api_key --env MINERU_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.1.0+mineru.<mineru version>`. RAGCentre records that version when the provider
+`/info` reports `0.2.0+mineru.<mineru version>`. RAGCentre records that version when the provider
 is created and refuses to parse with a service reporting a different one (unless the provider's
 `on_version_drift` is `warn`). Upgrading MinerU means creating a new provider and a new pipeline, so
 parses from two MinerU versions are never mixed in one index.

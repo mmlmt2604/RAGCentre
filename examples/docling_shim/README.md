@@ -58,12 +58,17 @@ The parse route's `options` are passed to the service:
 
 | Option | Default | Meaning |
 |---|---|---|
-| `ocr` | `true` | Run OCR on scanned pages and images in PDFs |
+| `ocr` | `true` | Run OCR on scanned pages and on image files |
 | `include_page_images` | `false` | Render each page and return it as a base64 PNG in `pages[].image` |
+
+Options apply to PDFs and to image files. Both are strictly typed booleans (`"false"` is not
+accepted), and any other key is rejected with `400 invalid_options` naming it. `/info` reports the
+schema as `options_schema`.
 
 ## Authentication
 
-Set `DOCLING_SHIM_API_KEY` to require `Authorization: Bearer <key>`, and give RAGCentre the same
+Set `DOCLING_SHIM_API_KEY` to require `Authorization: Bearer <key>` on `POST /parse` (`GET /info`
+stays open: RAGCentre reads it without credentials when it creates the provider), and give RAGCentre the same
 value as the provider's `api_key` secret:
 
 ```sh
@@ -72,7 +77,11 @@ uv run ragcentre provider set-secret docling api_key --env DOCLING_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.1.0+docling.<docling version>`. RAGCentre records that version when the
+`/info` reports `0.2.0+docling.<docling version>.ocr-<engine>`, for example
+`0.2.0+docling.2.150.1.ocr-rapidocr-torch`. `<engine>` is the OCR engine Docling's automatic default
+picks, worked out without loading any model: the first installed of `ocrmac` (macOS), `nemotron`
+(Linux x86-64, Python 3.12, CUDA), `rapidocr-onnxruntime`, `easyocr`, `rapidocr-torch`, or `none`.
+Installing or removing one of those packages therefore changes the version. RAGCentre records that version when the
 provider is created and refuses to parse with a service reporting a different one (unless the
 provider's `on_version_drift` is `warn`). Upgrading Docling therefore means creating a new
 provider and a new pipeline, so parses from two Docling versions are never mixed in one index.

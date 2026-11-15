@@ -30,13 +30,14 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, bool_option, file_extension
+from pydantic import Field
+from shimkit import ShimError, ShimOptions, file_extension
 from shimkit import create_app as create_shim_app
 
 from paddleocr_shim.convert import to_ir
 from paddleocr_shim.engine import SUPPORTED_EXTENSIONS, PaddleEngine
 
-SHIM_VERSION = "0.1.0"
+SHIM_VERSION = "0.2.0"
 NAME = "paddleocr-shim"
 MIME_TYPES = [
     "application/pdf",
@@ -46,15 +47,19 @@ MIME_TYPES = [
     "image/tiff",
     "image/webp",
 ]
-DEFAULTS = {
-    "tables": True,
-    "formulas": True,
-    "charts": False,
-    "seals": False,
-    "orientation": False,
-    "unwarp": False,
-    "heading_levels": False,
-}
+
+
+class Options(ShimOptions):
+    tables: bool = Field(True, description="Table recognition.")
+    formulas: bool = Field(True, description="Formula recognition.")
+    charts: bool = Field(False, description="Chart recognition.")
+    seals: bool = Field(False, description="Seal recognition.")
+    orientation: bool = Field(False, description="Document orientation classification.")
+    unwarp: bool = Field(False, description="Document unwarping.")
+    heading_levels: bool = Field(
+        False, description="Rank section titles with PaddleX's heading-level assignment (otherwise all are level 2)."
+    )
+
 
 # (content, filename, options) -> reduced pages (see convert.py)
 Engine = Callable[[bytes, str, dict[str, bool]], list[dict[str, Any]]]
@@ -78,8 +83,8 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     lang = os.environ.get("PADDLEOCR_SHIM_LANG") or None
     run = engine or PaddleEngine(lang=lang)
 
-    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
-        opts = {name: bool_option(options, name, default) for name, default in DEFAULTS.items()}
+    def parse(content: bytes, filename: str, options: Options) -> dict[str, Any]:
+        opts = options.model_dump()
         if file_extension(filename) not in SUPPORTED_EXTENSIONS:
             raise ShimError(415, "unsupported_media_type", f"{filename}: PaddleOCR reads PDF and image files only")
         return to_ir(run(content, filename, opts), source_name=filename)
@@ -91,6 +96,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         capabilities={"page_images": False},
         api_key_env="PADDLEOCR_SHIM_API_KEY",
         parse=parse,
+        options_model=Options,
         serialise=True,  # PaddlePaddle pipelines are not safe to call concurrently
     )
 

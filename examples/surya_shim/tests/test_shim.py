@@ -255,7 +255,7 @@ def test_service_endpoints() -> None:
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "surya-shim"
-    assert info["version"].startswith("0.1.0+surya.")
+    assert info["version"].startswith("0.2.0+surya.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/tiff", "image/bmp", "image/webp"]
     assert info["capabilities"] == {"page_images": True}
 
@@ -303,9 +303,76 @@ def test_version_includes_the_package_and_the_model(monkeypatch: pytest.MonkeyPa
     settings.settings = types.SimpleNamespace(SURYA_MODEL_CHECKPOINT="datalab-to/surya-ocr-2.5")  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "surya.settings", settings)
     monkeypatch.setattr(app_module, "version", lambda name: "0.24.0")
-    assert service_version() == "0.1.0+surya.0.24.0.surya-ocr-2.5"
+    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5"
     settings.settings.SURYA_MODEL_CHECKPOINT = "/models/my-finetune/"
-    assert service_version() == "0.1.0+surya.0.24.0.my-finetune"
+    assert service_version() == "0.2.0+surya.0.24.0.my-finetune"
+
+
+def fake_surya(monkeypatch: pytest.MonkeyPatch, *, autodetect: Any = "llamacpp", **settings_values: Any) -> Any:
+    values: dict[str, Any] = {
+        "SURYA_MODEL_CHECKPOINT": "datalab-to/surya-ocr-2.5",
+        "SURYA_INFERENCE_BACKEND": None,
+        "SURYA_GGUF_MODEL_FILE": "surya-2.5.gguf",
+        "SURYA_GGUF_LOCAL_MODEL_PATH": None,
+        "SURYA_GGUF_LOCAL_MMPROJ_PATH": None,
+    }
+    values.update(settings_values)
+    settings = types.ModuleType("surya.settings")
+    settings.settings = types.SimpleNamespace(**values)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "surya.settings", settings)
+    inference = types.ModuleType("surya.inference")
+    if autodetect is not None:
+        inference._autodetect_backend = lambda: autodetect  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "surya.inference", inference)
+    monkeypatch.setattr(app_module, "version", lambda name: "0.24.0")
+    return settings.settings
+
+
+def test_version_names_the_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = fake_surya(monkeypatch, autodetect="vllm")
+    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5.vllm"  # auto-detected
+    settings.SURYA_INFERENCE_BACKEND = "MLX"
+    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5.mlx"  # the setting wins
+
+
+def test_version_backend_falls_back_to_auto_when_detection_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_surya(monkeypatch, autodetect=None)
+    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5.auto"
+
+
+def test_version_names_a_non_default_gguf_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = fake_surya(monkeypatch)
+    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5.llamacpp"  # the default file adds nothing
+    settings.SURYA_GGUF_MODEL_FILE = "surya-2.5-q4.gguf"
+    assert service_version().endswith(".llamacpp.gguf-surya-2-5-q4-gguf")
+    # A local path counts only with its mmproj, as in surya/inference/backends/llamacpp.py.
+    settings.SURYA_GGUF_LOCAL_MODEL_PATH = "/models/my tune.gguf"
+    assert service_version().endswith(".gguf-surya-2-5-q4-gguf")
+    settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/mmproj.gguf"
+    assert service_version().endswith(".llamacpp.gguf-my-tune-gguf")
+
+
+def test_gguf_file_is_ignored_for_other_backends(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_surya(monkeypatch, autodetect="vllm", SURYA_GGUF_MODEL_FILE="other.gguf")
+    assert "gguf" not in service_version()
+
+
+def test_unknown_option_is_400(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Any] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    for options in ({"ocr_figurs": True}, {"dpi": "150"}, {"dpi": 401}, {"include_page_images": 1}):
+        resp = post(client, options=json.dumps(options))
+        assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options", options
+    assert post(client, options=json.dumps({"ocr_figurs": True})).json()["error"]["message"] == (
+        "option 'ocr_figurs' is not recognised"
+    )
+    assert calls == []
+
+
+def test_info_reports_the_options_schema() -> None:
+    schema = TestClient(create_app(fake_engine([]))).get("/info").json()["options_schema"]
+    assert set(schema["properties"]) == {"include_page_images", "ocr_figures", "dpi"}
+    assert schema["additionalProperties"] is False
 
 
 def test_version_without_surya(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -313,7 +380,7 @@ def test_version_without_surya(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         app_module, "version", lambda name: (_ for _ in ()).throw(app_module.PackageNotFoundError(name))
     )
-    assert service_version() == "0.1.0+surya.unknown"
+    assert service_version() == "0.2.0+surya.unknown"
 
 
 def test_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
