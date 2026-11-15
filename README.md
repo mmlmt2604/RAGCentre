@@ -22,6 +22,14 @@ uv sync
 uv run ragcentre serve          # API on http://127.0.0.1:8700, data in ./data
 ```
 
+Or with Docker (builds the web UI; data lives in the `ragcentre-data` volume):
+
+```sh
+docker compose up --build       # http://localhost:8700
+```
+
+Set `RAGCENTRE_API_TOKEN` before exposing the port beyond localhost.
+
 ## Concepts
 
 - **Provider**: a configured parser, chunker, embedder, reranker or vector store. Built in:

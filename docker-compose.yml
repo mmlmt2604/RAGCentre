@@ -1,0 +1,18 @@
+# docker compose up --build   ->   http://localhost:8700
+services:
+  ragcentre:
+    build: .
+    ports:
+      # Bound to localhost; widen it only together with RAGCENTRE_API_TOKEN.
+      - "127.0.0.1:8700:8700"
+    volumes:
+      - ragcentre-data:/data
+    environment:
+      # Set a token before exposing the port beyond this machine.
+      RAGCENTRE_API_TOKEN: ${RAGCENTRE_API_TOKEN:-}
+      # Fernet key for storing provider secrets in the database (optional).
+      RAGCENTRE_SECRET_KEY: ${RAGCENTRE_SECRET_KEY:-}
+    restart: unless-stopped
+
+volumes:
+  ragcentre-data:
