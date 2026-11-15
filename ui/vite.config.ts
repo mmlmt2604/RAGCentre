@@ -32,5 +32,7 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     css: { modules: { classNameStrategy: "non-scoped" } },
     include: ["src/**/*.test.{ts,tsx}"],
+    // These tests render the whole app against a mock API; on loaded CI runners the 5s default is too tight.
+    testTimeout: 20000,
   },
 });

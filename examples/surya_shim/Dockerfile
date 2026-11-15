@@ -9,11 +9,13 @@
 FROM ghcr.io/ggml-org/llama.cpp:server
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# llama-server finds its shared libraries next to itself only when started from /app.
 ENV PATH="/app:$PATH" \
+    LD_LIBRARY_PATH=/app \
     UV_PYTHON_INSTALL_DIR=/opt/python
-RUN llama-server --version
 
 WORKDIR /src
+RUN llama-server --version
 COPY shimkit ./shimkit
 COPY surya_shim/pyproject.toml ./surya_shim/
 COPY surya_shim/surya_shim ./surya_shim/surya_shim

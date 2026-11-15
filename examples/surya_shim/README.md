@@ -41,8 +41,8 @@ RAGCentre runs in the same Compose network and reaches the service by name, so r
 provider with `base_url: http://surya:8704` (change that line in
 `examples/providers/surya-parser.yaml`, or add the provider in the web UI). Models are downloaded on
 the first parse into the `surya-models` volume (`~/.cache` in the container), so they survive a
-rebuild. The image contains `llama-server` and runs the model on the CPU, which is slow: expect minutes
-per page rather than seconds. With a GPU, run the inference server yourself and set
+rebuild. The image contains `llama-server` and runs the model on the CPU, which is slow: a one-page PDF
+took about four and a half minutes in Docker on an Apple Silicon Mac, including starting the server. With a GPU, run the inference server yourself and set
 `SURYA_INFERENCE_BACKEND` and `SURYA_INFERENCE_URL` on the service.
 
 To build the image alone, use `examples/` as the build context:
