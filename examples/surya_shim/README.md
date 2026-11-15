@@ -84,8 +84,8 @@ value of the wrong type is `400 invalid_options` naming the option.
 There is no `engine` passthrough and no `full_page` option: the shim never gives Surya layout results,
 so Surya always reads whole pages (its more accurate mode), and `full_page=False` would raise without
 them. The backend, model and inference-server settings are Surya's own `SURYA_*` environment variables
-(`SURYA_INFERENCE_BACKEND`, `SURYA_INFERENCE_URL`, `SURYA_MODEL_CHECKPOINT`, `SURYA_GGUF_*`); the ones
-that change the output are in the version below.
+(`SURYA_INFERENCE_BACKEND`, `SURYA_INFERENCE_URL`, `SURYA_MODEL_CHECKPOINT`, `SURYA_GGUF_*`,
+`SURYA_MLX_MODEL`); the ones that choose the weights are in the version below.
 
 The shim does not serialise parses: it is a client of the inference server. The provider file sets
 `max_concurrency: 2`. Only the first frame of a multi-page TIFF is read.
@@ -103,22 +103,57 @@ uv run ragcentre provider set-secret surya api_key --env SURYA_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.3.0+surya.<surya-ocr version>.<model>.<backend>`, with `.gguf-<file>` added for a
-llama.cpp model file other than the default, for example `0.3.0+surya.0.24.0.surya-ocr-2.5.llamacpp`:
+`/info` reports `0.3.1+surya.<surya-ocr version>.<model>.<backend>`, followed by the weights the backend
+loads when they are not the defaults, for example `0.3.1+surya.0.24.0.surya-ocr-2.5.llamacpp`:
 
-- `<model>` is the last segment of `SURYA_MODEL_CHECKPOINT`.
+- `<model>` is the last segment of `SURYA_MODEL_CHECKPOINT`. Note that this setting names the
+  model for vLLM only; llama.cpp uses it as an alias and MLX loads `SURYA_MLX_MODEL`, so the
+  suffixes below are what tell those two apart.
 - `<backend>` is `SURYA_INFERENCE_BACKEND` if set, otherwise what Surya's own auto-detection picks
   (`vllm` on an NVIDIA GPU, otherwise `llamacpp`). That detection is a private function
   (`surya.inference._autodetect_backend`); if a Surya release removes it, the backend is reported
-  as `auto`.
-- `.gguf-<file>` appears only with the `llamacpp` backend and a file other than `surya-2.5.gguf`: the
-  base name of `SURYA_GGUF_LOCAL_MODEL_PATH` (Surya uses it only together with
-  `SURYA_GGUF_LOCAL_MMPROJ_PATH`), else `SURYA_GGUF_MODEL_FILE`. Characters outside `[A-Za-z0-9_-]`
-  become `-`.
+  as `auto`. A Surya release that adds a backend needs a matching suffix here.
+- With `llamacpp`, in this order and only when the value is not Surya's default:
+  - `.ggufrepo-<repo>`: `SURYA_GGUF_REPO` (default `datalab-to/surya-ocr-2.5-gguf`), the Hugging Face
+    repo the two files are fetched from. The same file name in another repo is another model.
+  - `.gguf-<file>`: the model file, `SURYA_GGUF_MODEL_FILE` (default `surya-2.5.gguf`).
+  - `.mmproj-<file>`: the vision projector, `SURYA_GGUF_MMPROJ_FILE` (default `surya-2.5-mmproj.gguf`).
 
-RAGCentre records that version when the provider is created and refuses to parse with a service
+  Surya uses `SURYA_GGUF_LOCAL_MODEL_PATH` and `SURYA_GGUF_LOCAL_MMPROJ_PATH` only together, and then
+  downloads nothing: the two files are named by the base names of the paths and the repo is left out.
+  With only one of them set, Surya ignores both and the settings above apply.
+- With `mlx`: `.mlx-<model>`, the last segment of `SURYA_MLX_MODEL` (an MLX checkpoint directory or
+  Hugging Face repo), when it is set. A directory is named by its own name only, so give each
+  checkpoint (for example each quantisation) a distinct directory name.
+
+Characters outside `[A-Za-z0-9_-]` become `-`. Only the settings of the backend in use count.
+
+Settings that are left out of the version, because they choose neither the package, the weights nor the
+backend:
+
+- Where the server runs: `SURYA_INFERENCE_URL`, `_HOST`, `_PORT`, `_API_KEY`, `_AUTOSTART`,
+  `_KEEP_ALIVE`, `_TIMEOUT_SECONDS`, `_STARTUP_TIMEOUT`, `LLAMA_CPP_BINARY`, `SURYA_CONTAINER_RUNTIME`.
+  **With `SURYA_INFERENCE_URL` set Surya attaches to a server that already holds some weights, which the
+  shim cannot see**, so the suffixes above describe the settings the shim would have used, not what the
+  server loaded. Keep the server's model and the shim's settings in step.
+- Speed and memory, which can change a result only by numerical noise or by running out of room:
+  `SURYA_INFERENCE_PARALLEL`, `_CTX_SIZE`, `_CTX_PER_SLOT`, `LLAMA_CPP_NGL`,
+  `LLAMA_CPP_NO_MMPROJ_OFFLOAD`, `VLLM_GPUS`, `VLLM_GPU_TYPE`, `VLLM_GPU_MEMORY_UTILIZATION`,
+  `VLLM_MAX_MODEL_LEN`, `VLLM_DOCKER_IMAGE`, `VLLM_DTYPE`, `DOCKER_HF_CACHE_PATH`.
+- Decoding and request details that can change text at the margins: `SURYA_MAX_TOKENS_*` (a page that
+  needs more tokens is cut off), `SURYA_STOP_STRINGS`, `SURYA_STOP_TOKEN_IDS`, `SURYA_GUIDED_LAYOUT`,
+  `SURYA_FULLPAGE_REGEN`, `SURYA_INFERENCE_LOGPROBS` (without it blocks have no `confidence`),
+  `LLAMA_CPP_SPECIAL`, `LLAMA_CPP_EXTRA_ARGS`, `MLX_VLM_EXTRA_ARGS`, `VLLM_EXTRA_ARGS`,
+  `VLLM_ENABLE_MTP`, `VLLM_MTP_TOKENS`. They are expected to stay at Surya's defaults. If you change
+  one, create the provider again so its version changes with it (the `/info` version cannot carry them
+  all).
+- Constants of the package, covered by its version: `BBOX_SCALE`, `IMAGE_DPI`, `IMAGE_DPI_HIGHRES`
+  (the shim passes the `dpi` option itself), the font and logging settings.
+
+RAGCentre records the version when the provider is created and refuses to parse with a service
 reporting a different one (unless the provider's `on_version_drift` is `warn`). Upgrading Surya or
-changing the model therefore means creating a new provider and a new pipeline.
+changing the model therefore means creating a new provider and a new pipeline. **Providers created
+with a shim before 0.3.1 report a different version and must be created again.**
 
 ## How Surya output maps to the IR
 

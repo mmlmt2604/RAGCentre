@@ -309,7 +309,7 @@ def test_service_endpoints() -> None:
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "surya-shim"
-    assert info["version"].startswith("0.3.0+surya.")
+    assert info["version"].startswith("0.3.1+surya.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/tiff", "image/bmp", "image/webp"]
     assert info["capabilities"] == {"page_images": True}
 
@@ -361,16 +361,19 @@ def test_version_includes_the_package_and_the_model(monkeypatch: pytest.MonkeyPa
     settings.settings = types.SimpleNamespace(SURYA_MODEL_CHECKPOINT="datalab-to/surya-ocr-2.5")  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "surya.settings", settings)
     monkeypatch.setattr(app_module, "version", lambda name: "0.24.0")
-    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5"
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5"
     settings.settings.SURYA_MODEL_CHECKPOINT = "/models/my-finetune/"
-    assert service_version() == "0.3.0+surya.0.24.0.my-finetune"
+    assert service_version() == "0.3.1+surya.0.24.0.my-finetune"
 
 
 def fake_surya(monkeypatch: pytest.MonkeyPatch, *, autodetect: Any = "llamacpp", **settings_values: Any) -> Any:
     values: dict[str, Any] = {
         "SURYA_MODEL_CHECKPOINT": "datalab-to/surya-ocr-2.5",
         "SURYA_INFERENCE_BACKEND": None,
+        "SURYA_GGUF_REPO": "datalab-to/surya-ocr-2.5-gguf",
         "SURYA_GGUF_MODEL_FILE": "surya-2.5.gguf",
+        "SURYA_GGUF_MMPROJ_FILE": "surya-2.5-mmproj.gguf",
+        "SURYA_MLX_MODEL": None,
         "SURYA_GGUF_LOCAL_MODEL_PATH": None,
         "SURYA_GGUF_LOCAL_MMPROJ_PATH": None,
     }
@@ -388,31 +391,76 @@ def fake_surya(monkeypatch: pytest.MonkeyPatch, *, autodetect: Any = "llamacpp",
 
 def test_version_names_the_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = fake_surya(monkeypatch, autodetect="vllm")
-    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5.vllm"  # auto-detected
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.vllm"  # auto-detected
     settings.SURYA_INFERENCE_BACKEND = "MLX"
-    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5.mlx"  # the setting wins
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.mlx"  # the setting wins
 
 
 def test_version_backend_falls_back_to_auto_when_detection_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_surya(monkeypatch, autodetect=None)
-    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5.auto"
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.auto"
 
 
 def test_version_names_a_non_default_gguf_file(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = fake_surya(monkeypatch)
-    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5.llamacpp"  # the default file adds nothing
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.llamacpp"  # the default file adds nothing
     settings.SURYA_GGUF_MODEL_FILE = "surya-2.5-q4.gguf"
     assert service_version().endswith(".llamacpp.gguf-surya-2-5-q4-gguf")
     # A local path counts only with its mmproj, as in surya/inference/backends/llamacpp.py.
     settings.SURYA_GGUF_LOCAL_MODEL_PATH = "/models/my tune.gguf"
     assert service_version().endswith(".gguf-surya-2-5-q4-gguf")
-    settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/mmproj.gguf"
+    settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/surya-2.5-mmproj.gguf"  # the default projector's name
     assert service_version().endswith(".llamacpp.gguf-my-tune-gguf")
 
 
 def test_gguf_file_is_ignored_for_other_backends(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_surya(monkeypatch, autodetect="vllm", SURYA_GGUF_MODEL_FILE="other.gguf")
-    assert "gguf" not in service_version()
+    fake_surya(
+        monkeypatch,
+        autodetect="vllm",
+        SURYA_GGUF_REPO="someone/else",
+        SURYA_GGUF_MODEL_FILE="other.gguf",
+        SURYA_GGUF_MMPROJ_FILE="other-mmproj.gguf",
+    )
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.vllm"
+
+
+def test_version_names_a_non_default_gguf_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = fake_surya(monkeypatch)
+    settings.SURYA_GGUF_REPO = "someone/surya-2.5-gguf"
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.llamacpp.ggufrepo-someone-surya-2-5-gguf"
+    # The same file name in another repo is another model: the repo and the file are both named.
+    settings.SURYA_GGUF_MODEL_FILE = "surya-2.5-q4.gguf"
+    assert service_version().endswith(".llamacpp.ggufrepo-someone-surya-2-5-gguf.gguf-surya-2-5-q4-gguf")
+    # The default repo name adds nothing, and the repo is not fetched from when both local paths are set.
+    settings.SURYA_GGUF_REPO = "datalab-to/surya-ocr-2.5-gguf"
+    assert service_version().endswith(".llamacpp.gguf-surya-2-5-q4-gguf")
+    settings.SURYA_GGUF_REPO = "someone/surya-2.5-gguf"
+    settings.SURYA_GGUF_LOCAL_MODEL_PATH = "/models/a.gguf"
+    settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/" + settings.SURYA_GGUF_MMPROJ_FILE
+    assert service_version().endswith(".llamacpp.gguf-a-gguf")
+    # One local path alone is not used by Surya, so the repo still counts.
+    settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = None
+    assert ".ggufrepo-someone-surya-2-5-gguf." in service_version()
+
+
+def test_version_names_a_non_default_mmproj_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = fake_surya(monkeypatch)
+    settings.SURYA_GGUF_MMPROJ_FILE = "mmproj-f16.gguf"
+    assert service_version().endswith(".llamacpp.mmproj-mmproj-f16-gguf")
+    settings.SURYA_GGUF_LOCAL_MODEL_PATH = "/models/m.gguf"
+    settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/my-proj.gguf"
+    assert service_version().endswith(".llamacpp.gguf-m-gguf.mmproj-my-proj-gguf")
+
+
+def test_version_names_the_mlx_checkpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = fake_surya(monkeypatch, SURYA_INFERENCE_BACKEND="mlx", SURYA_GGUF_REPO="someone/else")
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.mlx"  # not set: nothing to add
+    settings.SURYA_MLX_MODEL = "/models/surya-mlx-q8/"
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.mlx.mlx-surya-mlx-q8"  # no gguf parts
+    settings.SURYA_MLX_MODEL = "someone/surya-2.5-mlx"
+    assert service_version().endswith(".mlx.mlx-surya-2-5-mlx")
+    settings.SURYA_INFERENCE_BACKEND = "llamacpp"  # only the MLX backend reads it
+    assert "mlx-" not in service_version()
 
 
 def test_unknown_option_is_400(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -438,7 +486,7 @@ def test_version_without_surya(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         app_module, "version", lambda name: (_ for _ in ()).throw(app_module.PackageNotFoundError(name))
     )
-    assert service_version() == "0.3.0+surya.unknown"
+    assert service_version() == "0.3.1+surya.unknown"
 
 
 def test_api_key(monkeypatch: pytest.MonkeyPatch) -> None:

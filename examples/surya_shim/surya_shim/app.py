@@ -40,8 +40,11 @@ from shimkit import create_app as create_shim_app
 from surya_shim.convert import to_ir
 from surya_shim.engine import DEFAULT_DPI, SUPPORTED_EXTENSIONS, SuryaEngine
 
-SHIM_VERSION = "0.3.0"
-DEFAULT_GGUF_FILE = "surya-2.5.gguf"  # surya.settings.SURYA_GGUF_MODEL_FILE
+SHIM_VERSION = "0.3.1"
+# Defaults of surya.settings (0.24.0) for the settings that choose which weights a backend loads.
+DEFAULT_GGUF_REPO = "datalab-to/surya-ocr-2.5-gguf"  # SURYA_GGUF_REPO
+DEFAULT_GGUF_FILE = "surya-2.5.gguf"  # SURYA_GGUF_MODEL_FILE
+DEFAULT_MMPROJ_FILE = "surya-2.5-mmproj.gguf"  # SURYA_GGUF_MMPROJ_FILE
 NAME = "surya-shim"
 MIME_TYPES = [
     "application/pdf",
@@ -110,32 +113,61 @@ def _backend() -> str | None:
         return "auto"
 
 
-def _gguf_name() -> str | None:
-    """The llama.cpp model file when it is not the default one. Surya uses
-    ``SURYA_GGUF_LOCAL_MODEL_PATH`` only together with ``SURYA_GGUF_LOCAL_MMPROJ_PATH``
-    (``surya/inference/backends/llamacpp.py``), so the path counts only when both are set."""
+def _leaf(path: str) -> str:
+    """The last segment of a path or repo id, with either kind of separator."""
+    return path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+
+
+def _llamacpp_weights() -> list[str]:
+    """Suffixes for the llama.cpp weights when they are not the default ones, in the order repo,
+    model file, projector file. Read from ``surya/inference/backends/llamacpp.py``: Surya uses
+    ``SURYA_GGUF_LOCAL_MODEL_PATH`` and ``SURYA_GGUF_LOCAL_MMPROJ_PATH`` only together, and then
+    fetches nothing, so the repo counts only when the pair is not set. The model file and the
+    projector are each named by their local path (base name) or by their setting."""
     try:
         from surya.settings import settings
 
-        if settings.SURYA_GGUF_LOCAL_MODEL_PATH and settings.SURYA_GGUF_LOCAL_MMPROJ_PATH:
-            name = str(settings.SURYA_GGUF_LOCAL_MODEL_PATH).replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
-        else:
-            name = str(settings.SURYA_GGUF_MODEL_FILE)
+        local = bool(settings.SURYA_GGUF_LOCAL_MODEL_PATH and settings.SURYA_GGUF_LOCAL_MMPROJ_PATH)
+        repo = None if local else str(settings.SURYA_GGUF_REPO)
+        model = _leaf(str(settings.SURYA_GGUF_LOCAL_MODEL_PATH if local else settings.SURYA_GGUF_MODEL_FILE))
+        mmproj = _leaf(str(settings.SURYA_GGUF_LOCAL_MMPROJ_PATH if local else settings.SURYA_GGUF_MMPROJ_FILE))
+    except Exception:
+        return []
+    out = []
+    if repo and repo != DEFAULT_GGUF_REPO:
+        out.append(f"ggufrepo-{_suffix(repo)}")
+    if model and model != DEFAULT_GGUF_FILE:
+        out.append(f"gguf-{_suffix(model)}")
+    if mmproj and mmproj != DEFAULT_MMPROJ_FILE:
+        out.append(f"mmproj-{_suffix(mmproj)}")
+    return out
+
+
+def _mlx_model() -> str | None:
+    """The MLX checkpoint (``SURYA_MLX_MODEL``: a directory or a Hugging Face repo), by its last
+    path segment. Only the MLX backend reads it (``surya/inference/backends/mlx.py``)."""
+    try:
+        from surya.settings import settings
+
+        return (_leaf(str(settings.SURYA_MLX_MODEL)) or None) if settings.SURYA_MLX_MODEL else None
     except Exception:
         return None
-    return name if name and name != DEFAULT_GGUF_FILE else None
 
 
 def service_version() -> str:
     # RAGCentre pins this when the provider is created. A Surya upgrade, a different model, the
-    # inference backend or the llama.cpp model file changes the output, so all are part of the version.
+    # inference backend and the weights that backend loads all change the output, so all are part
+    # of the version. Settings that only tune the runtime are left out on purpose (README).
     version_ = f"{SHIM_VERSION}+surya.{_surya_version()}"
     if model := _model_name():
         version_ += f".{model}"
     if backend := _backend():
         version_ += f".{_suffix(backend)}"
-        if backend == "llamacpp" and (gguf := _gguf_name()):
-            version_ += f".gguf-{_suffix(gguf)}"
+        if backend == "llamacpp":
+            for part in _llamacpp_weights():
+                version_ += f".{part}"
+        elif backend == "mlx" and (mlx := _mlx_model()):
+            version_ += f".mlx-{_suffix(mlx)}"
     return version_
 
 
