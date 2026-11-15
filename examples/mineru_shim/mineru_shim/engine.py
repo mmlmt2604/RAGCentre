@@ -7,6 +7,7 @@ path, not bytes, so the upload is written to a temporary file.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -121,6 +122,89 @@ def translate_error(exc: Exception) -> ShimError | None:
     return ShimError(422, "conversion_failed", message)
 
 
+def _chain(exc: BaseException) -> list[BaseException]:
+    """``exc`` and what it was raised from or while handling, nearest first (bounded, cycle-safe)."""
+    seen: list[BaseException] = []
+    pending: list[BaseException | None] = [exc]
+    while pending and len(seen) < 16:
+        current = pending.pop(0)
+        if current is None or any(current is s for s in seen):
+            continue
+        seen.append(current)
+        pending += [current.__cause__, current.__context__]
+    return seen
+
+
+def _mro_has(exc: BaseException, name: str) -> bool:
+    # Matched by name so that this module still imports without the engine (mineru_vl_utils).
+    return any(cls.__name__ == name and cls.__module__.startswith("mineru_vl_utils") for cls in type(exc).__mro__)
+
+
+# ``mineru_vl_utils.vlm_client.base_client.ServerError`` (a RuntimeError) is raised when the VLM server
+# cannot be reached or answers with an error; ``HttpResponseError`` (``status_code``) and
+# ``EngineUnavailableError`` derive from it. ``http_client.py`` raises a bare ``ServerError`` with the
+# status only in the text ("Status code: 401, ..."), when it lists the server's models.
+_STATUS = re.compile(r"[Ss]tatus code:? \[?(\d{3})")
+# ``RequestError`` (a ValueError) is mostly about one request, but ``http_client.py`` also raises it
+# for settings that can never work (http_client.py:239, 265, 281, 283, 289): the message says which.
+_SETTING_ERRORS = (
+    ("Invalid server URL", "MINERU_SHIM_VLM_SERVER_URL"),
+    ("Model '", "MINERU_SHIM_VLM_MODEL"),
+    ("No models found", "MINERU_SHIM_VLM_SERVER_URL"),
+    ("Model name is empty", "MINERU_SHIM_VLM_MODEL"),
+)
+
+
+def translate_vlm_error(exc: Exception, vlm: VlmSettings) -> ShimError | None:
+    """A failure of the vision-model backend as a ``503 engine_unavailable`` that names the setting to
+    look at; ``None`` for anything else (a fault of the document, left to the service's ``422``).
+
+    MinerU lets these escape as plain exceptions, not as ``MineruError``: ``ServerError`` when the server
+    is down or refuses the request, ``RequestError`` for a setting the server rejects, and
+    ``ImportError`` when the selected engine's package is not installed. All of them are properties of
+    the service, so fixing its settings helps and re-sending the file does not."""
+    for item in _chain(exc):
+        if isinstance(item, ImportError):
+            if vlm.server_url:
+                hint = "install it in the service's environment"
+            elif vlm.engine:
+                hint = f"MINERU_SHIM_VLM_ENGINE is '{vlm.engine}': install it, change that setting, or set MINERU_SHIM_VLM_SERVER_URL"
+            else:
+                hint = (
+                    "MinerU chose the engine itself: install it, or set MINERU_SHIM_VLM_ENGINE or "
+                    "MINERU_SHIM_VLM_SERVER_URL"
+                )
+            return ShimError(
+                503, "engine_unavailable", f"a package the VLM engine needs is not installed ({item}); {hint}"
+            )
+        if _mro_has(item, "RequestError"):
+            for prefix, setting in _SETTING_ERRORS:
+                if str(item).startswith(prefix):
+                    return ShimError(
+                        503, "engine_unavailable", f"the VLM server rejects {setting}; check its configuration"
+                    )
+        if _mro_has(item, "ServerError"):
+            status = getattr(item, "status_code", None)
+            if not isinstance(status, int) and (found := _STATUS.search(str(item))):
+                status = int(found.group(1))
+            if status in (401, 403):
+                return ShimError(
+                    503,
+                    "engine_unavailable",
+                    f"the VLM server refused the credentials (HTTP {status}): check MINERU_SHIM_VLM_API_KEY",
+                )
+            if (
+                isinstance(getattr(item, "status_code", None), int)
+                and status < 500
+                and status not in (401, 403, 408, 429)
+            ):
+                continue  # an inference request was rejected; model-discovery failures remain 503
+            setting = "MINERU_SHIM_VLM_SERVER_URL" if vlm.server_url else "the local VLM engine"
+            detail = f" (HTTP {status})" if isinstance(status, int) else ""
+            return ShimError(503, "engine_unavailable", f"the VLM server is not available{detail}; check {setting}")
+    return None
+
+
 class MineruEngine:
     """``(content, filename, options) -> (content_list, page_sizes)``. Not thread-safe: the app
     serialises calls. ``options`` may carry ``page_range`` as ``"first-last"`` (1-based, inclusive)."""
@@ -151,7 +235,7 @@ class MineruEngine:
                 result = mineru.parse(path, **kwargs)
                 content_list = render_content_list(result.middle_json)
             except Exception as exc:
-                translated = translate_error(exc)
+                translated = translate_error(exc) or translate_vlm_error(exc, self.vlm)
                 if translated is None:
                     raise
                 raise translated from exc

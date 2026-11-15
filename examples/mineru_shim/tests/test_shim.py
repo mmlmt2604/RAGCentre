@@ -17,7 +17,7 @@ from mineru_shim import app as app_module
 from mineru_shim import engine as engine_module
 from mineru_shim.app import MIME_TYPES, NAME, create_app, service_version
 from mineru_shim.convert import to_ir
-from mineru_shim.engine import MineruEngine, VlmSettings, page_sizes, translate_error
+from mineru_shim.engine import MineruEngine, VlmSettings, page_sizes, translate_error, translate_vlm_error
 
 GOLDEN = Path(__file__).parent / "golden" / "sample_ir.json"
 TABLE_BODY = "<table><tbody><tr><td>Flow</td></tr><tr><td>40 l/min</td></tr></tbody></table>"
@@ -268,7 +268,7 @@ def test_service_endpoints() -> None:
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "mineru-shim"
-    assert info["version"].startswith("0.3.0+mineru.")
+    assert info["version"].startswith("0.4.0+mineru.")
     assert "application/pdf" in info["mime_types"] and "text/html" in info["mime_types"]
     assert info["mime_types"] == MIME_TYPES and info["capabilities"] == {"page_images": False}
 
@@ -580,13 +580,177 @@ def test_the_vlm_engine_and_model_are_part_of_the_version_but_not_the_url_or_key
     monkeypatch.setattr(app_module, "version", lambda name: "4.2.2")
     for name in ("ENGINE", "MODEL", "SERVER_URL", "API_KEY"):
         monkeypatch.delenv(f"MINERU_SHIM_VLM_{name}", raising=False)
-    assert service_version() == "0.3.0+mineru.4.2.2"
+    assert service_version() == "0.4.0+mineru.4.2.2"
     monkeypatch.setenv("MINERU_SHIM_VLM_SERVER_URL", "http://vlm:8000")
     monkeypatch.setenv("MINERU_SHIM_VLM_API_KEY", "k")
-    assert service_version() == "0.3.0+mineru.4.2.2"
+    assert service_version() == "0.4.0+mineru.4.2.2"
     monkeypatch.setenv("MINERU_SHIM_VLM_ENGINE", "llama-cpp")
-    assert service_version() == "0.3.0+mineru.4.2.2.vlm-llama-cpp"
+    assert service_version() == "0.4.0+mineru.4.2.2.vlm-llama-cpp"
     monkeypatch.setenv("MINERU_SHIM_VLM_MODEL", "Qwen/Qwen3-VL-4B:q4")
-    assert service_version() == "0.3.0+mineru.4.2.2.vlm-llama-cpp-Qwen-Qwen3-VL-4B-q4"
+    assert service_version() == "0.4.0+mineru.4.2.2.vlm-llama-cpp-Qwen-Qwen3-VL-4B-q4"
     monkeypatch.delenv("MINERU_SHIM_VLM_ENGINE")
-    assert service_version() == "0.3.0+mineru.4.2.2.vlm-auto-Qwen-Qwen3-VL-4B-q4"
+    assert service_version() == "0.4.0+mineru.4.2.2.vlm-auto-Qwen-Qwen3-VL-4B-q4"
+
+
+# --- failures of the vision-model backend ---------------------------------------------------------
+# MinerU lets these escape as plain exceptions (``mineru_vl_utils.vlm_client.base_client``), not as
+# ``MineruError``. They are the service's to fix, so they are 503, and the message names the setting.
+
+
+def _vlm_error(name: str, *bases: type[BaseException], status_code: int | None = None) -> type[BaseException]:
+    attrs: dict[str, Any] = {"__module__": "mineru_vl_utils.vlm_client.base_client"}
+    if status_code is not None:
+        attrs["status_code"] = status_code
+    return type(name, bases or (RuntimeError,), attrs)
+
+
+ServerError = _vlm_error("ServerError")
+HttpResponseError = _vlm_error("HttpResponseError", ServerError)
+EngineUnavailableError = _vlm_error("EngineUnavailableError", ServerError)
+RequestError = _vlm_error("RequestError", ValueError)
+
+
+def _http_error(status: int) -> BaseException:
+    error = HttpResponseError(f"Unexpected status code: [{status}]")
+    error.status_code = status  # type: ignore[attr-defined]
+    return error
+
+
+def test_a_vlm_server_that_is_down_is_503_and_names_the_url_setting() -> None:
+    down = ServerError("Failed to connect to server http://vlm:8000. Please check if the server is running.")
+    err = translate_vlm_error(down, VlmSettings(server_url="http://vlm:8000"))
+    assert err is not None and (err.status, err.code) == (503, "engine_unavailable")
+    assert "MINERU_SHIM_VLM_SERVER_URL" in err.message
+    assert "http://vlm:8000" not in err.message
+
+
+def test_vlm_responses_do_not_echo_server_bodies_or_credentials() -> None:
+    for error in (
+        ServerError("Failed to get model name. Status code: 500, response body: secret-key"),
+        RequestError("Model 'secret-key' not found in the response"),
+    ):
+        err = translate_vlm_error(error, VlmSettings(server_url="http://vlm:8000", api_key="secret-key"))
+        assert err is not None and err.status == 503
+        assert "secret-key" not in err.message
+
+
+def test_a_dead_local_engine_is_503() -> None:
+    err = translate_vlm_error(EngineUnavailableError("engine died"), VlmSettings())
+    assert err is not None and err.status == 503 and "local VLM engine" in err.message
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_refused_key_is_503_and_names_the_key_setting(status: int) -> None:
+    err = translate_vlm_error(_http_error(status), VlmSettings(server_url="http://vlm:8000", api_key="secret-key"))
+    assert err is not None and err.status == 503 and "MINERU_SHIM_VLM_API_KEY" in err.message
+    assert "secret-key" not in err.message
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503])
+def test_a_busy_or_failing_vlm_server_is_503(status: int) -> None:
+    err = translate_vlm_error(_http_error(status), VlmSettings(server_url="http://vlm:8000"))
+    assert err is not None and err.status == 503 and "MINERU_SHIM_VLM_SERVER_URL" in err.message
+
+
+@pytest.mark.parametrize("status", [400, 404, 413, 422])
+def test_a_request_the_vlm_server_rejects_stays_a_fault_of_the_document(status: int) -> None:
+    assert translate_vlm_error(_http_error(status), VlmSettings(server_url="http://vlm:8000")) is None
+
+
+def test_a_401_that_is_only_in_the_message_is_a_credentials_error() -> None:
+    # http_client.py raises a bare ServerError when it lists the server's models
+    text = (
+        'Failed to get model name from http://vlm:8000. Status code: 401, response body: {"error": "Invalid API Key"}'
+    )
+    err = translate_vlm_error(ServerError(text), VlmSettings(server_url="http://vlm:8000"))
+    assert err is not None and err.status == 503 and "MINERU_SHIM_VLM_API_KEY" in err.message
+    other = translate_vlm_error(ServerError("Failed to get model name. Status code: 502"), VlmSettings(server_url="x"))
+    assert other is not None and "MINERU_SHIM_VLM_SERVER_URL" in other.message
+    rejected = translate_vlm_error(
+        ServerError("Failed to get model name. Status code: 404"), VlmSettings(server_url="http://vlm:8000")
+    )
+    assert rejected is not None and rejected.status == 503 and "MINERU_SHIM_VLM_SERVER_URL" in rejected.message
+
+
+@pytest.mark.parametrize(
+    ("message", "setting"),
+    [
+        ("Model 'nope' not found in the response from http://vlm:8000/v1/models.", "MINERU_SHIM_VLM_MODEL"),
+        ("Model name is empty in response from http://vlm:8000.", "MINERU_SHIM_VLM_MODEL"),
+        ("No models found in response from http://vlm:8000.", "MINERU_SHIM_VLM_SERVER_URL"),
+        ("Invalid server URL: ftp://x", "MINERU_SHIM_VLM_SERVER_URL"),
+    ],
+)
+def test_a_vlm_setting_the_server_rejects_is_503_and_named(message: str, setting: str) -> None:
+    err = translate_vlm_error(RequestError(message), VlmSettings(server_url="http://vlm:8000"))
+    assert err is not None and err.status == 503 and setting in err.message
+
+
+@pytest.mark.parametrize("message", ["The response was truncated due to length limit.", "Unsupported image format."])
+def test_a_request_error_about_one_request_stays_a_fault_of_the_document(message: str) -> None:
+    assert translate_vlm_error(RequestError(message), VlmSettings(server_url="http://vlm:8000")) is None
+
+
+def test_a_missing_engine_package_is_503_and_names_the_engine_setting() -> None:
+    missing = ImportError("Please install vllm to use the vllm-async-engine backend.")
+    err = translate_vlm_error(missing, VlmSettings(engine="vllm"))
+    assert err is not None and (err.status, err.code) == (503, "engine_unavailable")
+    assert "MINERU_SHIM_VLM_ENGINE is 'vllm'" in err.message and "install vllm" in err.message
+    auto = translate_vlm_error(ModuleNotFoundError("No module named 'mlx_vlm'"), VlmSettings())
+    assert auto is not None and "chose the engine itself" in auto.message and "MINERU_SHIM_VLM_ENGINE" in auto.message
+    remote = translate_vlm_error(ImportError("x"), VlmSettings(server_url="http://vlm:8000"))
+    assert remote is not None and "MINERU_SHIM_VLM_ENGINE" not in remote.message
+
+
+def test_a_wrapped_server_error_is_found_in_the_chain() -> None:
+    try:
+        try:
+            raise ServerError("Failed to connect to server http://vlm:8000.")
+        except ServerError as inner:
+            raise ValueError("window failed") from inner
+    except ValueError as outer:
+        err = translate_vlm_error(outer, VlmSettings(server_url="http://vlm:8000"))
+    assert err is not None and err.status == 503
+
+
+def test_other_errors_are_not_vlm_errors() -> None:
+    assert translate_vlm_error(RuntimeError("boom"), VlmSettings()) is None
+    assert translate_vlm_error(ValueError("bad page"), VlmSettings(server_url="http://vlm:8000")) is None
+    lookalike = type("ServerError", (RuntimeError,), {"__module__": "somewhere_else"})
+    assert translate_vlm_error(lookalike("x"), VlmSettings()) is None
+
+
+def test_the_error_chain_survives_a_cycle() -> None:
+    a, b = RuntimeError("a"), RuntimeError("b")
+    a.__cause__, b.__cause__ = b, a
+    assert translate_vlm_error(a, VlmSettings()) is None
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        (ServerError("Failed to connect to server http://vlm:8000."), "MINERU_SHIM_VLM_SERVER_URL"),
+        (ImportError("Please install vllm"), "MINERU_SHIM_VLM_ENGINE"),
+    ],
+)
+def test_vlm_failures_reach_the_client_as_503(
+    fake_mineru: FakeMineru, fake_vlm_config: list[dict[str, Any]], failure: BaseException, message: str
+) -> None:
+    fake_mineru.fail = failure  # type: ignore[assignment]
+    vlm = VlmSettings(engine="vllm") if isinstance(failure, ImportError) else VlmSettings(server_url="http://vlm:8000")
+    resp = post(
+        TestClient(create_app(MineruEngine(vlm))), name="scan.png", options={"tier": "advanced", "image_analysis": True}
+    )
+    assert resp.status_code == 503
+    assert resp.json()["error"]["code"] == "engine_unavailable" and message in resp.json()["error"]["message"]
+
+
+def test_a_failure_that_is_not_the_vlm_is_still_422(fake_mineru: FakeMineru) -> None:
+    fake_mineru.fail = RuntimeError("boom")
+    resp = post(TestClient(create_app(MineruEngine(VlmSettings()))), name="scan.png")
+    assert resp.status_code == 422 and "boom" in resp.json()["error"]["message"]
+
+
+def test_image_analysis_is_described_as_advanced_only() -> None:
+    schema = TestClient(create_app(fake_engine([]))).get("/info").json()["options_schema"]
+    assert "advanced tier" in schema["properties"]["image_analysis"]["description"]

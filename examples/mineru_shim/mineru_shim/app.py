@@ -9,13 +9,15 @@ Options (from the pipeline's parse route):
                     and images support every tier; other formats are always parsed with ``flash``.
     ocr             ``true`` forces OCR, ``false`` prefers the text layer (above ``flash`` MinerU still
                     OCRs regions that have no usable text), ``"auto"`` decides (default ``"auto"``)
-    image_analysis  describe pictures with a vision model (default false; MinerU's own default is
-                    true, which needs a VLM for every picture)
+    image_analysis  describe pictures with a vision model. Only the ``advanced`` tier does this: MinerU
+                    ignores it at every other tier (default false; MinerU's own default is true,
+                    which needs a VLM for every picture)
     page_range      ``[first, last]``, 1-based and inclusive; PDFs only (default: the whole file)
 
 Service settings (environment, none of them an option): ``MINERU_SHIM_VLM_ENGINE`` and
 ``MINERU_SHIM_VLM_MODEL`` (part of the reported version), ``MINERU_SHIM_VLM_SERVER_URL`` and
-``MINERU_SHIM_VLM_API_KEY`` point the ``standard`` and ``advanced`` tiers at a VLM server.
+``MINERU_SHIM_VLM_API_KEY`` point the ``standard`` and ``advanced`` tiers at a VLM server. A failing
+VLM (server down, key refused, engine package missing) is ``503 engine_unavailable`` naming the setting.
 
 Run it with::
 
@@ -40,7 +42,7 @@ from shimkit import create_app as create_shim_app
 from mineru_shim.convert import PageSizes, to_ir
 from mineru_shim.engine import SUPPORTED_EXTENSIONS, TIERED_EXTENSIONS, MineruEngine, VlmSettings
 
-SHIM_VERSION = "0.3.0"
+SHIM_VERSION = "0.4.0"
 NAME = "mineru-shim"
 # mineru/filetypes.py (MIME_TYPE_BY_EXTENSION), for the extensions MinerU parses.
 MIME_TYPES = [
@@ -81,7 +83,11 @@ class Options(ShimOptions):
         description='true forces OCR, false prefers the text layer (above flash, MinerU still OCRs regions without text), "auto" decides.',
     )
     image_analysis: bool = Field(
-        False, description="Describe pictures with a vision model (MinerU's own default is true, which needs a VLM)."
+        False,
+        description=(
+            "Describe pictures with a vision model. Only the advanced tier does this; MinerU ignores it at "
+            "every other tier. MinerU's own default is true, which needs a VLM."
+        ),
     )
     page_range: PageRange | None = Field(
         None,

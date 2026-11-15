@@ -54,8 +54,10 @@ routes:
 
 The first parse at each tier is slow while MinerU fetches its models from Hugging Face. The
 `flash` tier needs the least; `basic` runs MinerU's local layout and OCR models; `standard` and
-`advanced` use a vision-language model, which MinerU starts for itself (here it used `llama-server`
-from llama.cpp, with a Qwen-VL model) or reaches through its own configuration.
+`advanced` use a vision-language model. MinerU 4.2.2 on arm64 macOS defaults to its local
+`mineru_llama_cpp` engine (in-process, not a `llama-server` subprocess), using
+`MinerU2.5-Pro-2605-1.2B-Q8_0.gguf` and its matching multimodal projector. MLX is available only
+when explicitly selected and its dependencies are installed. A remote server is optional.
 
 ## Options
 
@@ -67,7 +69,7 @@ value of the wrong type is `400 invalid_options` naming the option.
 |---|---|---|
 | `tier` | `standard` | `flash`, `basic`, `standard` or `advanced`. Only PDFs and images support every tier; Office, HTML, CSV and EPUB files are always parsed with `flash`, whatever you ask for |
 | `ocr` | `"auto"` | `true` forces OCR, `false` prefers the text layer (above `flash`, MinerU still OCRs regions that have no usable text), `"auto"` lets MinerU decide |
-| `image_analysis` | `false` | Describe pictures with a vision model. MinerU's own default is on; it is off here so that a default run does not need a VLM for every picture |
+| `image_analysis` | `false` | Describe pictures with the vision model at `tier: advanced`. MinerU 4.2.2 ignores this flag at every other tier and for non-PDF/image formats. Generated content is appended to the figure's text after its captions |
 | `page_range` | whole file | `[first, last]`, 1-based and inclusive, PDFs only (passed to MinerU as `"first-last"`). IR page numbers are the file's, and `pages` lists only the pages parsed. MinerU leaves out pages past the end of the file |
 
 `mineru.parse` has no other output parameters, so there is no `engine` passthrough.
@@ -86,7 +88,29 @@ passed to `mineru.parse`, and MinerU's own configuration applies when none is se
 | `MINERU_SHIM_VLM_API_KEY` | `api_key` | no |
 
 An invalid value is `503 engine_unavailable` naming `MINERU_SHIM_VLM_*`. `http_timeout` and
-`max_concurrency` are left to MinerU's configuration.
+`max_concurrency` use MinerU's defaults (600 seconds and 100) when any shim VLM setting is supplied;
+otherwise MinerU's global configuration applies.
+
+For a remote VLM, supply an HTTP(S) `MINERU_SHIM_VLM_SERVER_URL`. MinerU uses OpenAI-compatible
+`GET /v1/models` and `POST /v1/chat/completions` with image inputs. A trailing `/v1` is accepted;
+proxy path prefixes are preserved. The server must serve a compatible MinerU vision model that
+emits its layout and image-analysis tokens; an arbitrary chat vision model is not a substitute.
+Set `MINERU_SHIM_VLM_MODEL` to the model ID advertised by the server, and supply
+`MINERU_SHIM_VLM_API_KEY` through the service environment if authentication is required. An empty
+model selects the first model the server lists. A URL overrides `MINERU_SHIM_VLM_ENGINE`.
+Locally, MinerU selects its bundled model; `VlmConfig.model` selects a model only for HTTP.
+
+A local llama.cpp server with the above GGUF and projector worked with `--special` enabled.
+Without that flag the tested server returned a successful response but no IR blocks, because
+MinerU requires the model's special output tokens. Both standard parsing and advanced picture
+analysis use the same model and connection settings.
+
+No server URL is required when the local engine works. If the selected engine's package is
+missing, the response is `503 engine_unavailable` naming `MINERU_SHIM_VLM_ENGINE` and suggesting
+`MINERU_SHIM_VLM_SERVER_URL`. A down server names the URL setting, refused credentials name
+`MINERU_SHIM_VLM_API_KEY`, and an unavailable model names `MINERU_SHIM_VLM_MODEL`. These failures
+previously became `422 conversion_failed`. These 503 responses do not echo VLM server error bodies.
+Document failures, such as unsupported image content or truncated model output, remain 422.
 
 The shim serialises parses (one at a time) and the provider file sets `max_concurrency: 1`.
 
@@ -103,12 +127,17 @@ uv run ragcentre provider set-secret mineru api_key --env MINERU_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.3.0+mineru.<mineru version>`, with `.vlm-<engine>-<model>` added when
+`/info` reports `0.4.0+mineru.<mineru version>`, with `.vlm-<engine>-<model>` added when
 `MINERU_SHIM_VLM_ENGINE` or `MINERU_SHIM_VLM_MODEL` is set (`auto` stands for an unset engine), for
-example `0.3.0+mineru.4.2.2.vlm-llama-cpp-Qwen-Qwen3-VL-4B`; characters outside `[A-Za-z0-9_-]` become `-`. RAGCentre records that version when the provider
+example `0.4.0+mineru.4.2.2.vlm-llama-cpp-mineru-vlm`; characters outside `[A-Za-z0-9_-]` become `-`.
+The URL and API key never enter the version. The suffix records the supplied settings: it does not
+resolve the automatic engine or local model. Set engine and model explicitly when you need their
+identity recorded. RAGCentre records that version when the provider
 is created and refuses to parse with a service reporting a different one (unless the provider's
 `on_version_drift` is `warn`). Upgrading MinerU means creating a new provider and a new pipeline, so
-parses from two MinerU versions are never mixed in one index.
+parses from two MinerU versions are never mixed in one index. Re-create existing providers after
+this bump: 0.4.0 updates the captured `image_analysis` help text to explain the advanced-only behavior
+and fixes VLM availability errors.
 
 ## How MinerU output maps to the IR
 
@@ -127,6 +156,28 @@ numbers become `page_header` and `page_footer`.
   there are no page sizes, so blocks have a `page` but no `bbox`.
 - **Heading levels** are MinerU's. The lighter tiers may mark a document title as level 2 rather
   than 1.
+
+## Verified VLM behavior
+
+With MinerU 4.2.2, mineru-vl-utils 2.0.9 and mineru-llama-cpp 0.2.1 on arm64 macOS:
+
+- `advanced` on a generated scanned page read “Pump Manual”, three instructions, and a ruled
+  table with Seal/4/12 and Valve/2/30. The local engine used the Q8_0 model and matching projector
+  named above; no external server was configured.
+- `advanced` with `image_analysis: true` on a generated four-bar chart appended a Markdown table
+  of Q1–Q4 values to the figure text. With the flag off only captions remained. These are model
+  estimates, not exact chart measurements. At `standard`, the flag produced no description.
+- The same picture parse worked through an authenticated local `llama-server` with `--special`,
+  using the shim's server URL, model and API key settings. The reported version included the
+  model ID and omitted the URL and key.
+- A down server, missing MLX/vLLM packages with no URL configured, missing/wrong credentials,
+  and an unavailable remote model returned `503 engine_unavailable` after the fix.
+
+Successful MLX, vLLM and LMDeploy inference was not tested. No engine packages were installed or
+upgraded for these checks. The service ran on port 8712; the independent HTTP VLM server used
+8719. All model commands were serialised with `lockf -t 7200 /tmp/ragcentre-live.lock`, and both
+servers were stopped afterwards. Scripts that call MinerU need an `if __name__ == "__main__":`
+guard because its workers re-import the calling script.
 
 ## Licence
 
