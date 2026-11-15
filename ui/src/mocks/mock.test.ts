@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tick } from "./engine";
 import { hybrid } from "./fixtures";
+import table from "../../../tests/fixtures/option_problems.json";
 import { optionProblems } from "./optionSchema";
 import { createProvider, patchProvider } from "./providers";
 import { buildScenario } from "./scenarios";
@@ -79,13 +80,31 @@ describe("mock parser option schemas", () => {
     expect(optionProblems(schema, { ocr: true, table_mode: "fast", page_range: [1, 4], engine: { x: 1 } })).toEqual([]);
     expect(optionProblems(schema, { nope: 1, ocr: "yes", image_dpi: 900, image_dpi_x: 1, table_mode: "slow", page_range: [1] })).toEqual([
       { suffix: ".nope", message: "This parser has no such option." },
-      { suffix: ".ocr", message: "Must be true or false." },
-      { suffix: ".image_dpi", message: "Must be at most 400." },
       { suffix: ".image_dpi_x", message: "This parser has no such option." },
+      { suffix: ".image_dpi", message: "Must be at most 400." },
+      { suffix: ".ocr", message: "Must be true or false." },
+      { suffix: ".page_range", message: "Must have at least 2 items or be null." },
       { suffix: ".table_mode", message: 'Must be one of: "fast", "accurate".' },
-      { suffix: ".page_range", message: "Must have at least 2 items." },
     ]);
-    expect(optionProblems(schema, { image_dpi: 1.5 })).toEqual([{ suffix: ".image_dpi", message: "Must be a whole number." }]);
+    expect(optionProblems(schema, { image_dpi: 100.5 })).toEqual([{ suffix: ".image_dpi", message: "Must be a whole number." }]);
     expect(optionProblems(null, { anything: 1 })).toEqual([]);
+  });
+
+  // tests/fixtures/option_problems.json is the same table tests/test_parser_options_schema.py holds the backend to.
+  // The backend words these; the mock has to say the same thing, in the same order, for the same options.
+  describe("against the backend's table of cases", () => {
+    const schemas = table.schemas as Record<string, unknown>;
+    it.each(table.cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+      expect(optionProblems(schemas[c.schema], c.options)).toEqual(c.problems);
+    });
+    it("covers every keyword the mock words", () => {
+      const used = new Set(JSON.stringify(Object.values(schemas)).match(/"(type|enum|const|minimum|maximum|exclusiveMinimum|exclusiveMaximum|minLength|maxLength|minItems|maxItems|items|properties|required|additionalProperties|allOf|anyOf|\$ref)":/g));
+      expect([...used].map((k) => k.slice(1, -2)).sort()).toEqual(
+        ["$ref", "additionalProperties", "allOf", "anyOf", "const", "enum", "exclusiveMaximum", "exclusiveMinimum", "items", "maxItems", "maxLength", "maximum", "minItems", "minLength", "minimum", "properties", "required", "type"],
+      );
+    });
+    it.each(table.unmirrored.map((c) => [c.keyword, c] as const))("accepts what the backend words in jsonschema's own text: %s", (_keyword, c) => {
+      expect(optionProblems(c.schema, c.options)).toEqual([]);
+    });
   });
 });

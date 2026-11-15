@@ -4,12 +4,17 @@ the description when the provider is created and validates parse routes against 
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
 from typing import Any
 
+import jsonschema
+import jsonschema.validators
 import pytest
 from fastapi.testclient import TestClient
 
 from ragcentre.context import AppContext
+from ragcentre.pipeline.graph import option_problems
 from ragcentre.pipeline.planner import plan
 from ragcentre.providers.base import MAX_OPTIONS_SCHEMA_BYTES
 from ragcentre.testing.fakes import PARSER_URL, FakeServices
@@ -168,3 +173,27 @@ def test_a_nullable_union_is_described_in_one_sentence(ctx: AppContext, fakes: F
     found = problems_for(ctx, {"page_range": [1, 2, 3]})
     assert [p["message"] for p in found] == ["Must have at most 2 items or be null."]
     assert [p["message"] for p in problems_for(ctx, {"page_range": "x"})] == ["Must be a list or null."]
+
+
+# The table of cases is shared with the UI's mock API (ui/src/mocks/mock.test.ts): this side holds the backend to
+# it, so the two cannot drift. To add a case, write the options and run the backend to see what it says.
+_TABLE = json.loads((Path(__file__).parent / "fixtures" / "option_problems.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("case", _TABLE["cases"], ids=[c["name"] for c in _TABLE["cases"]])
+def test_option_problems_match_the_shared_table(case: dict[str, Any]) -> None:
+    found = option_problems(_TABLE["schemas"][case["schema"]], case["options"])
+    assert found == [(p["suffix"], p["message"]) for p in case["problems"]]
+
+
+@pytest.mark.parametrize("case", _TABLE["unmirrored"], ids=[c["keyword"] for c in _TABLE["unmirrored"]])
+def test_keywords_the_ui_mock_does_not_check_are_still_refused(case: dict[str, Any]) -> None:
+    # The backend words these with jsonschema's own text; the table only records that they are violations.
+    assert option_problems(case["schema"], case["options"])
+
+
+def test_every_shim_schema_in_the_table_is_a_valid_schema() -> None:
+    for name in ("docling", "mineru", "paddleocr", "surya"):
+        schema = _TABLE["schemas"][name]
+        jsonschema.validators.validator_for(schema).check_schema(schema)
+        assert schema["additionalProperties"] is False

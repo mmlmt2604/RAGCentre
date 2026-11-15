@@ -11,6 +11,8 @@ export function NumberInput({
   onChange,
   min,
   max,
+  exclusiveMin,
+  exclusiveMax,
   integer = true,
   hint,
   placeholder,
@@ -21,6 +23,9 @@ export function NumberInput({
   onChange: (v: number | undefined) => void;
   min?: number;
   max?: number;
+  /** Limits the value may not equal (JSON Schema's `exclusiveMinimum` and `exclusiveMaximum`). */
+  exclusiveMin?: number;
+  exclusiveMax?: number;
   integer?: boolean;
   hint?: string;
   placeholder?: string;
@@ -29,12 +34,15 @@ export function NumberInput({
   // While focused, the field shows exactly what was typed; otherwise it shows the value.
   const [draft, setDraft] = useState<string | null>(null);
   const text = draft ?? (value === undefined ? "" : String(value));
-  const range = min !== undefined && max !== undefined ? `${min}–${max}` : min !== undefined ? `at least ${min}` : max !== undefined ? `at most ${max}` : "";
+  const lower = exclusiveMin !== undefined ? `greater than ${exclusiveMin}` : min !== undefined ? `at least ${min}` : "";
+  const upper = exclusiveMax !== undefined ? `less than ${exclusiveMax}` : max !== undefined ? `at most ${max}` : "";
+  const closed = exclusiveMin === undefined && exclusiveMax === undefined && min !== undefined && max !== undefined;
+  const range = closed ? `${min}–${max}` : [lower, upper].filter(Boolean).join(", ");
   function check(t: string | null): string | null {
     if (t === null || t.trim() === "") return null;
     const n = Number(t);
     if (!Number.isFinite(n) || (integer && !Number.isInteger(n))) return integer ? "Enter a whole number." : "Enter a number.";
-    if ((min !== undefined && n < min) || (max !== undefined && n > max)) return `Enter a value ${range}.`;
+    if ((min !== undefined && n < min) || (max !== undefined && n > max) || (exclusiveMin !== undefined && n <= exclusiveMin) || (exclusiveMax !== undefined && n >= exclusiveMax)) return `Enter a value ${range}.`;
     return null;
   }
   return (

@@ -1,8 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+// The options_schema each shim reports (0.3.0), as tests/fixtures/option_problems.json keeps them.
+import table from "../../../../tests/fixtures/option_problems.json";
 import { tick } from "../../mocks/engine";
 import { uuidFrom } from "../../mocks/hash";
 import { renderApp, server } from "../../test/render";
@@ -200,7 +202,10 @@ describe("parse route options from the parser's options_schema", () => {
     expect(within(form).getByRole("combobox", { name: "table_mode" })).toHaveValue("");
     expect(within(form).getByRole("textbox", { name: "image_dpi" })).toHaveAccessibleDescription(/Default 192\..*72–400/);
     expect(within(form).getByRole("textbox", { name: "engine" })).toBeInTheDocument();
-    expect(within(form).getByRole("textbox", { name: "page_range" })).toBeInTheDocument();
+    // A nullable pair of whole numbers is two number boxes under one label.
+    const range = within(form).getByRole("group", { name: "page_range" });
+    expect(within(range).getByRole("textbox", { name: "first" })).toBeInTheDocument();
+    expect(within(range).getByRole("textbox", { name: "last" })).toBeInTheDocument();
     // The built-in text route has no schema and keeps its JSON box.
     expect(within(parse).getByRole("textbox", { name: "Options" })).toBeInTheDocument();
   });
@@ -287,7 +292,7 @@ describe("parse route options from the parser's options_schema", () => {
     expect(within(form).getByRole("checkbox", { name: "ocr" })).toHaveAccessibleDescription("Must be true or false.");
     expect(within(form).getByRole("textbox", { name: "image_dpi" })).toHaveAccessibleDescription("Must be at most 400.");
     expect(within(form).getByRole("combobox", { name: "table_mode" })).toHaveAccessibleDescription(/^Must be one of: "fast", "accurate"\.$/);
-    expect(within(form).getByRole("textbox", { name: "page_range" })).toHaveAccessibleDescription(/Must have at most 2 items\./);
+    expect(within(form).getByRole("group", { name: "page_range" })).toHaveTextContent("Must have at most 2 items or be null.");
     expect(within(form).getByRole("textbox", { name: "bogus" })).toHaveAccessibleDescription("This parser has no such option.");
     // The unknown option can be removed from the form.
     await user.click(within(form).getByRole("button", { name: "Remove bogus" }));
@@ -317,3 +322,225 @@ describe("parse route options from the parser's options_schema", () => {
   });
 });
 
+
+describe("the parser options form with the schemas the four shims report", () => {
+  type Route = { mime: string; provider: string; options?: Record<string, unknown> };
+  const clonePath = `${base}/new?from=${pid("baseline-hybrid")}`;
+  const schemas = table.schemas as Record<string, unknown>;
+
+  /** Render the pipeline editor with the "docling" provider reporting another shim's schema, and open its parse node. */
+  async function openWith(shim: "docling" | "mineru" | "paddleocr" | "surya") {
+    const user = userEvent.setup();
+    renderApp(clonePath, "ready", (s) => {
+      s.providers.find((p) => p.name === "docling")!.config.options_schema = structuredClone(schemas[shim]);
+    });
+    const bodies: { nodes: { type: string; routes?: Route[] }[] }[] = [];
+    server.use(
+      http.post("/v1/corpora/:id/pipelines", async ({ request }) => {
+        bodies.push((await request.clone().json()) as (typeof bodies)[number]);
+        return undefined;
+      }),
+    );
+    const graph = await screen.findByRole("group", { name: "Pipeline steps" });
+    await user.click(within(graph).getByText("parse").closest("button")!);
+    const parse = screen.getByRole("region", { name: "Settings for parse" });
+    const form = within(parse).getByRole("group", { name: "Parser options" });
+    const options = () => bodies.at(-1)?.nodes.find((n) => n.type === "parse")?.routes?.[1]?.options;
+    const route = () => bodies.at(-1)?.nodes.find((n) => n.type === "parse")?.routes?.[1];
+    /** What the route holds right now, read from the JSON view (a plan for a configuration planned before is cached, so no request says it). */
+    const stored = async () => {
+      await user.click(within(parse).getByRole("button", { name: "Edit as JSON" }));
+      const text = (within(parse).getByRole("textbox", { name: "Options as JSON" }) as HTMLInputElement).value;
+      await user.click(within(parse).getByRole("button", { name: "Edit as form" }));
+      return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    };
+    return { user, parse, form, options, route, bodies, stored };
+  }
+
+  it("shows a control for every option, each one usable", async () => {
+    const roles = {
+      docling: { checkbox: ["ocr", "include_page_images", "tables", "force_full_page_ocr", "formulas", "code", "picture_classification", "picture_description", "charts"], combobox: ["pipeline", "vlm_model", "table_mode", "ocr_engine"], textbox: ["languages", "images_scale", "engine"], group: ["page_range"] },
+      mineru: { checkbox: ["image_analysis"], combobox: ["tier", "ocr"], textbox: [], group: ["page_range"] },
+      paddleocr: { checkbox: ["tables", "formulas", "charts", "seals", "orientation", "unwarp", "heading_levels"], combobox: ["ocr_version", "textline_orientation", "region_detection"], textbox: ["languages", "engine"], group: [] },
+      surya: { checkbox: ["include_page_images", "ocr_figures"], combobox: [], textbox: ["dpi"], group: ["page_range"] },
+    } as const;
+    for (const shim of ["docling", "mineru", "paddleocr", "surya"] as const) {
+      const { form } = await openWith(shim);
+      for (const [role, names] of Object.entries(roles[shim]))
+        for (const name of names) expect(within(form).getByRole(role as "textbox", { name }), `${shim}: ${name}`).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it("writes the JSON value a choice stands for, and nothing for \"Not set\"", async () => {
+    const { user, form, options, route } = await openWith("mineru"); // ocr: true | false | "auto"
+    const ocr = within(form).getByRole("combobox", { name: "ocr" });
+    expect(within(ocr).getAllByRole("option").map((o) => o.textContent)).toEqual(['Not set ("auto")', "true", "false", '"auto"']);
+    expect(ocr).toHaveValue("true"); // the route stores ocr: true
+    await user.selectOptions(ocr, "false");
+    await waitFor(() => expect(options()).toEqual({ ocr: false }), { timeout: 3000 });
+    await user.selectOptions(ocr, '"auto"');
+    await waitFor(() => expect(options()).toEqual({ ocr: "auto" }), { timeout: 3000 });
+    await user.selectOptions(ocr, "");
+    await waitFor(() => expect(route()).toEqual({ mime: "*/*", provider: "docling" }), { timeout: 3000 });
+  });
+
+  it("shows a nullable boolean as three states", async () => {
+    const { user, form, options } = await openWith("paddleocr");
+    const sel = within(form).getByRole("combobox", { name: "textline_orientation" });
+    expect(sel).toHaveValue(""); // unset is null: PP-StructureV3's own choice
+    expect(within(sel).getAllByRole("option").map((o) => o.textContent)).toEqual(["Not set", "true", "false"]);
+    await user.selectOptions(sel, "false");
+    await waitFor(() => expect(options()).toMatchObject({ textline_orientation: false }), { timeout: 3000 });
+    const version = within(form).getByRole("combobox", { name: "ocr_version" });
+    expect(within(version).getAllByRole("option")[0]).toHaveTextContent(/^Not set$/); // a null default is no value to name
+    await user.selectOptions(version, "PP-OCRv4");
+    await waitFor(() => expect(options()).toMatchObject({ textline_orientation: false, ocr_version: "PP-OCRv4" }), { timeout: 3000 });
+  });
+
+  it("takes a list of one language as a comma-separated box", async () => {
+    const { user, form, options } = await openWith("paddleocr"); // minItems = maxItems = 1
+    await user.type(within(form).getByRole("textbox", { name: "languages" }), "en");
+    await waitFor(() => expect(options()).toMatchObject({ languages: ["en"] }), { timeout: 3000 });
+  });
+
+  it("writes page_range as a complete pair, and keeps what was typed when one box is cleared", async () => {
+    const { user, form, options, stored } = await openWith("mineru");
+    const range = within(form).getByRole("group", { name: "page_range" });
+    const first = within(range).getByRole("textbox", { name: "first" });
+    const last = within(range).getByRole("textbox", { name: "last" });
+    await user.type(first, "2");
+    expect(range).toHaveTextContent("Enter both numbers, or clear both.");
+    await user.type(last, "5");
+    await waitFor(() => expect(options()).toEqual({ ocr: true, page_range: [2, 5] }), { timeout: 3000 });
+    expect(range).not.toHaveTextContent("Enter both numbers");
+
+    await user.clear(last); // half a pair is not stored, and the first box keeps its number
+    expect(first).toHaveValue("2");
+    expect(range).toHaveTextContent("Enter both numbers, or clear both.");
+    expect(await stored()).toEqual({ ocr: true });
+  });
+
+  it("does not store a pair the wrong way round or below the minimum", async () => {
+    const { user, form, bodies, stored } = await openWith("mineru");
+    const range = within(form).getByRole("group", { name: "page_range" });
+    await user.type(within(range).getByRole("textbox", { name: "first" }), "5");
+    await user.type(within(range).getByRole("textbox", { name: "last" }), "1");
+    expect(range).toHaveTextContent("The first number must not be larger than the last.");
+    await user.clear(within(range).getByRole("textbox", { name: "last" }));
+    await user.type(within(range).getByRole("textbox", { name: "last" }), "0");
+    expect(within(range).getByText("Enter a value at least 1.")).toBeInTheDocument();
+    expect(await stored()).toEqual({ ocr: true });
+    expect(JSON.stringify(bodies)).not.toContain("page_range");
+  });
+
+  it("shows a stored page_range and clears it with Reset", async () => {
+    const { user, parse, form, stored } = await openWith("mineru");
+    await user.click(within(parse).getByRole("button", { name: "Edit as JSON" }));
+    const box = within(parse).getByRole("textbox", { name: "Options as JSON" });
+    await user.clear(box);
+    await user.click(box);
+    await user.paste('{"page_range": [3, 4]}');
+    await user.tab();
+    await user.click(within(parse).getByRole("button", { name: "Edit as form" }));
+    const range = within(within(parse).getByRole("group", { name: "Parser options" })).getByRole("group", { name: "page_range" });
+    expect(within(range).getByRole("textbox", { name: "first" })).toHaveValue("3");
+    expect(within(range).getByRole("textbox", { name: "last" })).toHaveValue("4");
+    await user.click(within(form).queryByRole("button", { name: "Reset page_range" })!);
+    expect(await stored()).toEqual({});
+    const again = within(within(parse).getByRole("group", { name: "Parser options" })).getByRole("group", { name: "page_range" });
+    expect(within(again).getByRole("textbox", { name: "first" })).toHaveValue("");
+  });
+
+  it("says what an exclusive limit is, and refuses a value on it", async () => {
+    const { user, form, options } = await openWith("docling");
+    const scale = within(form).getByRole("textbox", { name: "images_scale" });
+    expect(scale).toHaveAccessibleDescription(/greater than 0, at most 4/);
+    await user.type(scale, "0");
+    expect(within(form).getByText("Enter a value greater than 0, at most 4.")).toBeInTheDocument();
+    await user.clear(scale);
+    await user.type(scale, "2.5");
+    await user.tab();
+    await waitFor(() => expect(options()).toMatchObject({ images_scale: 2.5 }), { timeout: 3000 });
+  });
+
+  it("does not repeat a default the description states, nor print a null one", async () => {
+    const { form } = await openWith("docling");
+    // "Default: the engine's own default." is in the description; the schema's default is null.
+    const languages = within(form).getByRole("textbox", { name: "languages" });
+    expect(languages).toHaveAccessibleDescription(/Default: the engine's own default\./);
+    expect(languages).not.toHaveAccessibleDescription(/Default none/);
+    expect(within(form).getByRole("combobox", { name: "ocr_engine" })).toHaveAccessibleDescription(/Default "auto"\./);
+    const mineru = await openWith("mineru");
+    expect(within(mineru.form).getByRole("group", { name: "page_range" })).not.toHaveTextContent(/Default none/);
+  });
+
+  it("keeps JSON that does not parse in the box, says so, and does not store it", async () => {
+    const { user, parse, form, bodies, stored } = await openWith("docling");
+    const engine = within(form).getByRole("textbox", { name: "engine" });
+    await user.type(engine, "{{oops");
+    await user.tab();
+    expect(engine).toHaveValue("{oops");
+    expect(engine).toHaveAccessibleDescription("Not valid JSON.");
+    expect(engine).toBeInvalid();
+    await waitFor(() => expect(bodies.length).toBeGreaterThan(0), { timeout: 3000 });
+    expect(JSON.stringify(bodies)).not.toContain("engine");
+
+    await user.clear(engine);
+    await user.type(engine, '{{"beam": 4}');
+    await user.tab();
+    // The stored value rebuilds the box, so look it up again.
+    expect(within(parse).getByRole("textbox", { name: "engine" })).not.toHaveAccessibleDescription("Not valid JSON.");
+    expect(await stored()).toEqual({ ocr: true, engine: { beam: 4 } });
+  });
+
+  it("clears an error on a JSON box when the option is reset", async () => {
+    const { user, form, parse, stored } = await openWith("docling");
+    const engine = within(form).getByRole("textbox", { name: "engine" });
+    await user.type(engine, '{{"beam": 4}');
+    await user.tab();
+    await user.click(within(parse).getByRole("button", { name: "Edit as JSON" }));
+    await user.click(within(parse).getByRole("button", { name: "Edit as form" }));
+    const box = within(parse).getByRole("textbox", { name: "engine" });
+    await user.clear(box);
+    await user.type(box, "{{bad");
+    await user.tab();
+    expect(box).toHaveAccessibleDescription("Not valid JSON.");
+    await user.click(within(parse).getByRole("button", { name: "Reset engine" }));
+    expect(within(parse).getByRole("textbox", { name: "engine" })).not.toHaveAccessibleDescription("Not valid JSON.");
+    expect(await stored()).toEqual({ ocr: true });
+  });
+
+  it("explains a whole-object JSON box that is not an object", async () => {
+    const { user, parse } = await openWith("docling");
+    await user.click(within(parse).getByRole("button", { name: "Edit as JSON" }));
+    const box = within(parse).getByRole("textbox", { name: "Options as JSON" });
+    await user.clear(box);
+    await user.click(box);
+    await user.paste("[1, 2]");
+    await user.tab();
+    expect(box).toHaveAccessibleDescription('Must be a JSON object, like {"ocr": true}.');
+    await user.clear(box);
+    await user.click(box);
+    await user.paste('{"ocr": ');
+    await user.tab();
+    expect(box).toHaveAccessibleDescription("Not valid JSON.");
+  });
+
+  it("puts a server problem on the choice and pair controls it names", async () => {
+    const { user, parse } = await openWith("mineru");
+    await user.click(within(parse).getByRole("button", { name: "Edit as JSON" }));
+    const box = within(parse).getByRole("textbox", { name: "Options as JSON" });
+    await user.clear(box);
+    await user.click(box);
+    await user.paste('{"ocr": "maybe", "page_range": [0, 2], "tier": 3}');
+    await user.tab();
+    expect(await within(parse).findByText(/page_range: Must be at least 1 or null\./, undefined, { timeout: 3000 })).toBeInTheDocument();
+    await user.click(within(parse).getByRole("button", { name: "Edit as form" }));
+    const form = within(parse).getByRole("group", { name: "Parser options" });
+    expect(within(form).getByRole("combobox", { name: "ocr" })).toHaveAccessibleDescription('Must be true or false or "auto".');
+    expect(within(form).getByRole("combobox", { name: "ocr" })).toHaveValue('"maybe"'); // shown, as not allowed
+    expect(within(form).getByRole("group", { name: "page_range" })).toHaveTextContent("Must be at least 1 or null.");
+    expect(within(form).getByRole("combobox", { name: "tier" })).toHaveAccessibleDescription(/^Must be one of: "flash", "basic", "standard", "advanced"\.$/);
+  });
+});

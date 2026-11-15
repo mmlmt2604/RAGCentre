@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 const port = Number(process.env.RAGCENTRE_E2E_FIXTURE_PORT);
 const states = new Map();
 // What a shim built on pydantic reports as `options_schema`: extra keys forbidden, defaults and
-// descriptions present, one enum and one free-form object.
+// descriptions present, one enum, a nullable pair of whole numbers and one free-form object.
 const optionsSchema = {
   type: 'object',
   additionalProperties: false,
@@ -13,6 +13,7 @@ const optionsSchema = {
     ocr: { type: 'boolean', default: true, description: 'Run OCR on scanned pages.' },
     table_mode: { enum: ['fast', 'accurate'], type: 'string', default: 'accurate', description: 'Trade table accuracy for speed.' },
     image_dpi: { type: 'integer', minimum: 72, maximum: 400, default: 192, description: 'Resolution of page images.' },
+    page_range: { anyOf: [{ type: 'array', items: { type: 'integer', minimum: 1 }, minItems: 2, maxItems: 2 }, { type: 'null' }], default: null, description: 'Parse only these pages: [first, last], 1-based and inclusive.' },
     engine: { type: 'object', description: 'Options passed straight to the engine.' },
   },
 };

@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Search } from "lucide-react";
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 interface FieldProps {
   label?: ReactNode;
@@ -39,6 +39,14 @@ export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
   ref,
 ) {
   return <input ref={ref} className={["rc-input", mono ? "mono" : "", className ?? ""].join(" ")} {...rest} />;
+});
+
+/** A few lines of text, for values that are not one word (JSON objects). */
+export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & { mono?: boolean }>(function TextArea(
+  { className, mono, rows = 3, ...rest },
+  ref,
+) {
+  return <textarea ref={ref} rows={rows} className={["rc-input", "rc-input--area", mono ? "mono" : "", className ?? ""].join(" ")} {...rest} />;
 });
 
 export const SearchInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function SearchInput({ className, ...rest }, ref) {

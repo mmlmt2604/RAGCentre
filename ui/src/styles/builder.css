@@ -300,6 +300,34 @@
 }
 .opt {
   position: relative;
+  min-width: 0;
+}
+/* a hint may carry a URL or a long option name: wrap it rather than push the panel wider */
+.opts .rc-field__hint,
+.opts .rc-field__error {
+  overflow-wrap: anywhere;
+}
+/* [first, last]: a label, then two boxes side by side */
+.opt-pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.opt-pair legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.opt-pair__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.opt-pair__row .rc-field__hint {
+  display: none;
 }
 .opt__reset {
   position: absolute;
@@ -566,6 +594,44 @@
 }
 .diff-row--same td {
   color: var(--text-2);
+}
+
+/* A phone is too narrow for a route's columns: stack them, and give the options the whole width. */
+@media (max-width: 640px) {
+  .route,
+  .route--schema {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+  .route > * {
+    min-width: 0;
+  }
+  .route__n,
+  .route__actions {
+    padding-top: 0;
+  }
+  .route--schema .opts {
+    grid-column: 1;
+  }
+  .opts {
+    padding: var(--space-4);
+  }
+  .opts__head {
+    flex-wrap: wrap;
+  }
+  .opts__note {
+    flex-basis: 100%;
+    order: 3;
+  }
+  /* the retrieval sources have the same problem */
+  .retr__source {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .retr__source > .rc-iconbtn {
+    margin-top: 0;
+    justify-self: start;
+  }
 }
 
 @media (max-width: 1100px) {

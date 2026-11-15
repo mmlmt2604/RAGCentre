@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import itertools
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -404,8 +404,18 @@ class _Resolver:
         return reranker
 
 
-def _quoted(value: Any) -> str:
-    return f'"{value}"' if isinstance(value, str) else str(value).lower() if isinstance(value, bool) else str(value)
+def _literal(value: Any) -> str:
+    """A JSON value as a message writes it: text quoted, ``true``/``false``/``null``, a whole float as an integer
+    (``4`` and ``4.0`` are one number in JSON, and the UI's mock cannot tell them apart)."""
+    if isinstance(value, str):
+        return f'"{value}"'
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 _TYPE_NAMES = {
@@ -427,17 +437,17 @@ def _describe(error: jsonschema.ValidationError) -> str:
         names = [rule] if isinstance(rule, str) else list(rule)
         return "Must be " + " or ".join(_TYPE_NAMES.get(str(n), str(n)) for n in names) + "."
     if kind == "enum":
-        return "Must be one of: " + ", ".join(_quoted(v) for v in rule) + "."
+        return "Must be one of: " + ", ".join(_literal(v) for v in rule) + "."
     if kind == "const":
-        return f"Must be {_quoted(rule)}."
+        return f"Must be {_literal(rule)}."
     if kind == "minimum":
-        return f"Must be at least {rule}."
+        return f"Must be at least {_literal(rule)}."
     if kind == "maximum":
-        return f"Must be at most {rule}."
+        return f"Must be at most {_literal(rule)}."
     if kind == "exclusiveMinimum":
-        return f"Must be greater than {rule}."
+        return f"Must be greater than {_literal(rule)}."
     if kind == "exclusiveMaximum":
-        return f"Must be less than {rule}."
+        return f"Must be less than {_literal(rule)}."
     if kind in ("minLength", "minItems"):
         return f"Must have at least {rule} {'characters' if kind == 'minLength' else 'items'}."
     if kind in ("maxLength", "maxItems"):
@@ -445,7 +455,7 @@ def _describe(error: jsonschema.ValidationError) -> str:
     if kind in ("anyOf", "oneOf") and error.context:
         # One sentence per alternative, joined: "Must be true or false or "auto"", "Must have at most 2
         # items or be null".
-        context: Any = error.context
+        context: Any = _without_redundant_types(error.context)
         pieces = list(dict.fromkeys(_describe(e).rstrip(".").removeprefix("Must ") for e in context))
         text = pieces[0]
         for previous, piece in itertools.pairwise(pieces):
@@ -454,26 +464,53 @@ def _describe(error: jsonschema.ValidationError) -> str:
             )
         return f"Must {text}."
     if kind == "required":
-        return "Is required."
+        instance: Any = error.instance
+        missing = [str(k) for k in rule if not isinstance(instance, dict) or k not in instance]
+        return "Must have " + ", ".join(missing) + "."
+    if kind == "additionalProperties":
+        return "Must have only the options the parser lists."
     return str(error.message)
+
+
+def _without_redundant_types(errors: Iterable[jsonschema.ValidationError]) -> list[jsonschema.ValidationError]:
+    """pydantic writes a ``Literal`` as ``{"enum": [...], "type": "string"}``, so a wrong value fails both
+    keywords. Keep the sentence that names the allowed values and drop the one about the type."""
+    errors = list(errors)
+    pinned = {(id(e.schema), tuple(e.absolute_path)) for e in errors if e.validator in ("enum", "const")}
+    return [e for e in errors if not (e.validator == "type" and (id(e.schema), tuple(e.absolute_path)) in pinned)]
 
 
 def option_problems(schema: Mapping[str, Any], options: Mapping[str, Any]) -> list[tuple[str, str]]:
     """Violations of a parser's ``options_schema`` by a route's options, as ``(path suffix, message)``
-    pairs: ``.key`` for an option, ``""`` when the object itself is at fault."""
+    pairs: ``.key`` for an option, ``.key[0]`` for an item of one, ``""`` when the object itself is at fault.
+
+    The messages are the reference for the UI's mock API (``ui/src/mocks/optionSchema.ts``); both are tested
+    against ``tests/fixtures/option_problems.json``. Problems come sorted by the path of the failing schema
+    node (an unknown key counts at its object's path), and within one path in the schema's keyword order."""
     try:
         validator = jsonschema.validators.validator_for(schema)(schema)
     except Exception:  # a stored schema that no longer builds is not the pipeline author's fault
         return []
     found: list[tuple[str, str]] = []
-    for error in sorted(validator.iter_errors(options), key=lambda e: [str(p) for p in e.absolute_path]):
+    errors = _without_redundant_types(validator.iter_errors(options))
+    for error in sorted(errors, key=lambda e: [str(p) for p in e.absolute_path]):
         where = "".join(f".{p}" if isinstance(p, str) else f"[{p}]" for p in error.absolute_path)
-        if error.validator == "additionalProperties" and not error.absolute_path:
-            error_schema: Any = error.schema
-            declared = set((error_schema.get("properties") or {}).keys())
-            for key in options:
-                if key not in declared:
-                    found.append((f".{key}", "This parser has no such option."))
+        error_schema: Any = error.schema
+        instance: Any = error.instance
+        if error.validator == "additionalProperties" and error.validator_value is False and isinstance(instance, dict):
+            declared = error_schema.get("properties") or {}
+            patterns = list(error_schema.get("patternProperties") or {})
+            for key in instance:
+                if key not in declared and not any(re.search(pattern, key) for pattern in patterns):
+                    found.append((f"{where}.{key}", "This parser has no such option."))
+            continue
+        if error.validator == "required" and isinstance(instance, dict):
+            # jsonschema reports a missing option once per option, each time listing all of them: name each
+            # missing option, once.
+            required: Any = error.validator_value
+            for key in required:
+                if key not in instance and (f"{where}.{key}", "Is required.") not in found:
+                    found.append((f"{where}.{key}", "Is required."))
             continue
         found.append((where, _describe(error)))
     return found

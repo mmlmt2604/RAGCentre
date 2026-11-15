@@ -1,0 +1,1742 @@
+{
+ "description": "Shared by the backend and the UI mock. schemas: the options_schema of the four shims at 0.3.0 (docling, mineru, paddleocr, surya) and small ones for keywords they do not use yet. cases: a route's options and the problems the backend (ragcentre.pipeline.graph.option_problems, the reference) reports, in its order. unmirrored: violations the backend words with jsonschema's own text; the mock accepts them. See tests/test_parser_options_schema.py and ui/src/mocks/mock.test.ts.",
+ "schemas": {
+  "docling": {
+   "additionalProperties": false,
+   "description": "Unknown keys are rejected and types are strict, so ``\"false\"`` is not a boolean.",
+   "properties": {
+    "pipeline": {
+     "default": "standard",
+     "description": "standard is Docling's layout, OCR and table pipeline; vlm has a vision-language model read each page (slow, needs a model download). The vlm pipeline takes none of: ocr, tables, table_mode, ocr_engine, languages, force_full_page_ocr, formulas, code.",
+     "enum": [
+      "standard",
+      "vlm"
+     ],
+     "title": "Pipeline",
+     "type": "string"
+    },
+    "vlm_model": {
+     "default": "granite_docling",
+     "description": "The model of the vlm pipeline (a Docling preset). Only with pipeline vlm.",
+     "enum": [
+      "granite_docling",
+      "smoldocling"
+     ],
+     "title": "Vlm Model",
+     "type": "string"
+    },
+    "ocr": {
+     "default": true,
+     "description": "Run OCR on scanned pages and images.",
+     "title": "Ocr",
+     "type": "boolean"
+    },
+    "include_page_images": {
+     "default": false,
+     "description": "Return each rendered page as a base64 PNG.",
+     "title": "Include Page Images",
+     "type": "boolean"
+    },
+    "page_range": {
+     "anyOf": [
+      {
+       "items": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "maxItems": 2,
+       "minItems": 2,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Parse only these pages: [first, last], 1-based and inclusive. Default: the whole file.",
+     "title": "Page Range"
+    },
+    "languages": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "OCR languages, in the OCR engine's own codes (en for EasyOCR, eng for Tesseract). Default: the engine's own default.",
+     "title": "Languages"
+    },
+    "tables": {
+     "default": true,
+     "description": "Recognise table structure.",
+     "title": "Tables",
+     "type": "boolean"
+    },
+    "table_mode": {
+     "default": "accurate",
+     "description": "Table recognition model: fast or accurate.",
+     "enum": [
+      "fast",
+      "accurate"
+     ],
+     "title": "Table Mode",
+     "type": "string"
+    },
+    "ocr_engine": {
+     "default": "auto",
+     "description": "OCR engine. auto picks the first installed of the engines Docling tries; tesseract is tesserocr (Python bindings) and tesseract_cli runs the tesseract program.",
+     "enum": [
+      "auto",
+      "easyocr",
+      "rapidocr",
+      "tesseract",
+      "tesseract_cli"
+     ],
+     "title": "Ocr Engine",
+     "type": "string"
+    },
+    "force_full_page_ocr": {
+     "default": false,
+     "description": "OCR the whole page, even where there is a text layer (Docling OcrMode full_page).",
+     "title": "Force Full Page Ocr",
+     "type": "boolean"
+    },
+    "formulas": {
+     "default": false,
+     "description": "Recognise formulas and write them as LaTeX.",
+     "title": "Formulas",
+     "type": "boolean"
+    },
+    "code": {
+     "default": false,
+     "description": "Recognise code blocks and their language.",
+     "title": "Code",
+     "type": "boolean"
+    },
+    "picture_classification": {
+     "default": false,
+     "description": "Classify pictures (chart, photo, logo, ...); the class is kept in block metadata.",
+     "title": "Picture Classification",
+     "type": "boolean"
+    },
+    "picture_description": {
+     "default": false,
+     "description": "Describe pictures with a vision model: Docling's local one, or the service's configured one.",
+     "title": "Picture Description",
+     "type": "boolean"
+    },
+    "charts": {
+     "default": false,
+     "description": "Extract the data of charts.",
+     "title": "Charts",
+     "type": "boolean"
+    },
+    "images_scale": {
+     "default": 1.0,
+     "description": "Scale of the page images Docling renders.",
+     "exclusiveMinimum": 0,
+     "maximum": 4,
+     "title": "Images Scale",
+     "type": "number"
+    },
+    "engine": {
+     "additionalProperties": true,
+     "description": "Docling PdfPipelineOptions fields to set (merged over the named options), for example {\"table_structure_options\": {\"do_cell_matching\": false}}. Operational fields (paths, URLs, devices, batch sizes) are refused. See https://docling-project.github.io/docling/reference/pipeline_options/",
+     "title": "Engine",
+     "type": "object"
+    }
+   },
+   "title": "Options",
+   "type": "object"
+  },
+  "mineru": {
+   "additionalProperties": false,
+   "properties": {
+    "tier": {
+     "default": "standard",
+     "description": "MinerU tier. Only PDFs and images support every tier; other formats are always parsed with flash.",
+     "enum": [
+      "flash",
+      "basic",
+      "standard",
+      "advanced"
+     ],
+     "title": "Tier",
+     "type": "string"
+    },
+    "ocr": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "const": "auto",
+       "type": "string"
+      }
+     ],
+     "default": "auto",
+     "description": "true forces OCR, false prefers the text layer (above flash, MinerU still OCRs regions without text), \"auto\" decides.",
+     "title": "Ocr"
+    },
+    "image_analysis": {
+     "default": false,
+     "description": "Describe pictures with a vision model (MinerU's own default is true, which needs a VLM).",
+     "title": "Image Analysis",
+     "type": "boolean"
+    },
+    "page_range": {
+     "anyOf": [
+      {
+       "items": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "maxItems": 2,
+       "minItems": 2,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Parse only these pages: [first, last], 1-based and inclusive. PDF only; pages are numbered as in the file. Default: the whole file.",
+     "title": "Page Range"
+    }
+   },
+   "title": "Options",
+   "type": "object"
+  },
+  "paddleocr": {
+   "additionalProperties": false,
+   "properties": {
+    "tables": {
+     "default": true,
+     "description": "Table recognition.",
+     "title": "Tables",
+     "type": "boolean"
+    },
+    "formulas": {
+     "default": true,
+     "description": "Formula recognition.",
+     "title": "Formulas",
+     "type": "boolean"
+    },
+    "charts": {
+     "default": false,
+     "description": "Chart recognition.",
+     "title": "Charts",
+     "type": "boolean"
+    },
+    "seals": {
+     "default": false,
+     "description": "Seal recognition.",
+     "title": "Seals",
+     "type": "boolean"
+    },
+    "orientation": {
+     "default": false,
+     "description": "Document orientation classification.",
+     "title": "Orientation",
+     "type": "boolean"
+    },
+    "unwarp": {
+     "default": false,
+     "description": "Document unwarping.",
+     "title": "Unwarp",
+     "type": "boolean"
+    },
+    "heading_levels": {
+     "default": false,
+     "description": "Rank section titles with PaddleX's heading-level assignment (otherwise all are level 2).",
+     "title": "Heading Levels",
+     "type": "boolean"
+    },
+    "languages": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 1,
+       "minItems": 1,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "OCR language, one PaddleOCR code (for example en, ch, japan, fr). Replaces PADDLEOCR_SHIM_LANG for this route; default: the service's setting.",
+     "title": "Languages"
+    },
+    "ocr_version": {
+     "anyOf": [
+      {
+       "enum": [
+        "PP-OCRv3",
+        "PP-OCRv4",
+        "PP-OCRv5"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Text detection and recognition model generation. Default: PaddleOCR's own.",
+     "title": "Ocr Version"
+    },
+    "textline_orientation": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Classify the orientation of each text line. Default: PP-StructureV3's own.",
+     "title": "Textline Orientation"
+    },
+    "region_detection": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Detect document regions before layout analysis. Default: PP-StructureV3's own.",
+     "title": "Region Detection"
+    },
+    "engine": {
+     "additionalProperties": true,
+     "description": "Other PPStructureV3 arguments (thresholds, model names, table switches), passed to its constructor and predict(). Model directories and batch sizes are refused. See https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/PP-StructureV3.html",
+     "title": "Engine",
+     "type": "object"
+    }
+   },
+   "title": "Options",
+   "type": "object"
+  },
+  "surya": {
+   "additionalProperties": false,
+   "properties": {
+    "include_page_images": {
+     "default": false,
+     "description": "Return each rendered page as a base64 PNG.",
+     "title": "Include Page Images",
+     "type": "boolean"
+    },
+    "ocr_figures": {
+     "default": false,
+     "description": "Also read text inside pictures, figures and diagrams.",
+     "title": "Ocr Figures",
+     "type": "boolean"
+    },
+    "dpi": {
+     "default": 192,
+     "description": "Render resolution for PDF pages.",
+     "maximum": 400,
+     "minimum": 72,
+     "title": "Dpi",
+     "type": "integer"
+    },
+    "page_range": {
+     "anyOf": [
+      {
+       "items": {
+        "minimum": 1,
+        "type": "integer"
+       },
+       "maxItems": 2,
+       "minItems": 2,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Parse only these pages: [first, last], 1-based and inclusive. Pages are numbered as in the file. Default: the whole file.",
+     "title": "Page Range"
+    }
+   },
+   "title": "Options",
+   "type": "object"
+  },
+  "bounds": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "gt": {
+     "type": "number",
+     "exclusiveMinimum": 0
+    },
+    "lt": {
+     "type": "number",
+     "exclusiveMaximum": 10
+    },
+    "whole": {
+     "type": "integer",
+     "minimum": 1.0,
+     "maximum": 4.0
+    },
+    "name": {
+     "type": "string",
+     "minLength": 2,
+     "maxLength": 4
+    },
+    "names": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     },
+     "maxItems": 12
+    },
+    "either": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    }
+   }
+  },
+  "choices": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "mode": {
+     "enum": [
+      "a",
+      "b",
+      null,
+      3,
+      true
+     ],
+     "type": [
+      "string",
+      "integer",
+      "boolean",
+      "null"
+     ]
+    },
+    "fixed": {
+     "const": 1.5
+    }
+   }
+  },
+  "required": {
+   "type": "object",
+   "required": [
+    "a",
+    "b",
+    "c"
+   ],
+   "properties": {
+    "a": {
+     "type": "integer"
+    },
+    "b": {
+     "type": "integer"
+    },
+    "c": {
+     "type": "integer"
+    }
+   }
+  },
+  "nested": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "engine": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "beam": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "inner": {
+       "type": "object",
+       "properties": {
+        "x": {
+         "type": "boolean"
+        }
+       }
+      }
+     }
+    },
+    "free": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "integer"
+     }
+    },
+    "choice": {
+     "anyOf": [
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "k": {
+         "type": "integer"
+        }
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "need": {
+     "anyOf": [
+      {
+       "type": "object",
+       "required": [
+        "k",
+        "m"
+       ],
+       "properties": {
+        "k": {
+         "type": "integer"
+        }
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "deep": {
+     "anyOf": [
+      {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "const": "auto"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   }
+  },
+  "refs": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "mode": {
+     "$ref": "#/$defs/Mode"
+    },
+    "pair": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Pair"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "$defs": {
+    "Mode": {
+     "enum": [
+      "x",
+      "y"
+     ],
+     "type": "string"
+    },
+    "Pair": {
+     "type": "array",
+     "items": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "minItems": 2,
+     "maxItems": 2
+    }
+   }
+  },
+  "all_of": {
+   "type": "object",
+   "properties": {
+    "n": {
+     "allOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "minimum": 3
+      },
+      {
+       "maximum": 5
+      }
+     ]
+    }
+   }
+  }
+ },
+ "cases": [
+  {
+   "name": "docling: every kind of option, all valid",
+   "schema": "docling",
+   "options": {
+    "pipeline": "standard",
+    "ocr": false,
+    "include_page_images": true,
+    "page_range": [
+     2,
+     3
+    ],
+    "languages": [
+     "en",
+     "de"
+    ],
+    "tables": true,
+    "table_mode": "fast",
+    "ocr_engine": "rapidocr",
+    "images_scale": 2,
+    "engine": {
+     "table_structure_options": {
+      "do_cell_matching": false
+     }
+    }
+   },
+   "problems": []
+  },
+  {
+   "name": "docling: nothing set",
+   "schema": "docling",
+   "options": {},
+   "problems": []
+  },
+  {
+   "name": "docling: explicit nulls are accepted",
+   "schema": "docling",
+   "options": {
+    "page_range": null,
+    "languages": null
+   },
+   "problems": []
+  },
+  {
+   "name": "docling: an option the parser does not have",
+   "schema": "docling",
+   "options": {
+    "nope": 1,
+    "also_nope": 2
+   },
+   "problems": [
+    {
+     "suffix": ".nope",
+     "message": "This parser has no such option."
+    },
+    {
+     "suffix": ".also_nope",
+     "message": "This parser has no such option."
+    }
+   ]
+  },
+  {
+   "name": "docling: a boolean given text",
+   "schema": "docling",
+   "options": {
+    "ocr": "yes"
+   },
+   "problems": [
+    {
+     "suffix": ".ocr",
+     "message": "Must be true or false."
+    }
+   ]
+  },
+  {
+   "name": "docling: an exclusive minimum",
+   "schema": "docling",
+   "options": {
+    "images_scale": 0
+   },
+   "problems": [
+    {
+     "suffix": ".images_scale",
+     "message": "Must be greater than 0."
+    }
+   ]
+  },
+  {
+   "name": "docling: a maximum",
+   "schema": "docling",
+   "options": {
+    "images_scale": 9
+   },
+   "problems": [
+    {
+     "suffix": ".images_scale",
+     "message": "Must be at most 4."
+    }
+   ]
+  },
+  {
+   "name": "docling: a number given text",
+   "schema": "docling",
+   "options": {
+    "images_scale": "big"
+   },
+   "problems": [
+    {
+     "suffix": ".images_scale",
+     "message": "Must be a number."
+    }
+   ]
+  },
+  {
+   "name": "docling: an enum given another value",
+   "schema": "docling",
+   "options": {
+    "table_mode": "slow"
+   },
+   "problems": [
+    {
+     "suffix": ".table_mode",
+     "message": "Must be one of: \"fast\", \"accurate\"."
+    }
+   ]
+  },
+  {
+   "name": "docling: an enum given the wrong type",
+   "schema": "docling",
+   "options": {
+    "table_mode": 5
+   },
+   "problems": [
+    {
+     "suffix": ".table_mode",
+     "message": "Must be one of: \"fast\", \"accurate\"."
+    }
+   ]
+  },
+  {
+   "name": "docling: page_range with too few items",
+   "schema": "docling",
+   "options": {
+    "page_range": [
+     1
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".page_range",
+     "message": "Must have at least 2 items or be null."
+    }
+   ]
+  },
+  {
+   "name": "docling: page_range with too many items",
+   "schema": "docling",
+   "options": {
+    "page_range": [
+     1,
+     2,
+     3
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".page_range",
+     "message": "Must have at most 2 items or be null."
+    }
+   ]
+  },
+  {
+   "name": "docling: page_range empty",
+   "schema": "docling",
+   "options": {
+    "page_range": []
+   },
+   "problems": [
+    {
+     "suffix": ".page_range",
+     "message": "Must have at least 2 items or be null."
+    }
+   ]
+  },
+  {
+   "name": "docling: page_range given text",
+   "schema": "docling",
+   "options": {
+    "page_range": "1-3"
+   },
+   "problems": [
+    {
+     "suffix": ".page_range",
+     "message": "Must be a list or null."
+    }
+   ]
+  },
+  {
+   "name": "docling: page_range below its item minimum",
+   "schema": "docling",
+   "options": {
+    "page_range": [
+     0,
+     2
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".page_range",
+     "message": "Must be at least 1 or null."
+    }
+   ]
+  },
+  {
+   "name": "docling: page_range with a fraction",
+   "schema": "docling",
+   "options": {
+    "page_range": [
+     1.5,
+     2
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".page_range",
+     "message": "Must be a whole number or null."
+    }
+   ]
+  },
+  {
+   "name": "docling: page_range with a bad item and too many",
+   "schema": "docling",
+   "options": {
+    "page_range": [
+     0,
+     2,
+     3
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".page_range",
+     "message": "Must be at least 1 or have at most 2 items or be null."
+    }
+   ]
+  },
+  {
+   "name": "docling: languages given text",
+   "schema": "docling",
+   "options": {
+    "languages": "en"
+   },
+   "problems": [
+    {
+     "suffix": ".languages",
+     "message": "Must be a list or null."
+    }
+   ]
+  },
+  {
+   "name": "docling: languages with a non-text item",
+   "schema": "docling",
+   "options": {
+    "languages": [
+     "en",
+     1
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".languages",
+     "message": "Must be text or null."
+    }
+   ]
+  },
+  {
+   "name": "docling: engine given a list",
+   "schema": "docling",
+   "options": {
+    "engine": []
+   },
+   "problems": [
+    {
+     "suffix": ".engine",
+     "message": "Must be an object."
+    }
+   ]
+  },
+  {
+   "name": "docling: several problems at once, sorted by path",
+   "schema": "docling",
+   "options": {
+    "zzz": 1,
+    "table_mode": "slow",
+    "ocr": 1,
+    "images_scale": 0,
+    "page_range": [
+     1
+    ],
+    "aaa": 2
+   },
+   "problems": [
+    {
+     "suffix": ".zzz",
+     "message": "This parser has no such option."
+    },
+    {
+     "suffix": ".aaa",
+     "message": "This parser has no such option."
+    },
+    {
+     "suffix": ".images_scale",
+     "message": "Must be greater than 0."
+    },
+    {
+     "suffix": ".ocr",
+     "message": "Must be true or false."
+    },
+    {
+     "suffix": ".page_range",
+     "message": "Must have at least 2 items or be null."
+    },
+    {
+     "suffix": ".table_mode",
+     "message": "Must be one of: \"fast\", \"accurate\"."
+    }
+   ]
+  },
+  {
+   "name": "mineru: ocr true, false and auto",
+   "schema": "mineru",
+   "options": {
+    "ocr": "auto",
+    "tier": "flash",
+    "page_range": [
+     1,
+     5
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "mineru: ocr given another word",
+   "schema": "mineru",
+   "options": {
+    "ocr": "maybe"
+   },
+   "problems": [
+    {
+     "suffix": ".ocr",
+     "message": "Must be true or false or \"auto\"."
+    }
+   ]
+  },
+  {
+   "name": "mineru: ocr given a number",
+   "schema": "mineru",
+   "options": {
+    "ocr": 5
+   },
+   "problems": [
+    {
+     "suffix": ".ocr",
+     "message": "Must be true or false or \"auto\"."
+    }
+   ]
+  },
+  {
+   "name": "mineru: ocr given null",
+   "schema": "mineru",
+   "options": {
+    "ocr": null
+   },
+   "problems": [
+    {
+     "suffix": ".ocr",
+     "message": "Must be true or false or \"auto\"."
+    }
+   ]
+  },
+  {
+   "name": "mineru: tier not in the list",
+   "schema": "mineru",
+   "options": {
+    "tier": "ultra"
+   },
+   "problems": [
+    {
+     "suffix": ".tier",
+     "message": "Must be one of: \"flash\", \"basic\", \"standard\", \"advanced\"."
+    }
+   ]
+  },
+  {
+   "name": "mineru: page_range reversed is the engine's to refuse",
+   "schema": "mineru",
+   "options": {
+    "page_range": [
+     5,
+     1
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "paddleocr: nullable boolean and enum set",
+   "schema": "paddleocr",
+   "options": {
+    "textline_orientation": false,
+    "region_detection": true,
+    "ocr_version": "PP-OCRv4",
+    "languages": [
+     "en"
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "paddleocr: a nullable boolean given text",
+   "schema": "paddleocr",
+   "options": {
+    "textline_orientation": "yes"
+   },
+   "problems": [
+    {
+     "suffix": ".textline_orientation",
+     "message": "Must be true or false or null."
+    }
+   ]
+  },
+  {
+   "name": "paddleocr: a nullable enum given another value",
+   "schema": "paddleocr",
+   "options": {
+    "ocr_version": "PP-OCRv9"
+   },
+   "problems": [
+    {
+     "suffix": ".ocr_version",
+     "message": "Must be one of: \"PP-OCRv3\", \"PP-OCRv4\", \"PP-OCRv5\" or null."
+    }
+   ]
+  },
+  {
+   "name": "paddleocr: a nullable enum given a number",
+   "schema": "paddleocr",
+   "options": {
+    "ocr_version": 3
+   },
+   "problems": [
+    {
+     "suffix": ".ocr_version",
+     "message": "Must be one of: \"PP-OCRv3\", \"PP-OCRv4\", \"PP-OCRv5\" or null."
+    }
+   ]
+  },
+  {
+   "name": "paddleocr: engine and heading_levels",
+   "schema": "paddleocr",
+   "options": {
+    "engine": {
+     "text_det_thresh": 0.5
+    },
+    "heading_levels": "yes"
+   },
+   "problems": [
+    {
+     "suffix": ".heading_levels",
+     "message": "Must be true or false."
+    }
+   ]
+  },
+  {
+   "name": "surya: dpi below its minimum",
+   "schema": "surya",
+   "options": {
+    "dpi": 50
+   },
+   "problems": [
+    {
+     "suffix": ".dpi",
+     "message": "Must be at least 72."
+    }
+   ]
+  },
+  {
+   "name": "surya: dpi above its maximum",
+   "schema": "surya",
+   "options": {
+    "dpi": 500
+   },
+   "problems": [
+    {
+     "suffix": ".dpi",
+     "message": "Must be at most 400."
+    }
+   ]
+  },
+  {
+   "name": "surya: dpi with a fraction",
+   "schema": "surya",
+   "options": {
+    "dpi": 100.5
+   },
+   "problems": [
+    {
+     "suffix": ".dpi",
+     "message": "Must be a whole number."
+    }
+   ]
+  },
+  {
+   "name": "surya: dpi that is a fraction and below the minimum",
+   "schema": "surya",
+   "options": {
+    "dpi": 0.5
+   },
+   "problems": [
+    {
+     "suffix": ".dpi",
+     "message": "Must be at least 72."
+    },
+    {
+     "suffix": ".dpi",
+     "message": "Must be a whole number."
+    }
+   ]
+  },
+  {
+   "name": "surya: dpi given text",
+   "schema": "surya",
+   "options": {
+    "dpi": "high"
+   },
+   "problems": [
+    {
+     "suffix": ".dpi",
+     "message": "Must be a whole number."
+    }
+   ]
+  },
+  {
+   "name": "surya: all valid",
+   "schema": "surya",
+   "options": {
+    "dpi": 300,
+    "ocr_figures": true,
+    "include_page_images": false,
+    "page_range": [
+     1,
+     2
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "bounds: exclusive limits on the limit",
+   "schema": "bounds",
+   "options": {
+    "gt": 0,
+    "lt": 10
+   },
+   "problems": [
+    {
+     "suffix": ".gt",
+     "message": "Must be greater than 0."
+    },
+    {
+     "suffix": ".lt",
+     "message": "Must be less than 10."
+    }
+   ]
+  },
+  {
+   "name": "bounds: exclusive limits inside",
+   "schema": "bounds",
+   "options": {
+    "gt": 0.1,
+    "lt": 9.9
+   },
+   "problems": []
+  },
+  {
+   "name": "bounds: whole-number limits written as floats",
+   "schema": "bounds",
+   "options": {
+    "whole": 0
+   },
+   "problems": [
+    {
+     "suffix": ".whole",
+     "message": "Must be at least 1."
+    }
+   ]
+  },
+  {
+   "name": "bounds: whole-number limits written as floats, above",
+   "schema": "bounds",
+   "options": {
+    "whole": 5
+   },
+   "problems": [
+    {
+     "suffix": ".whole",
+     "message": "Must be at most 4."
+    }
+   ]
+  },
+  {
+   "name": "bounds: text too short",
+   "schema": "bounds",
+   "options": {
+    "name": "a"
+   },
+   "problems": [
+    {
+     "suffix": ".name",
+     "message": "Must have at least 2 characters."
+    }
+   ]
+  },
+  {
+   "name": "bounds: text too long, counted in characters",
+   "schema": "bounds",
+   "options": {
+    "name": "abcde"
+   },
+   "problems": [
+    {
+     "suffix": ".name",
+     "message": "Must have at most 4 characters."
+    }
+   ]
+  },
+  {
+   "name": "bounds: two emoji are two characters",
+   "schema": "bounds",
+   "options": {
+    "name": "😀😀"
+   },
+   "problems": []
+  },
+  {
+   "name": "bounds: items are sorted by path as text, so [10] comes before [2]",
+   "schema": "bounds",
+   "options": {
+    "names": [
+     "ok",
+     "ok",
+     5,
+     "ok",
+     "ok",
+     "ok",
+     "ok",
+     "ok",
+     "ok",
+     "ok",
+     6
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".names[10]",
+     "message": "Must be text."
+    },
+    {
+     "suffix": ".names[2]",
+     "message": "Must be text."
+    }
+   ]
+  },
+  {
+   "name": "bounds: too many items",
+   "schema": "bounds",
+   "options": {
+    "names": [
+     "a",
+     "a",
+     "a",
+     "a",
+     "a",
+     "a",
+     "a",
+     "a",
+     "a",
+     "a",
+     "a",
+     "a",
+     "a"
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".names",
+     "message": "Must have at most 12 items."
+    }
+   ]
+  },
+  {
+   "name": "bounds: a type list",
+   "schema": "bounds",
+   "options": {
+    "either": "x"
+   },
+   "problems": [
+    {
+     "suffix": ".either",
+     "message": "Must be a whole number or null."
+    }
+   ]
+  },
+  {
+   "name": "bounds: a type list accepts null",
+   "schema": "bounds",
+   "options": {
+    "either": null
+   },
+   "problems": []
+  },
+  {
+   "name": "bounds: a boolean is not a number",
+   "schema": "bounds",
+   "options": {
+    "gt": true
+   },
+   "problems": [
+    {
+     "suffix": ".gt",
+     "message": "Must be a number."
+    }
+   ]
+  },
+  {
+   "name": "choices: a value from the enum",
+   "schema": "choices",
+   "options": {
+    "mode": "a"
+   },
+   "problems": []
+  },
+  {
+   "name": "choices: null is in the enum",
+   "schema": "choices",
+   "options": {
+    "mode": null
+   },
+   "problems": []
+  },
+  {
+   "name": "choices: true is in the enum, 1 is not",
+   "schema": "choices",
+   "options": {
+    "mode": 1
+   },
+   "problems": [
+    {
+     "suffix": ".mode",
+     "message": "Must be one of: \"a\", \"b\", null, 3, true."
+    }
+   ]
+  },
+  {
+   "name": "choices: a value outside the enum",
+   "schema": "choices",
+   "options": {
+    "mode": "c"
+   },
+   "problems": [
+    {
+     "suffix": ".mode",
+     "message": "Must be one of: \"a\", \"b\", null, 3, true."
+    }
+   ]
+  },
+  {
+   "name": "choices: a value of an excluded type",
+   "schema": "choices",
+   "options": {
+    "mode": 1.5
+   },
+   "problems": [
+    {
+     "suffix": ".mode",
+     "message": "Must be one of: \"a\", \"b\", null, 3, true."
+    }
+   ]
+  },
+  {
+   "name": "choices: a const",
+   "schema": "choices",
+   "options": {
+    "fixed": 1.5
+   },
+   "problems": []
+  },
+  {
+   "name": "choices: a const given another number",
+   "schema": "choices",
+   "options": {
+    "fixed": 2
+   },
+   "problems": [
+    {
+     "suffix": ".fixed",
+     "message": "Must be 1.5."
+    }
+   ]
+  },
+  {
+   "name": "required: all present",
+   "schema": "required",
+   "options": {
+    "a": 1,
+    "b": 2,
+    "c": 3
+   },
+   "problems": []
+  },
+  {
+   "name": "required: two missing",
+   "schema": "required",
+   "options": {
+    "b": 2
+   },
+   "problems": [
+    {
+     "suffix": ".a",
+     "message": "Is required."
+    },
+    {
+     "suffix": ".c",
+     "message": "Is required."
+    }
+   ]
+  },
+  {
+   "name": "required: all missing",
+   "schema": "required",
+   "options": {},
+   "problems": [
+    {
+     "suffix": ".a",
+     "message": "Is required."
+    },
+    {
+     "suffix": ".b",
+     "message": "Is required."
+    },
+    {
+     "suffix": ".c",
+     "message": "Is required."
+    }
+   ]
+  },
+  {
+   "name": "nested: an unknown key in a nested object",
+   "schema": "nested",
+   "options": {
+    "engine": {
+     "beam": 4,
+     "nope": 1
+    }
+   },
+   "problems": [
+    {
+     "suffix": ".engine.nope",
+     "message": "This parser has no such option."
+    }
+   ]
+  },
+  {
+   "name": "nested: a bad value in a nested object",
+   "schema": "nested",
+   "options": {
+    "engine": {
+     "beam": 0,
+     "inner": {
+      "x": "no"
+     }
+    }
+   },
+   "problems": [
+    {
+     "suffix": ".engine.beam",
+     "message": "Must be at least 1."
+    },
+    {
+     "suffix": ".engine.inner.x",
+     "message": "Must be true or false."
+    }
+   ]
+  },
+  {
+   "name": "nested: free-form object with typed values",
+   "schema": "nested",
+   "options": {
+    "free": {
+     "a": 1,
+     "b": "x",
+     "c": 2.5
+    }
+   },
+   "problems": [
+    {
+     "suffix": ".free.b",
+     "message": "Must be a whole number."
+    },
+    {
+     "suffix": ".free.c",
+     "message": "Must be a whole number."
+    }
+   ]
+  },
+  {
+   "name": "nested: a nullable object given an unknown key",
+   "schema": "nested",
+   "options": {
+    "choice": {
+     "j": 1
+    }
+   },
+   "problems": [
+    {
+     "suffix": ".choice",
+     "message": "Must have only the options the parser lists or be null."
+    }
+   ]
+  },
+  {
+   "name": "nested: a nullable object given text",
+   "schema": "nested",
+   "options": {
+    "choice": "x"
+   },
+   "problems": [
+    {
+     "suffix": ".choice",
+     "message": "Must be an object or null."
+    }
+   ]
+  },
+  {
+   "name": "nested: a nullable object with required keys",
+   "schema": "nested",
+   "options": {
+    "need": {}
+   },
+   "problems": [
+    {
+     "suffix": ".need",
+     "message": "Must have k, m or be null."
+    }
+   ]
+  },
+  {
+   "name": "nested: a nested union",
+   "schema": "nested",
+   "options": {
+    "deep": "x"
+   },
+   "problems": [
+    {
+     "suffix": ".deep",
+     "message": "Must be true or false or \"auto\" or null."
+    }
+   ]
+  },
+  {
+   "name": "nested: a nested union accepts null",
+   "schema": "nested",
+   "options": {
+    "deep": null
+   },
+   "problems": []
+  },
+  {
+   "name": "refs: a $ref to an enum",
+   "schema": "refs",
+   "options": {
+    "mode": "z"
+   },
+   "problems": [
+    {
+     "suffix": ".mode",
+     "message": "Must be one of: \"x\", \"y\"."
+    }
+   ]
+  },
+  {
+   "name": "refs: a $ref inside a union",
+   "schema": "refs",
+   "options": {
+    "pair": [
+     0
+    ]
+   },
+   "problems": [
+    {
+     "suffix": ".pair",
+     "message": "Must be at least 1 or have at least 2 items or be null."
+    }
+   ]
+  },
+  {
+   "name": "refs: valid",
+   "schema": "refs",
+   "options": {
+    "mode": "x",
+    "pair": [
+     1,
+     2
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "all_of: every part is checked",
+   "schema": "all_of",
+   "options": {
+    "n": 9
+   },
+   "problems": [
+    {
+     "suffix": ".n",
+     "message": "Must be at most 5."
+    }
+   ]
+  },
+  {
+   "name": "all_of: a part that fails the type",
+   "schema": "all_of",
+   "options": {
+    "n": "a"
+   },
+   "problems": [
+    {
+     "suffix": ".n",
+     "message": "Must be a whole number."
+    }
+   ]
+  }
+ ],
+ "unmirrored": [
+  {
+   "keyword": "pattern",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "code": {
+      "type": "string",
+      "pattern": "^[a-z]+$"
+     }
+    }
+   },
+   "options": {
+    "code": "ABC"
+   }
+  },
+  {
+   "keyword": "multipleOf",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "n": {
+      "type": "integer",
+      "multipleOf": 5
+     }
+    }
+   },
+   "options": {
+    "n": 7
+   }
+  },
+  {
+   "keyword": "uniqueItems",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "l": {
+      "type": "array",
+      "uniqueItems": true
+     }
+    }
+   },
+   "options": {
+    "l": [
+     1,
+     1
+    ]
+   }
+  },
+  {
+   "keyword": "format",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "u": {
+      "type": "string",
+      "pattern": "^https?://"
+     }
+    }
+   },
+   "options": {
+    "u": "ftp://x"
+   }
+  },
+  {
+   "keyword": "not",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "s": {
+      "not": {
+       "const": "bad"
+      }
+     }
+    }
+   },
+   "options": {
+    "s": "bad"
+   }
+  },
+  {
+   "keyword": "oneOf (two alternatives match)",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "n": {
+      "oneOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "number"
+       }
+      ]
+     }
+    }
+   },
+   "options": {
+    "n": 1
+   }
+  }
+ ]
+}

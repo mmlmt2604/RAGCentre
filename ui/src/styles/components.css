@@ -148,6 +148,12 @@
 .rc-input:disabled {
   opacity: 0.6;
 }
+.rc-input--area {
+  height: auto;
+  padding: var(--space-3) var(--space-4);
+  line-height: 1.45;
+  resize: vertical;
+}
 .rc-search {
   position: relative;
   display: inline-flex;

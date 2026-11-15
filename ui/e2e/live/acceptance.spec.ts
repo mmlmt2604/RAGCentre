@@ -224,7 +224,7 @@ test('6. parser options: the form comes from the service schema, unset options a
   const setup = await setupCorpus(key, 1);
   const parser = await api<Provider>('POST', '/providers', { name: `${key}-parser`, kind: 'parser', type: 'http', config: { base_url: `${fixtureURL}/${key}`, timeout_seconds: 120 } });
   expect(parser.config.options_schema).toMatchObject({ type: 'object', additionalProperties: false });
-  expect(Object.keys((parser.config.options_schema as { properties: object }).properties)).toEqual(['ocr', 'table_mode', 'image_dpi', 'engine']);
+  expect(Object.keys((parser.config.options_schema as { properties: object }).properties)).toEqual(['ocr', 'table_mode', 'image_dpi', 'page_range', 'engine']);
 
   await page.goto(`/corpora/${setup.corpus.id}/pipelines`);
   await page.getByRole('link', { name: 'New pipeline' }).first().click();
@@ -275,3 +275,47 @@ test('6. parser options: the form comes from the service schema, unset options a
   ]));
 });
 
+
+test('6b. parser options on a phone: nothing runs off the screen, and a page range is two boxes', async ({ page }, info) => {
+  const key = `phone-${info.retry}`;
+  const setup = await setupCorpus(key, 1);
+  await api<Provider>('POST', '/providers', { name: `${key}-parser`, kind: 'parser', type: 'http', config: { base_url: `${fixtureURL}/${key}`, timeout_seconds: 120 } });
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto(`/corpora/${setup.corpus.id}/pipelines`);
+  await page.getByRole('link', { name: 'New pipeline' }).first().click();
+  await page.getByRole('button', { name: /^Hybrid Vector/ }).click();
+  await page.getByRole('textbox', { name: 'Name *', exact: true }).fill(`${key}-pipeline`);
+  await page.getByRole('group', { name: 'Pipeline steps' }).getByText('parse', { exact: true }).click();
+  const settings = page.getByRole('region', { name: 'Settings for parse' });
+  await settings.getByLabel('Parser', { exact: true }).selectOption(`${key}-parser`);
+  const form = settings.getByRole('group', { name: 'Parser options' });
+  await expect(form).toBeVisible();
+
+  // Nothing in the options or the retrieval rows is wider than the screen, and the page does not scroll sideways.
+  const tooWide = () => page.evaluate<{ wide: string[]; pageScrolls: boolean }>(`(() => {
+    const width = document.documentElement.clientWidth;
+    const wide = [...document.querySelectorAll('.opts *, .retr *')].filter(n => n.getBoundingClientRect().width > 0 && n.getBoundingClientRect().right > width + 1);
+    return { wide: wide.slice(0, 5).map(n => n.tagName.toLowerCase() + '.' + String(n.className)), pageScrolls: document.documentElement.scrollWidth > width };
+  })()`);
+  expect(await tooWide()).toEqual({ wide: [], pageScrolls: false });
+
+  // A page range is a pair of boxes; half a pair is not sent.
+  const range = form.getByRole('group', { name: 'page_range' });
+  await range.getByRole('textbox', { name: 'first' }).fill('2');
+  await expect(range).toContainText('Enter both numbers, or clear both.');
+  await range.getByRole('textbox', { name: 'last' }).fill('4');
+  const plan = page.getByRole('complementary', { name: 'Plan' });
+  await expect(plan.getByText('Valid', { exact: true })).toBeVisible();
+  const pipeline = await submit<Pipeline>(page, `/corpora/${setup.corpus.id}/pipelines`, () => plan.getByRole('button', { name: 'Create pipeline' }).click());
+  const parse = pipeline.config.nodes.find(n => n.type === 'parse');
+  expect(parse && 'routes' in parse && parse.routes[0]?.options).toEqual({ page_range: [2, 4] });
+
+  // The server words a nullable union in one sentence, and the form shows it under the pair.
+  const bad = (page_range: unknown) => ({ ...pipeline.config, name: `${key}-bad`, nodes: pipeline.config.nodes.map(n => n.type === 'parse' ? { ...n, routes: [{ mime: 'text/*', provider: `${key}-parser`, options: { page_range } }] } : n) });
+  for (const [value, message] of [[[0, 2], 'Must be at least 1 or null.'], [[1], 'Must have at least 2 items or be null.'], ['1-3', 'Must be a list or null.']] as const) {
+    const dryRun = await api<PipelinePlan>('POST', `/corpora/${setup.corpus.id}/pipelines?dry_run=true`, bad(value));
+    expect(dryRun.valid).toBe(false);
+    if (!dryRun.valid) expect(dryRun.problems.map(p => [p.path, p.message])).toContainEqual(['nodes[0].routes[0].options.page_range', message]);
+  }
+});

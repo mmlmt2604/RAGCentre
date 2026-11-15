@@ -1,18 +1,39 @@
 // Validate a parse route's options against a parser's `options_schema`, with the paths and wording of
-// the backend (src/ragcentre/pipeline/graph.py, option_problems). Covers the keywords the shims'
-// pydantic schemas use; anything else is accepted.
+// the backend: `option_problems` in src/ragcentre/pipeline/graph.py is the reference, and both are tested
+// against the cases in tests/fixtures/option_problems.json.
+//
+// Mirrors the way jsonschema (Draft 2020-12) walks a schema: keywords in the schema's own order, every
+// keyword reported (a wrong type and a wrong minimum are two problems), `$ref` to `#/...` followed, and the
+// final list sorted by the path of the failing node. A failed `type` is dropped when `enum` or `const` on the
+// same node failed too: the sentence that names the allowed values says it better.
+//
+// Keywords the backend words with jsonschema's own text (`pattern`, `format`, `multipleOf`, `uniqueItems`,
+// `not`, `if`, `contains`, `oneOf` matching two alternatives, ...) are not checked here: the mock accepts
+// what it cannot word the same way.
 type Json = Record<string, unknown>;
+type Seg = string | number;
+
 export interface OptionProblem {
   /** "" for the options object itself, ".key" for an option, ".key[0]" for an item of one. */
   suffix: string;
   message: string;
 }
 
+interface Err {
+  /** Path of the object or value that failed, as jsonschema's `absolute_path`. */
+  path: Seg[];
+  kind: string;
+  message: string;
+  /** For `additionalProperties` and `required`: the keys, reported one problem each. */
+  keys?: string[];
+}
+
 const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
 
 const TYPE_NAMES: Record<string, string> = { boolean: "true or false", integer: "a whole number", number: "a number", string: "text", array: "a list", object: "an object", null: "null" };
 
-const quoted = (v: unknown) => (typeof v === "string" ? `"${v}"` : String(v));
+/** A JSON value as a message writes it: text quoted, `true`/`false`/`null`, numbers plain. */
+const literal = (v: unknown): string => (typeof v === "string" ? `"${v}"` : v === null ? "null" : String(v));
 
 function isType(type: string, v: unknown): boolean {
   switch (type) {
@@ -27,52 +48,150 @@ function isType(type: string, v: unknown): boolean {
   }
 }
 
-function check(schema: Json, value: unknown, path: string, out: OptionProblem[]): void {
-  if (Array.isArray(schema.anyOf)) {
-    const alternatives = schema.anyOf.filter(isObject);
-    const failures = alternatives.map((alt) => {
-      const found: OptionProblem[] = [];
-      check(alt, value, path, found);
-      return found;
-    });
-    if (failures.some((f) => f.length === 0)) return;
-    // `X | None` is anyOf [X, null]: report why X failed rather than a sentence about null.
-    const reasons = failures.map((f) => f[0]?.message ?? "").filter((m) => m && m !== "Must be null.");
-    const first = reasons[0];
-    if (reasons.length === 1 && first) out.push({ suffix: path, message: first });
-    else {
-      const parts = [...new Set(reasons.map((m) => m.replace(/^Must be /, "").replace(/\.$/, "")))];
-      out.push({ suffix: path, message: `Must be ${parts.join(" or ")}.` });
+const same = (a: unknown, b: unknown) => (typeof a === "object" || typeof b === "object" ? JSON.stringify(a) === JSON.stringify(b) : a === b);
+
+/** `Must be true or false or "auto".`, `Must have at most 2 items or be null.`: one sentence per alternative, joined. */
+function joinAlternatives(messages: string[]): string {
+  const pieces = [...new Set(messages.map((m) => m.replace(/\.+$/, "").replace(/^Must /, "")))];
+  let text = pieces[0] ?? "";
+  for (let i = 1; i < pieces.length; i++) {
+    const previous = pieces[i - 1]!;
+    const piece = pieces[i]!;
+    text += " or " + (previous.startsWith("be ") && piece.startsWith("be ") ? piece.slice(3) : piece);
+  }
+  return `Must ${text}.`;
+}
+
+/** Python's `re.search`, with a pattern JavaScript cannot compile counting as no match. */
+function matches(pattern: string, text: string): boolean {
+  try {
+    return new RegExp(pattern).test(text);
+  } catch {
+    return false;
+  }
+}
+
+function resolveRef(root: Json, ref: string): unknown {
+  if (!ref.startsWith("#")) return undefined;
+  let node: unknown = root;
+  for (const part of ref.slice(1).split("/").filter(Boolean)) {
+    const key = decodeURIComponent(part).replace(/~1/g, "/").replace(/~0/g, "~");
+    node = isObject(node) || Array.isArray(node) ? (node as Record<string, unknown>)[key] : undefined;
+  }
+  return node;
+}
+
+function validate(root: Json, schema: unknown, value: unknown, path: Seg[], depth = 0): Err[] {
+  if (!isObject(schema) || depth > 32) return [];
+  const out: Err[] = [];
+  const add = (kind: string, message: string, extra: Partial<Err> = {}) => out.push({ path, kind, message, ...extra });
+  let typeError: Err | undefined;
+  for (const [kind, rule] of Object.entries(schema)) {
+    switch (kind) {
+      case "$ref":
+        if (typeof rule === "string") out.push(...validate(root, resolveRef(root, rule), value, path, depth + 1));
+        break;
+      case "type": {
+        const names = typeof rule === "string" ? [rule] : Array.isArray(rule) ? rule.map(String) : [];
+        if (names.length && !names.some((t) => isType(t, value))) {
+          add(kind, `Must be ${names.map((t) => TYPE_NAMES[t] ?? t).join(" or ")}.`);
+          typeError = out[out.length - 1];
+        }
+        break;
+      }
+      case "enum":
+        if (Array.isArray(rule) && !rule.some((v) => same(v, value))) add(kind, `Must be one of: ${rule.map(literal).join(", ")}.`);
+        break;
+      case "const":
+        if (!same(rule, value)) add(kind, `Must be ${literal(rule)}.`);
+        break;
+      case "minimum":
+        if (typeof value === "number" && typeof rule === "number" && value < rule) add(kind, `Must be at least ${rule}.`);
+        break;
+      case "maximum":
+        if (typeof value === "number" && typeof rule === "number" && value > rule) add(kind, `Must be at most ${rule}.`);
+        break;
+      case "exclusiveMinimum":
+        if (typeof value === "number" && typeof rule === "number" && value <= rule) add(kind, `Must be greater than ${rule}.`);
+        break;
+      case "exclusiveMaximum":
+        if (typeof value === "number" && typeof rule === "number" && value >= rule) add(kind, `Must be less than ${rule}.`);
+        break;
+      case "minLength":
+        if (typeof value === "string" && typeof rule === "number" && [...value].length < rule) add(kind, `Must have at least ${rule} characters.`);
+        break;
+      case "maxLength":
+        if (typeof value === "string" && typeof rule === "number" && [...value].length > rule) add(kind, `Must have at most ${rule} characters.`);
+        break;
+      case "minItems":
+        if (Array.isArray(value) && typeof rule === "number" && value.length < rule) add(kind, `Must have at least ${rule} items.`);
+        break;
+      case "maxItems":
+        if (Array.isArray(value) && typeof rule === "number" && value.length > rule) add(kind, `Must have at most ${rule} items.`);
+        break;
+      case "items":
+        if (Array.isArray(value) && isObject(rule)) value.forEach((item, i) => out.push(...validate(root, rule, item, [...path, i], depth + 1)));
+        break;
+      case "properties":
+        if (isObject(value) && isObject(rule))
+          for (const [key, sub] of Object.entries(rule)) if (key in value) out.push(...validate(root, sub, value[key], [...path, key], depth + 1));
+        break;
+      case "required": {
+        const missing = isObject(value) && Array.isArray(rule) ? rule.filter((k): k is string => typeof k === "string" && !(k in value)) : [];
+        if (missing.length) add(kind, `Must have ${missing.join(", ")}.`, { keys: missing });
+        break;
+      }
+      case "additionalProperties": {
+        if (!isObject(value)) break;
+        const declared = isObject(schema.properties) ? schema.properties : {};
+        const patterns = isObject(schema.patternProperties) ? Object.keys(schema.patternProperties) : [];
+        const extras = Object.keys(value).filter((k) => !(k in declared) && !patterns.some((p) => matches(p, k)));
+        if (rule === false && extras.length) add(kind, "Must have only the options the parser lists.", { keys: extras });
+        else if (isObject(rule)) for (const k of extras) out.push(...validate(root, rule, value[k], [...path, k], depth + 1));
+        break;
+      }
+      case "allOf":
+        if (Array.isArray(rule)) for (const sub of rule) out.push(...validate(root, sub, value, path, depth + 1));
+        break;
+      case "anyOf":
+      case "oneOf": {
+        if (!Array.isArray(rule) || !rule.length) break;
+        const branches = rule.map((sub) => validate(root, sub, value, path, depth + 1));
+        const valid = branches.filter((b) => b.length === 0).length;
+        if (valid > 0) break; // `oneOf` matching two alternatives is worded by jsonschema itself: not mirrored
+        add(kind, joinAlternatives(branches.flat().map((e) => e.message)));
+        break;
+      }
+      default:
+        break;
     }
-    return;
   }
-  if ("const" in schema && value !== schema.const) return void out.push({ suffix: path, message: `Must be ${quoted(schema.const)}.` });
-  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return void out.push({ suffix: path, message: `Must be one of: ${schema.enum.map(quoted).join(", ")}.` });
-  const types = typeof schema.type === "string" ? [schema.type] : Array.isArray(schema.type) ? (schema.type as string[]) : [];
-  if (types.length && !types.some((t) => isType(t, value))) return void out.push({ suffix: path, message: `Must be ${types.map((t) => TYPE_NAMES[t] ?? t).join(" or ")}.` });
-  if (typeof value === "number") {
-    if (typeof schema.minimum === "number" && value < schema.minimum) out.push({ suffix: path, message: `Must be at least ${schema.minimum}.` });
-    if (typeof schema.maximum === "number" && value > schema.maximum) out.push({ suffix: path, message: `Must be at most ${schema.maximum}.` });
+  // pydantic writes a Literal as {"enum": [...], "type": "string"}: a wrong value fails both. Keep the
+  // sentence that names the allowed values.
+  if (typeError && out.some((e) => e.kind === "enum" || e.kind === "const")) return out.filter((e) => e !== typeError);
+  return out;
+}
+
+const key = (path: Seg[]) => path.map(String);
+function byPath(a: Err, b: Err): number {
+  const x = key(a.path);
+  const y = key(b.path);
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    if (x[i]! < y[i]!) return -1;
+    if (x[i]! > y[i]!) return 1;
   }
-  if (Array.isArray(value)) {
-    if (typeof schema.minItems === "number" && value.length < schema.minItems) out.push({ suffix: path, message: `Must have at least ${schema.minItems} items.` });
-    if (typeof schema.maxItems === "number" && value.length > schema.maxItems) out.push({ suffix: path, message: `Must have at most ${schema.maxItems} items.` });
-    if (isObject(schema.items)) value.forEach((item, i) => check(schema.items as Json, item, `${path}[${i}]`, out));
-  }
-  if (isObject(value) && isObject(schema.properties)) {
-    const props = schema.properties;
-    for (const [key, v] of Object.entries(value)) {
-      const sub = props[key];
-      if (isObject(sub)) check(sub, v, `${path}.${key}`, out);
-      else if (schema.additionalProperties === false) out.push({ suffix: `${path}.${key}`, message: "This parser has no such option." });
-    }
-  }
+  return x.length - y.length;
 }
 
 /** Problems with `options`, or none when the parser reports no schema. */
 export function optionProblems(schema: unknown, options: unknown): OptionProblem[] {
   if (!isObject(schema)) return [];
-  const out: OptionProblem[] = [];
-  check(schema, options ?? {}, "", out);
-  return out;
+  const found: OptionProblem[] = [];
+  for (const e of validate(schema, schema, options ?? {}, []).sort(byPath)) {
+    const where = e.path.map((p) => (typeof p === "string" ? `.${p}` : `[${p}]`)).join("");
+    if (e.kind === "additionalProperties" && e.keys) for (const k of e.keys) found.push({ suffix: `${where}.${k}`, message: "This parser has no such option." });
+    else if (e.kind === "required" && e.keys) for (const k of e.keys) found.push({ suffix: `${where}.${k}`, message: "Is required." });
+    else found.push({ suffix: where, message: e.message });
+  }
+  return found;
 }

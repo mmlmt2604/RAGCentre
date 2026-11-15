@@ -1,7 +1,7 @@
 import { RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { Button, IconButton } from "../../components/Button";
-import { Checkbox, Field, Select, TextInput } from "../../components/Field";
+import { Checkbox, Field, Select, TextArea, TextInput } from "../../components/Field";
 import { NumberInput } from "../../components/NumberInput";
 import { isObject, type OptionSpec } from "./optionSpecs";
 
@@ -12,35 +12,46 @@ const show = (v: unknown) => (v === null ? "none" : typeof v === "string" ? JSON
 function hintFor(s: OptionSpec): string | undefined {
   const parts: string[] = [];
   if (s.description) parts.push(/[.!?]$/.test(s.description) ? s.description : `${s.description}.`);
-  if (s.default !== undefined) parts.push(`Default ${show(s.default)}.`);
+  // A null default is "unset", which the placeholder already says; a description that states its default says it better.
+  if (s.default !== undefined && s.default !== null && !/\bdefault\b/i.test(s.description ?? "")) parts.push(`Default ${show(s.default)}.`);
   return parts.join(" ") || undefined;
 }
 
 const code = (key: string) => <code className="mono">{key}</code>;
 
+/** Parse the text of a JSON box: a blank box is unset, text that is not JSON is an error to show, not a value. */
+function readJson(text: string): { ok: true; value: unknown } | { ok: false } {
+  const t = text.trim();
+  if (!t) return { ok: true, value: undefined };
+  try {
+    return { ok: true, value: JSON.parse(t) };
+  } catch {
+    return { ok: false };
+  }
+}
+
 /** One property edited as JSON text; a blank box means unset. */
-function JsonKey({ spec, value, onChange, error }: { spec: OptionSpec; value: unknown; onChange: (v: unknown) => void; error?: string }) {
+function JsonKey(props: { spec: OptionSpec; value: unknown; onChange: (v: unknown) => void; error?: string }) {
+  // Keyed by the value, so a change made elsewhere (Reset, the JSON view) starts the box afresh.
+  return <JsonKeyBox key={props.value === undefined ? "" : JSON.stringify(props.value)} {...props} />;
+}
+
+function JsonKeyBox({ spec, value, onChange, error }: { spec: OptionSpec; value: unknown; onChange: (v: unknown) => void; error?: string }) {
   const text = value === undefined ? "" : JSON.stringify(value);
+  const [invalid, setInvalid] = useState(false);
   return (
-    <Field label={code(spec.key)} hint={hintFor(spec) ?? "A JSON value."} error={error ?? null}>
+    <Field label={code(spec.key)} hint={hintFor(spec) ?? "A JSON value."} error={invalid ? "Not valid JSON." : (error ?? null)}>
       {(a11y) => (
-        <TextInput
+        <TextArea
           {...a11y}
           mono
-          key={text}
           defaultValue={text}
           placeholder="not set"
+          spellCheck={false}
           onBlur={(e) => {
-            const t = e.target.value.trim();
-            if (!t) return onChange(undefined);
-            try {
-              const v = JSON.parse(t);
-              e.target.setCustomValidity("");
-              onChange(v);
-            } catch {
-              e.target.setCustomValidity("Not valid JSON");
-              e.target.reportValidity();
-            }
+            const r = readJson(e.target.value);
+            setInvalid(!r.ok);
+            if (r.ok) onChange(r.value);
           }}
         />
       )}
@@ -73,6 +84,67 @@ function StringList({ spec, value, onChange, error }: { spec: OptionSpec; value:
   );
 }
 
+/** A short list of JSON values (`true`, `false`, `"auto"`) as a select; "Not set" leaves the option out. */
+function ChoiceSelect({ spec, choices, value, onChange, error }: { spec: OptionSpec; choices: (boolean | string | number)[]; value: unknown; onChange: (v: unknown) => void; error?: string }) {
+  const keyOf = (v: unknown) => JSON.stringify(v);
+  const current = value === undefined ? "" : keyOf(value);
+  const listed = choices.some((v) => keyOf(v) === current);
+  return (
+    <Field label={code(spec.key)} hint={hintFor(spec)} error={error ?? null}>
+      {(a11y) => (
+        <Select {...a11y} value={current} onChange={(e) => onChange(e.target.value === "" ? undefined : (JSON.parse(e.target.value) as unknown))}>
+          <option value="">{spec.default !== undefined && spec.default !== null ? `Not set (${show(spec.default)})` : "Not set"}</option>
+          {choices.map((v) => (
+            <option key={keyOf(v)} value={keyOf(v)}>
+              {keyOf(v)}
+            </option>
+          ))}
+          {current && !listed ? <option value={current}>{current} (not allowed)</option> : null}
+        </Select>
+      )}
+    </Field>
+  );
+}
+
+/**
+ * `[first, last]` as two number boxes. Only a complete, ordered pair is written to the options; while one
+ * box is empty (or the order is wrong) what was typed is kept here and the route is left without the option.
+ */
+function PairInput({ spec, min, value, onChange, error }: { spec: OptionSpec; min?: number; value: unknown; onChange: (v: unknown) => void; error?: string }) {
+  const complete = Array.isArray(value) && value.length === 2 && value.every((n) => typeof n === "number") ? (value as [number, number]) : null;
+  const [partial, setPartial] = useState<[number | undefined, number | undefined] | null>(null);
+  const [first, last] = complete ?? partial ?? [undefined, undefined];
+  const put = (a: number | undefined, b: number | undefined) => {
+    if (a === undefined && b === undefined) {
+      setPartial(null);
+      onChange(undefined);
+    } else if (a !== undefined && b !== undefined && a <= b) {
+      setPartial(null);
+      onChange([a, b]);
+    } else {
+      setPartial([a, b]);
+      onChange(undefined);
+    }
+  };
+  const local =
+    first !== undefined && last !== undefined && first > last ? "The first number must not be larger than the last." : partial ? "Enter both numbers, or clear both." : null;
+  const shown = error ?? local;
+  return (
+    <fieldset className="opt-pair">
+      <legend className="rc-field__label">{code(spec.key)}</legend>
+      <div className="opt-pair__row">
+        <NumberInput label="first" min={min} value={first} onChange={(v) => put(v, last)} placeholder="first" />
+        <NumberInput label="last" min={min} value={last} onChange={(v) => put(first, v)} placeholder="last" />
+      </div>
+      {shown ? (
+        <p className="rc-field__error">{shown}</p>
+      ) : hintFor(spec) ? (
+        <p className="rc-field__hint">{hintFor(spec)}</p>
+      ) : null}
+    </fieldset>
+  );
+}
+
 function OptionControl({ spec, value, onChange, error }: { spec: OptionSpec; value: unknown; onChange: (v: unknown) => void; error?: string }) {
   const c = spec.control;
   const hint = hintFor(spec);
@@ -94,7 +166,7 @@ function OptionControl({ spec, value, onChange, error }: { spec: OptionSpec; val
       <Field label={code(spec.key)} hint={hint} error={error ?? null}>
         {(a11y) => (
           <Select {...a11y} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value || undefined)}>
-            <option value="">{spec.default !== undefined ? `Not set (${show(spec.default)})` : "Not set"}</option>
+            <option value="">{spec.default !== undefined && spec.default !== null ? `Not set (${show(spec.default)})` : "Not set"}</option>
             {c.choices.map((v) => (
               <option key={v} value={v}>
                 {v}
@@ -105,6 +177,8 @@ function OptionControl({ spec, value, onChange, error }: { spec: OptionSpec; val
         )}
       </Field>
     );
+  if (c.kind === "choice") return <ChoiceSelect spec={spec} choices={c.choices} value={value} onChange={onChange} error={error} />;
+  if (c.kind === "pair") return <PairInput spec={spec} min={c.min} value={value} onChange={onChange} error={error} />;
   if (c.kind === "integer" || c.kind === "number")
     return (
       <NumberInput
@@ -112,6 +186,8 @@ function OptionControl({ spec, value, onChange, error }: { spec: OptionSpec; val
         integer={c.kind === "integer"}
         min={c.min}
         max={c.max}
+        exclusiveMin={c.exclusiveMin}
+        exclusiveMax={c.exclusiveMax}
         hint={hint}
         placeholder={typeof spec.default === "number" ? String(spec.default) : "not set"}
         value={typeof value === "number" ? value : undefined}
@@ -137,40 +213,27 @@ function OptionControl({ spec, value, onChange, error }: { spec: OptionSpec; val
 }
 
 /** The whole-object JSON box: the same control the parse route has when its parser reports no schema. */
-export function JsonOptions({
-  value,
-  onChange,
-  label,
-  error,
-}: {
-  value: Options | undefined;
-  onChange: (v: Options | undefined) => void;
-  label: string;
-  error?: string | null;
-}) {
+export function JsonOptions(props: { value: Options | undefined; onChange: (v: Options | undefined) => void; label: string; error?: string | null }) {
+  return <JsonOptionsBox key={props.value && Object.keys(props.value).length ? JSON.stringify(props.value) : ""} {...props} />;
+}
+
+function JsonOptionsBox({ value, onChange, label, error }: { value: Options | undefined; onChange: (v: Options | undefined) => void; label: string; error?: string | null }) {
   const text = value && Object.keys(value).length ? JSON.stringify(value) : "";
+  const [invalid, setInvalid] = useState<string | null>(null);
   return (
-    <Field label={label} hint='A JSON object passed to the service, e.g. {"ocr": true}. Leave blank for none.' error={error ?? null}>
+    <Field label={label} hint='A JSON object passed to the service, e.g. {"ocr": true}. Leave blank for none.' error={invalid ?? error ?? null}>
       {(a11y) => (
         <TextInput
           {...a11y}
           mono
-          key={text}
           defaultValue={text}
           placeholder="{}"
           onBlur={(e) => {
-            const t = e.target.value.trim();
-            if (!t) return onChange(undefined);
-            try {
-              const v = JSON.parse(t);
-              if (v && typeof v === "object" && !Array.isArray(v)) {
-                e.target.setCustomValidity("");
-                onChange(v as Options);
-              } else throw new Error();
-            } catch {
-              e.target.setCustomValidity("Not a JSON object");
-              e.target.reportValidity();
-            }
+            const r = readJson(e.target.value);
+            if (!r.ok) return setInvalid("Not valid JSON.");
+            if (r.value !== undefined && !isObject(r.value)) return setInvalid('Must be a JSON object, like {"ocr": true}.');
+            setInvalid(null);
+            onChange(r.value as Options | undefined);
           }}
         />
       )}
