@@ -10,9 +10,11 @@ or mistyped one is ``400 invalid_options``):
     languages             one PaddleOCR language code (replaces PADDLEOCR_SHIM_LANG for the route)
     ocr_version           PP-OCRv3, PP-OCRv4 or PP-OCRv5
     textline_orientation, region_detection   on/off, default PP-StructureV3's own
+    page_range            [first, last], 1-based and inclusive (default: the whole file)
     engine                other PPStructureV3 arguments, after a check (see ``engine.py``)
 
-PP-StructureV3 has no page selection, so there is no ``page_range``.
+PP-StructureV3 has no page selection, so the shim cuts the chosen pages out of a PDF with pypdfium2
+and parses that; page numbers in the result are still the file's own.
 
 Run it with::
 
@@ -31,13 +33,13 @@ from typing import Any, Literal
 
 from fastapi import FastAPI
 from pydantic import Field
-from shimkit import ShimError, ShimOptions, file_extension
+from shimkit import PAGE_RANGE_DESCRIPTION, PageRange, ShimError, ShimOptions, file_extension
 from shimkit import create_app as create_shim_app
 
 from paddleocr_shim.convert import to_ir
 from paddleocr_shim.engine import SUPPORTED_EXTENSIONS, PaddleEngine, split_engine
 
-SHIM_VERSION = "0.3.0"
+SHIM_VERSION = "0.4.0"
 NAME = "paddleocr-shim"
 MIME_TYPES = [
     "application/pdf",
@@ -74,6 +76,11 @@ class Options(ShimOptions):
     )
     region_detection: bool | None = Field(
         None, description="Detect document regions before layout analysis. Default: PP-StructureV3's own."
+    )
+    page_range: PageRange | None = Field(
+        None,
+        description=PAGE_RANGE_DESCRIPTION
+        + " Pages are numbered as in the file; an image is page 1. Default: the whole file.",
     )
     engine: dict[str, Any] = Field(
         default_factory=dict,

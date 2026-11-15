@@ -29,21 +29,28 @@ BLOCK_TYPES = {
 OPTIONS = {}
 
 
-def make_pdf() -> bytes:
-    """A one-page PDF with a heading and a sentence, assembled by hand (no PDF library needed)."""
-    content = (
-        b"BT /F1 24 Tf 72 700 Td (Pump Manual) Tj ET\n"
-        b"BT /F1 12 Tf 72 660 Td (Mount the pump on a level surface.) Tj ET\n"
-        b"BT /F1 12 Tf 72 640 Td (Close the valve before servicing.) Tj ET"
-    )
-    objects = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
-        b"/Resources << /Font << /F1 5 0 R >> >> >>",
-        b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    ]
+def make_pdf(headings: tuple[str, ...] = ("Pump Manual",)) -> bytes:
+    """A PDF with one page per heading, each with a heading and two sentences, assembled by hand (no
+    PDF library needed)."""
+    objects: list[bytes] = [b"", b""]  # the catalog and the page tree, filled in below
+    font = 3
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    kids = []
+    for heading in headings:
+        content = (
+            b"BT /F1 24 Tf 72 700 Td (%s) Tj ET\n"
+            b"BT /F1 12 Tf 72 660 Td (Mount the pump on a level surface.) Tj ET\n"
+            b"BT /F1 12 Tf 72 640 Td (Close the valve before servicing.) Tj ET" % heading.encode()
+        )
+        objects.append(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content))
+        stream = len(objects)
+        objects.append(
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents %d 0 R "
+            b"/Resources << /Font << /F1 %d 0 R >> >> >>" % (stream, font)
+        )
+        kids.append(b"%d 0 R" % len(objects))
+    objects[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objects[1] = b"<< /Type /Pages /Kids [%s] /Count %d >>" % (b" ".join(kids), len(kids))
     out = bytearray(b"%PDF-1.4\n")
     offsets = []
     for number, body in enumerate(objects, start=1):
@@ -85,6 +92,42 @@ def test_live_parse() -> None:
     for b in located:
         x0, y0, x1, y1 = b["bbox"]
         assert x0 <= x1 and y0 <= y1
+
+
+def test_live_page_range() -> None:
+    """``page_range: [2, 3]`` of a three-page PDF returns pages 2 and 3 only, numbered as in the file."""
+    import json
+
+    client = TestClient(create_app())
+    pdf = make_pdf(("First Chapter", "Second Chapter", "Third Chapter"))
+
+    def parse(options: dict[str, object]) -> dict[str, object]:
+        resp = client.post(
+            "/parse",
+            files={"file": ("pump.pdf", pdf, "application/pdf")},
+            data={"options": json.dumps(options)},
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    whole = parse({})
+    assert [p["page"] for p in whole["pages"]] == [1, 2, 3]
+    ranged = parse({"page_range": [2, 3]})
+    print(json.dumps(ranged, indent=1)[:2500])
+    assert [p["page"] for p in ranged["pages"]] == [2, 3]
+    assert {b["page"] for b in ranged["blocks"]} == {2, 3}
+    text = " ".join(b["text"] for b in ranged["blocks"]).lower()
+    assert "second" in text and "third" in text and "first" not in text
+    assert [b["text"] for b in ranged["blocks"]] == [b["text"] for b in whole["blocks"] if b["page"] in (2, 3)]
+    only_last = parse({"page_range": [3, 3]})
+    assert {b["page"] for b in only_last["blocks"]} == {3}
+
+    outside = client.post(
+        "/parse",
+        files={"file": ("pump.pdf", pdf, "application/pdf")},
+        data={"options": json.dumps({"page_range": [2, 4]})},
+    )
+    assert outside.status_code == 400 and outside.json()["error"]["code"] == "invalid_options"
 
 
 def test_engine_parameters_accounted_for() -> None:

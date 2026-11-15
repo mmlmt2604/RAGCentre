@@ -245,7 +245,7 @@ def test_service_endpoints() -> None:
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "paddleocr-shim"
-    assert info["version"].startswith("0.3.0+paddleocr.")
+    assert info["version"].startswith("0.4.0+paddleocr.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/bmp", "image/tiff", "image/webp"]
     assert info["capabilities"] == {"page_images": False}
 
@@ -266,6 +266,7 @@ def test_service_endpoints() -> None:
         "ocr_version": None,
         "textline_orientation": None,
         "region_detection": None,
+        "page_range": None,
         "engine": {},
     }
     assert calls[0] == (b"%PDF", "m.pdf", {**defaults, **unset, "tables": False, "heading_levels": True})
@@ -303,7 +304,7 @@ def test_lang_is_part_of_the_version(monkeypatch: pytest.MonkeyPatch) -> None:
     assert service_version("en").endswith(".lang-en")
     monkeypatch.setenv("PADDLEOCR_SHIM_LANG", "fr")
     info = TestClient(create_app(fake_engine([]))).get("/info").json()
-    assert info["version"].endswith(".lang-fr") and info["version"].startswith("0.3.0+paddleocr.")
+    assert info["version"].endswith(".lang-fr") and info["version"].startswith("0.4.0+paddleocr.")
 
 
 def test_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -577,7 +578,11 @@ def test_named_arguments_and_engine_arguments_do_not_overlap() -> None:
         {"ocr_version": "PP-OCRv9"},
         {"textline_orientation": "yes"},
         {"engine": []},
-        {"page_range": [1, 2]},  # PP-StructureV3 has no page selection, so the option does not exist
+        {"page_range": [3, 2]},
+        {"page_range": [0, 2]},
+        {"page_range": [1]},
+        {"page_range": [1, 2, 3]},
+        {"page_range": "1-2"},
     ],
 )
 def test_new_options_are_validated(options: dict[str, Any]) -> None:
@@ -614,3 +619,137 @@ def test_the_pipeline_cache_is_keyed_on_everything_that_reaches_the_constructor(
     engine(b"x", "a.pdf", {**OPTIONS, "languages": ["fr"]})
     engine(b"x", "a.pdf", {**OPTIONS, "ocr_version": "PP-OCRv4"})
     assert len(fake_paddleocr.instances) == 4
+
+
+# --- page_range ----------------------------------------------------------------------------------
+
+
+class FakePdfDocument:
+    """Stand-in for ``pypdfium2.PdfDocument``: a document of ``pages`` pages that records what is imported."""
+
+    page_counts: ClassVar[dict[bytes, int]] = {b"%PDF-3pages": 3, b"%PDF-5pages": 5}
+    created: ClassVar[list[FakePdfDocument]] = []
+
+    def __init__(self, source: str | None = None) -> None:
+        self.imported: list[int] | None = None
+        self.saved: Path | None = None
+        self.closed = False
+        self.pages = self.page_counts[Path(source).read_bytes()] if source else 0
+        FakePdfDocument.created.append(self)
+
+    @classmethod
+    def new(cls) -> FakePdfDocument:
+        return cls()
+
+    def __len__(self) -> int:
+        return self.pages
+
+    def import_pages(self, pdf: FakePdfDocument, pages: list[int]) -> None:
+        assert max(pages) < len(pdf), "pypdfium2 rejects a page index outside the file"
+        self.imported = pages
+        self.pages = len(pages)
+
+    def save(self, target: str) -> None:
+        self.saved = Path(target)
+        Path(target).write_bytes(b"%PDF-subset-" + ",".join(str(p) for p in (self.imported or [])).encode())
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class RangePipeline(FakePipeline):
+    """Reads the file it is given and answers one page result per page of it, the way PaddleX does."""
+
+    def predict(self, path: str, **kwargs: Any) -> Any:
+        self.predict_calls.append((Path(path), kwargs, Path(path).read_bytes()))
+        data = Path(path).read_bytes()
+        if data.startswith(b"%PDF-subset-"):
+            pages = len(data.removeprefix(b"%PDF-subset-").split(b","))
+        else:
+            pages = FakePdfDocument.page_counts.get(data, 1)
+        for index in range(pages):
+            blocks = [layout_block("text", f"p{index}", [1, 2, 3, 4], 1)]
+            yield fake_result(index if data.startswith(b"%PDF") else None, blocks)
+
+
+@pytest.fixture
+def ranged(monkeypatch: pytest.MonkeyPatch) -> type[RangePipeline]:
+    FakePipeline.instances = []
+    FakePdfDocument.created = []
+    paddleocr = types.ModuleType("paddleocr")
+    paddleocr.PPStructureV3 = RangePipeline  # type: ignore[attr-defined]
+    pdfium = types.ModuleType("pypdfium2")
+    pdfium.PdfDocument = FakePdfDocument  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "paddleocr", paddleocr)
+    monkeypatch.setitem(sys.modules, "pypdfium2", pdfium)
+    return RangePipeline
+
+
+def test_page_range_parses_a_pdf_that_holds_only_those_pages_and_keeps_the_file_numbers(
+    ranged: type[RangePipeline],
+) -> None:
+    pages = PaddleEngine()(b"%PDF-5pages", "m.pdf", {**OPTIONS, "page_range": [2, 3]})
+    (pipeline,) = FakePipeline.instances
+    ((path, _kwargs, content),) = pipeline.predict_calls
+    assert content == b"%PDF-subset-1,2"  # 0-based indices of pages 2 and 3
+    assert path.suffix == ".pdf" and not path.exists()  # the subset is removed with the upload
+    assert [page["page"] for page in pages] == [2, 3]
+    source, subset = FakePdfDocument.created
+    assert source.closed and subset.closed and subset.imported == [1, 2]
+
+
+def test_page_range_for_the_whole_file_and_for_no_range(ranged: type[RangePipeline]) -> None:
+    engine = PaddleEngine()
+    assert [p["page"] for p in engine(b"%PDF-3pages", "m.pdf", {**OPTIONS, "page_range": [1, 3]})] == [1, 2, 3]
+    assert [p["page"] for p in engine(b"%PDF-3pages", "m.pdf", {**OPTIONS, "page_range": None})] == [1, 2, 3]
+    assert [p["page"] for p in engine(b"%PDF-3pages", "m.pdf", OPTIONS)] == [1, 2, 3]
+    calls = FakePipeline.instances[0].predict_calls
+    assert calls[0][2].startswith(b"%PDF-subset-") and calls[1][2] == calls[2][2] == b"%PDF-3pages"
+    assert len(FakePdfDocument.created) == 2  # no range: pypdfium2 is not used at all
+
+
+def test_page_range_past_the_end_of_the_pdf_is_400_and_does_not_run_the_engine(ranged: type[RangePipeline]) -> None:
+    with pytest.raises(ShimError, match=r"\[2, 4\] is outside this 3-page document") as caught:
+        PaddleEngine()(b"%PDF-3pages", "m.pdf", {**OPTIONS, "page_range": [2, 4]})
+    assert caught.value.status == 400 and caught.value.code == "invalid_options"
+    assert FakePipeline.instances[0].predict_calls == []
+    assert all(document.closed for document in FakePdfDocument.created)
+
+
+def test_page_range_on_an_image_needs_to_include_page_1(ranged: type[RangePipeline]) -> None:
+    engine = PaddleEngine()
+    for options in ({"page_range": [1, 1]}, {"page_range": [1, 5]}):
+        assert [p["page"] for p in engine(b"png", "a.PNG", {**OPTIONS, **options})] == [1]
+    with pytest.raises(ShimError, match=r"\[2, 3\] is outside this 1-page image") as caught:
+        engine(b"png", "a.png", {**OPTIONS, "page_range": [2, 3]})
+    assert caught.value.status == 400 and caught.value.code == "invalid_options"
+    assert len(FakePipeline.instances[0].predict_calls) == 2 and FakePdfDocument.created == []  # images skip pypdfium2
+
+
+def test_page_range_is_not_part_of_the_pipeline_cache_key(ranged: type[RangePipeline]) -> None:
+    engine = PaddleEngine()
+    for page_range in (None, [1, 2], [2, 3]):
+        engine(b"%PDF-3pages", "m.pdf", {**OPTIONS, "page_range": page_range})
+    assert len(FakePipeline.instances) == 1 and len(FakePipeline.instances[0].predict_calls) == 3
+    assert "page_range" not in FakePipeline.instances[0].kwargs
+
+
+def test_the_service_passes_page_range_to_the_engine_and_answers_a_bad_range_with_400() -> None:
+    calls: list[Any] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    assert post(client, options={"page_range": [2, 3]}).status_code == 200
+    assert calls[0][2]["page_range"] == [2, 3]
+    assert post(client).status_code == 200 and calls[1][2]["page_range"] is None
+    schema = client.get("/info").json()["options_schema"]
+    assert schema["properties"]["page_range"]["anyOf"][0]["minItems"] == 2
+
+
+def test_the_service_reports_a_range_outside_the_file_as_400(ranged: type[RangePipeline]) -> None:
+    client = TestClient(create_app())
+    resp = client.post(
+        "/parse",
+        files={"file": ("m.pdf", b"%PDF-3pages", "application/pdf")},
+        data={"options": json.dumps({"page_range": [3, 9]})},
+    )
+    assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options"
+    assert "outside this 3-page document" in resp.json()["error"]["message"]

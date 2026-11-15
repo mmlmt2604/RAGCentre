@@ -12,9 +12,10 @@ import json
 import threading
 from collections import OrderedDict
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
-from shimkit import ShimError, check_engine_options, temp_upload
+from shimkit import ShimError, check_engine_options, file_extension, temp_upload
 
 # PaddleX reads PDFs and common raster images (paddlex/inference/common/reader).
 SUPPORTED_EXTENSIONS = frozenset({"pdf", "png", "jpg", "jpeg", "bmp", "tif", "tiff", "webp"})
@@ -120,10 +121,37 @@ def apply_heading_levels(results: list[Any]) -> None:
         return
 
 
-def reduce_page(result: Any, position: int) -> dict[str, Any]:
+def write_page_subset(source: Path, target: Path, first: int, last: int) -> None:
+    """Write pages ``first`` to ``last`` (1-based, inclusive) of the PDF at ``source`` to ``target``.
+
+    PP-StructureV3's ``predict`` has no page selection, so ``page_range`` is done here. pypdfium2 is
+    already installed with PaddleX (it renders PDF pages for it). ``400 invalid_options`` when the
+    range reaches past the end of the file."""
+    import pypdfium2
+
+    document = pypdfium2.PdfDocument(str(source))
+    try:
+        count = len(document)
+        if last > count:
+            raise ShimError(
+                400, "invalid_options", f"option 'page_range' {[first, last]} is outside this {count}-page document"
+            )
+        subset = pypdfium2.PdfDocument.new()
+        try:
+            subset.import_pages(document, list(range(first - 1, last)))  # 0-based indices
+            subset.save(str(target))
+        finally:
+            subset.close()
+    finally:
+        document.close()
+
+
+def reduce_page(result: Any, position: int, first_page: int = 1) -> dict[str, Any]:
     """One PP-StructureV3 page result -> ``{"page", "width", "height", "blocks"}``.
 
-    ``position`` is the 1-based position in the result list, used when ``page_index`` is None."""
+    ``position`` is the 1-based position in the result list, used when ``page_index`` is None.
+    ``first_page`` is the file's page number of the first page that was parsed (``page_range``): the
+    result's own ``page_index`` and ``position`` count from the pages that were passed to the engine."""
     page_index = result.get("page_index")
     blocks = []
     for block in result["parsing_res_list"]:
@@ -137,7 +165,7 @@ def reduce_page(result: Any, position: int) -> dict[str, Any]:
             }
         )
     return {
-        "page": page_index + 1 if page_index is not None else position,
+        "page": (page_index + 1 if page_index is not None else position) + first_page - 1,
         "width": result["width"],
         "height": result["height"],
         "blocks": blocks,
@@ -147,7 +175,9 @@ def reduce_page(result: Any, position: int) -> dict[str, Any]:
 class PaddleEngine:
     """``(content, filename, options) -> list of reduced pages``. Not thread-safe: the app
     serialises calls. ``options`` holds the keys of ``OPTION_ARGUMENTS`` and
-    ``OPTIONAL_FLAG_ARGUMENTS`` plus ``heading_levels``, ``languages``, ``ocr_version`` and ``engine``."""
+    ``OPTIONAL_FLAG_ARGUMENTS`` plus ``heading_levels``, ``languages``, ``ocr_version``, ``page_range``
+    and ``engine``. ``page_range`` is not part of the pipeline cache key: it only selects the pages
+    that are passed to ``predict``."""
 
     def __init__(self, lang: str | None = None) -> None:
         self.lang = lang
@@ -186,9 +216,19 @@ class PaddleEngine:
             init["lang"] = self.lang
         if options.get("ocr_version"):
             init["ocr_version"] = options["ocr_version"]
+        first, last = options.get("page_range") or (None, None)
+        is_pdf = file_extension(filename) == "pdf"
+        if first is not None and not is_pdf and first > 1:
+            raise ShimError(400, "invalid_options", f"option 'page_range' {[first, last]} is outside this 1-page image")
         pipeline = self._pipeline(init)
         with temp_upload(content, filename) as path:
-            results = list(pipeline.predict(str(path), **{**engine_predict, **flags}))
+            source = path
+            if first is not None and is_pdf:
+                source = path.with_name("pages.pdf")  # removed with the upload's directory
+                write_page_subset(path, source, first, last)
+            results = list(pipeline.predict(str(source), **{**engine_predict, **flags}))
         if options.get("heading_levels"):
             apply_heading_levels(results)
-        return [reduce_page(result, position) for position, result in enumerate(results, start=1)]
+        # Page numbers are the file's own, whatever range was parsed (an image is page 1).
+        offset = first if first is not None and is_pdf else 1
+        return [reduce_page(result, position, offset) for position, result in enumerate(results, start=1)]

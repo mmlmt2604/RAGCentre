@@ -82,9 +82,12 @@ value of the wrong type is `400 invalid_options` naming the option.
 | `ocr_version` | PaddleOCR's | `PP-OCRv3`, `PP-OCRv4` or `PP-OCRv5` (PP-StructureV3 does not take v6) |
 | `textline_orientation` | PP-StructureV3's | `use_textline_orientation`: classify each text line's orientation |
 | `region_detection` | PP-StructureV3's | `use_region_detection` |
+| `page_range` | whole file | `[first, last]`, 1-based and inclusive. IR page numbers are the file's, not positions in the range, and `pages` lists only the pages parsed. A range that reaches past the end of a PDF is `400 invalid_options`; for an image only a range that includes page 1 is accepted |
 | `engine` | `{}` | Other `PPStructureV3` arguments, see below |
 
-PP-StructureV3 has no page selection, so there is no `page_range` option.
+PP-StructureV3 has no page selection, so for a PDF the shim cuts the chosen pages into a temporary
+PDF with `pypdfium2` (a dependency of PaddleX, so nothing extra to install) and passes that to
+`predict`. `page_range` is not part of the pipeline cache key: the same pipeline serves every range.
 
 ### The `engine` passthrough
 
@@ -127,11 +130,12 @@ uv run ragcentre provider set-secret paddleocr api_key --env PADDLEOCR_SHIM_API_
 
 ## Versioning
 
-`/info` reports `0.3.0+paddleocr.<paddleocr version>`, with `.lang-<lang>` added when
+`/info` reports `0.4.0+paddleocr.<paddleocr version>`, with `.lang-<lang>` added when
 `PADDLEOCR_SHIM_LANG` is set. RAGCentre records that version when the provider is created and
 refuses to parse with a service reporting a different one (unless the provider's
 `on_version_drift` is `warn`). Upgrading PaddleOCR or changing the language therefore means creating
-a new provider and a new pipeline.
+a new provider and a new pipeline. The same goes for 0.4.0, which added `page_range` to the options
+schema: a provider created from 0.3.0 keeps the old schema, so re-create it to use the option.
 
 ## How PaddleOCR output maps to the IR
 
@@ -166,7 +170,8 @@ tests need only `fastapi`, `httpx` and `pytest`, not PaddleOCR or its models:
 uv run --isolated --no-project --with ../shimkit --with fastapi --with python-multipart --with httpx --with pytest pytest
 ```
 
-`tests/test_live.py` parses a small generated PDF through the real engine. It is skipped unless
+`tests/test_live.py` parses a small generated PDF through the real engine, and a three-page PDF with
+`page_range: [2, 3]`. It is skipped unless
 `SHIM_LIVE=1` and PaddleOCR is installed:
 
 ```sh
