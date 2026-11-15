@@ -23,7 +23,12 @@ that Surya starts on the first parse:
 - **CPU and Apple Silicon**: `llama-server` from [llama.cpp](https://github.com/ggml-org/llama.cpp)
   must be on `PATH` (`brew install llama.cpp`). A one-page document took about ten seconds on an Apple Silicon Mac, including starting the
   server. The first parse downloads the GGUF model and its projector (about 1.3 GB).
-- **NVIDIA GPUs**: Surya uses `vllm` in Docker.
+- **Apple Silicon, with MLX** (optional, instead of llama.cpp): `pip install mlx-vlm==0.7.10` in the
+  shim's environment (the version Surya tested), build an MLX checkpoint with Surya's script
+  (`python <site-packages>/surya/scripts/build_mlx.py --checkpoint datalab-to/surya-ocr-2.5 --out-dir ./mlx-build --q-bits 8`),
+  then start the service with `SURYA_INFERENCE_BACKEND=mlx` and `SURYA_MLX_MODEL=<that directory>`.
+  The version then ends in `.mlx.mlx-<directory name>`.
+- **NVIDIA GPUs**: Surya uses `vllm` in Docker. This backend has not been run with the shim.
 - **A server you already run**: set `SURYA_INFERENCE_BACKEND` and `SURYA_INFERENCE_URL`.
 
 Surya picks the backend itself (`SURYA_INFERENCE_BACKEND` overrides it). The shim stops the server
