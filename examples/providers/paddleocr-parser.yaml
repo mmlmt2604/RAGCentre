@@ -4,6 +4,7 @@ name: paddleocr
 kind: parser
 type: http
 config:
+  # With `docker compose --profile paddleocr up`, RAGCentre reaches it as http://paddleocr:8703 instead.
   base_url: http://127.0.0.1:8703
   timeout_seconds: 600
   max_concurrency: 1

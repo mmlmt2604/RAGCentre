@@ -1,0 +1,15 @@
+# For the parser shim images, which build with `examples/` as their context (see each shim's
+# Dockerfile and the profiles in ../docker-compose.yml).
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/tests
+**/uv.lock
+**/NOTES.md
+pipelines
+providers
+quickstart
+quickstart.md
+.DS_Store

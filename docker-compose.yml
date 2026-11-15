@@ -1,4 +1,10 @@
 # docker compose up --build   ->   http://localhost:8700
+#
+# The example parser services are opt-in profiles, started next to RAGCentre:
+#   docker compose --profile docling up --build
+# (also: mineru, paddleocr, surya; several --profile flags may be given). Inside this network a
+# parser is reached by its service name, so register it with `base_url: http://docling:8701`
+# (see examples/providers/). Each one downloads its models on the first parse, into its volume.
 services:
   ragcentre:
     build: .
@@ -12,7 +18,70 @@ services:
       RAGCENTRE_API_TOKEN: ${RAGCENTRE_API_TOKEN:-}
       # Fernet key for storing provider secrets in the database (optional).
       RAGCENTRE_SECRET_KEY: ${RAGCENTRE_SECRET_KEY:-}
+      # The parser services' keys (optional), so a provider's `api_key` secret can name them:
+      #   ragcentre provider set-secret docling api_key --env DOCLING_SHIM_API_KEY
+      DOCLING_SHIM_API_KEY: ${DOCLING_SHIM_API_KEY:-}
+      MINERU_SHIM_API_KEY: ${MINERU_SHIM_API_KEY:-}
+      PADDLEOCR_SHIM_API_KEY: ${PADDLEOCR_SHIM_API_KEY:-}
+      SURYA_SHIM_API_KEY: ${SURYA_SHIM_API_KEY:-}
+    restart: unless-stopped
+
+  docling:
+    profiles: [docling]
+    build:
+      context: examples
+      dockerfile: docling_shim/Dockerfile
+    ports:
+      - "127.0.0.1:8701:8701"
+    volumes:
+      - docling-models:/home/shim/.cache
+    environment:
+      DOCLING_SHIM_API_KEY: ${DOCLING_SHIM_API_KEY:-}
+    restart: unless-stopped
+
+  mineru:
+    profiles: [mineru]
+    build:
+      context: examples
+      dockerfile: mineru_shim/Dockerfile
+    ports:
+      - "127.0.0.1:8702:8702"
+    volumes:
+      - mineru-models:/home/shim/.cache
+    environment:
+      MINERU_SHIM_API_KEY: ${MINERU_SHIM_API_KEY:-}
+    restart: unless-stopped
+
+  paddleocr:
+    profiles: [paddleocr]
+    build:
+      context: examples
+      dockerfile: paddleocr_shim/Dockerfile
+    ports:
+      - "127.0.0.1:8703:8703"
+    volumes:
+      - paddleocr-models:/home/shim/.paddlex
+    environment:
+      PADDLEOCR_SHIM_API_KEY: ${PADDLEOCR_SHIM_API_KEY:-}
+      PADDLEOCR_SHIM_LANG: ${PADDLEOCR_SHIM_LANG:-}
+    restart: unless-stopped
+
+  surya:
+    profiles: [surya]
+    build:
+      context: examples
+      dockerfile: surya_shim/Dockerfile
+    ports:
+      - "127.0.0.1:8704:8704"
+    volumes:
+      - surya-models:/home/shim/.cache
+    environment:
+      SURYA_SHIM_API_KEY: ${SURYA_SHIM_API_KEY:-}
     restart: unless-stopped
 
 volumes:
   ragcentre-data:
+  docling-models:
+  mineru-models:
+  paddleocr-models:
+  surya-models:

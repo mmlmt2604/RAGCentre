@@ -4,6 +4,7 @@ name: surya
 kind: parser
 type: http
 config:
+  # With `docker compose --profile surya up`, RAGCentre reaches it as http://surya:8704 instead.
   base_url: http://127.0.0.1:8704
   timeout_seconds: 600
   max_concurrency: 2

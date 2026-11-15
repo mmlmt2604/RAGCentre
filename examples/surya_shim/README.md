@@ -29,6 +29,28 @@ that Surya starts on the first parse:
 Surya picks the backend itself (`SURYA_INFERENCE_BACKEND` overrides it). The shim stops the server
 it started when the service stops.
 
+### With Docker
+
+From the repository root, this starts RAGCentre and this service together:
+
+```sh
+docker compose --profile surya up --build     # the service on http://127.0.0.1:8704
+```
+
+RAGCentre runs in the same Compose network and reaches the service by name, so register the
+provider with `base_url: http://surya:8704` (change that line in
+`examples/providers/surya-parser.yaml`, or add the provider in the web UI). Models are downloaded on
+the first parse into the `surya-models` volume (`~/.cache` in the container), so they survive a
+rebuild. The image contains `llama-server` and runs the model on the CPU, which is slow: expect minutes
+per page rather than seconds. With a GPU, run the inference server yourself and set
+`SURYA_INFERENCE_BACKEND` and `SURYA_INFERENCE_URL` on the service.
+
+To build the image alone, use `examples/` as the build context:
+
+```sh
+docker build -t surya-shim -f examples/surya_shim/Dockerfile examples
+```
+
 Then register it with RAGCentre and route files to it (from the repository root):
 
 ```sh

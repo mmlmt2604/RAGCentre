@@ -28,6 +28,27 @@ that matches your CUDA version (see the
 The first parse downloads twelve models (about 1.7 GB) into `~/.paddlex`, so it is slow. Set
 `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True` to skip PaddleX's connectivity check at start-up.
 
+### With Docker
+
+From the repository root, this starts RAGCentre and this service together:
+
+```sh
+docker compose --profile paddleocr up --build     # the service on http://127.0.0.1:8703
+```
+
+RAGCentre runs in the same Compose network and reaches the service by name, so register the
+provider with `base_url: http://paddleocr:8703` (change that line in
+`examples/providers/paddleocr-parser.yaml`, or add the provider in the web UI). Models are downloaded on
+the first parse into the `paddleocr-models` volume (`~/.paddlex` in the container), so they survive a
+rebuild. The image installs the CPU build of PaddlePaddle (`--build-arg PADDLE_PACKAGE=…` chooses another
+package). Set `PADDLEOCR_SHIM_LANG` in the environment of `docker compose` to choose the language.
+
+To build the image alone, use `examples/` as the build context:
+
+```sh
+docker build -t paddleocr-shim -f examples/paddleocr_shim/Dockerfile examples
+```
+
 Then register it with RAGCentre and route files to it (from the repository root):
 
 ```sh

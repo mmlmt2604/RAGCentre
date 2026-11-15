@@ -18,6 +18,27 @@ uv sync
 uv run uvicorn mineru_shim.app:app --host 127.0.0.1 --port 8702
 ```
 
+### With Docker
+
+From the repository root, this starts RAGCentre and this service together:
+
+```sh
+docker compose --profile mineru up --build     # the service on http://127.0.0.1:8702
+```
+
+RAGCentre runs in the same Compose network and reaches the service by name, so register the
+provider with `base_url: http://mineru:8702` (change that line in
+`examples/providers/mineru-parser.yaml`, or add the provider in the web UI). Models are downloaded on
+the first parse into the `mineru-models` volume (`~/.cache` in the container), so they survive a
+rebuild. The image installs the CPU build of PyTorch; pass `--build-arg TORCH_BACKEND=cu128` (or the
+backend for your CUDA version) to build for an NVIDIA GPU.
+
+To build the image alone, use `examples/` as the build context:
+
+```sh
+docker build -t mineru-shim -f examples/mineru_shim/Dockerfile examples
+```
+
 Then register it with RAGCentre and route files to it (from the repository root):
 
 ```sh

@@ -4,6 +4,7 @@ name: docling
 kind: parser
 type: http
 config:
+  # With `docker compose --profile docling up`, RAGCentre reaches it as http://docling:8701 instead.
   base_url: http://127.0.0.1:8701
   timeout_seconds: 600
   max_concurrency: 2

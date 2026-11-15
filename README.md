@@ -30,6 +30,16 @@ docker compose up --build       # http://localhost:8700
 
 Set `RAGCENTRE_API_TOKEN` before exposing the port beyond localhost.
 
+The example parser services are Compose profiles, so one command also gives you a parser for PDFs,
+Office documents and images:
+
+```sh
+docker compose --profile docling up --build     # RAGCentre, and Docling on http://docling:8701
+```
+
+The other profiles are `mineru`, `paddleocr` and `surya`. Register the parser with the `base_url`
+shown (see [`examples/providers/`](examples/providers/)); each service's README has the details.
+
 ## Concepts
 
 - **Provider**: a configured parser, chunker, embedder, reranker or vector store. Built in:

@@ -4,6 +4,7 @@ name: mineru
 kind: parser
 type: http
 config:
+  # With `docker compose --profile mineru up`, RAGCentre reaches it as http://mineru:8702 instead.
   base_url: http://127.0.0.1:8702
   timeout_seconds: 600
   max_concurrency: 1
