@@ -60,7 +60,7 @@ for parser providers is 600 seconds (`timeout_seconds`).
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "metadata": {"title": "Pump Manual", "language": "en", "page_count": 12},
   "pages": [
     {"page": 1, "width": 612.0, "height": 792.0, "image": {"mime": "image/png", "data_b64": "…"}}
@@ -68,7 +68,8 @@ for parser providers is 600 seconds (`timeout_seconds`).
   "blocks": [
     {"id": "b1", "type": "heading", "level": 1, "text": "Introduction",
      "page": 1, "bbox": [72.0, 80.0, 540.0, 104.0], "metadata": {}},
-    {"id": "b2", "type": "paragraph", "text": "…", "page": 1},
+    {"id": "b2", "type": "paragraph", "text": "…", "page": 1, "confidence": 0.97,
+     "spans": [{"page": 1, "bbox": [72.0, 600.0, 540.0, 760.0]}, {"page": 2, "bbox": [72.0, 60.0, 540.0, 120.0]}]},
     {"id": "b3", "type": "table", "text": "| a | b |\n|---|---|\n| 1 | 2 |",
      "html": "<table>…</table>", "page": 2}
   ]
@@ -89,6 +90,15 @@ for parser providers is 600 seconds (`timeout_seconds`).
 | `blocks[].bbox` | Optional `[x0, y0, x1, y1]`, origin **top-left**, in the page's units. |
 | `blocks[].html` | Optional, for tables. |
 | `blocks[].metadata` | Optional free-form object. |
+| `blocks[].confidence` | Optional number from 0 to 1 (schema 1.1): the engine's confidence in this block. A value outside 0 to 1 makes the IR invalid. |
+| `blocks[].spans` | Optional list of `{"page": int, "bbox": [x0, y0, x1, y1]}` (schema 1.1): every location of a block that covers more than one page or region, in order. `page` and `bbox` remain the first one. |
+| `blocks[].metadata.description` | Conventional (schema 1.1): a model-written description of a `figure`. |
+| `blocks[].metadata.classification` | Conventional (schema 1.1): the engine's class for a `figure` (chart, photo, logo, …). |
+
+A parser that writes a figure's description should also append it to the figure's `text`, after the
+caption and a blank line, so that the built-in chunkers, which read `text` and not `metadata`, can
+find it. Schema 1.1 only adds fields: a `1.0` document is still valid, and RAGCentre ignores
+`confidence` and `spans` when it chunks.
 
 RAGCentre computes each block's `heading_path` (the enclosing headings) after validation: a
 heading of level N closes every open heading of level N or deeper. The built-in chunkers drop

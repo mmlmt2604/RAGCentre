@@ -20,7 +20,7 @@ export interface ConfigField {
 }
 
 /** Fields the server fills in itself; never shown as inputs. */
-export const SERVER_FIELDS = new Set(["impl_version", "service_name", "service_version"]);
+export const SERVER_FIELDS = new Set(["impl_version", "service_name", "service_version", "options_schema"]);
 
 const ACRONYMS: Record<string, string> = { url: "URL", api: "API", id: "ID", dsn: "DSN", http: "HTTP", uri: "URI" };
 
@@ -148,5 +148,14 @@ export const METADATA_FIELD_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 export function display(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "boolean") return v ? "true" : "false";
+  if (typeof v === "object") {
+    // A parser's options_schema reads best as the names of the options it describes.
+    const props = (v as { properties?: unknown }).properties;
+    if (props && typeof props === "object") {
+      const names = Object.keys(props);
+      return names.length ? `${names.length} option${names.length === 1 ? "" : "s"}: ${names.join(", ")}` : "no options";
+    }
+    return JSON.stringify(v);
+  }
   return String(v);
 }

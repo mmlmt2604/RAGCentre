@@ -59,15 +59,34 @@ from llama.cpp, with a Qwen-VL model) or reaches through its own configuration.
 
 ## Options
 
-The parse route's `options` are passed to the service:
+The parse route's `options` are validated by the service and reported by `/info` as `options_schema`;
+RAGCentre checks a pipeline's route against it when the pipeline is created. An unknown key or a
+value of the wrong type is `400 invalid_options` naming the option.
 
 | Option | Default | Meaning |
 |---|---|---|
 | `tier` | `standard` | `flash`, `basic`, `standard` or `advanced`. Only PDFs and images support every tier; Office, HTML, CSV and EPUB files are always parsed with `flash`, whatever you ask for |
-| `ocr` | `"auto"` | `true` forces OCR, `false` reads the text layer only, `"auto"` lets MinerU decide |
+| `ocr` | `"auto"` | `true` forces OCR, `false` prefers the text layer (above `flash`, MinerU still OCRs regions that have no usable text), `"auto"` lets MinerU decide |
 | `image_analysis` | `false` | Describe pictures with a vision model. MinerU's own default is on; it is off here so that a default run does not need a VLM for every picture |
+| `page_range` | whole file | `[first, last]`, 1-based and inclusive, PDFs only (passed to MinerU as `"first-last"`). IR page numbers are the file's, and `pages` lists only the pages parsed. MinerU leaves out pages past the end of the file |
 
-Options are strictly typed and unknown keys are rejected with `400 invalid_options` naming the key. `/info` reports the schema as `options_schema`.
+`mineru.parse` has no other output parameters, so there is no `engine` passthrough.
+
+### Service settings
+
+Where the `standard` and `advanced` tiers find their vision-language model. Environment variables,
+read when the service starts (`docker-compose.yml` passes them through); they become a `VlmConfig`
+passed to `mineru.parse`, and MinerU's own configuration applies when none is set:
+
+| Variable | `VlmConfig` field | In the version |
+|---|---|---|
+| `MINERU_SHIM_VLM_ENGINE` | `engine`: `auto`, `llama-cpp`, `vllm`, `lmdeploy` or `mlx` | yes, `.vlm-<engine>-<model>` |
+| `MINERU_SHIM_VLM_MODEL` | `model` | yes |
+| `MINERU_SHIM_VLM_SERVER_URL` | `server_url` (a remote server wins over a local engine) | no |
+| `MINERU_SHIM_VLM_API_KEY` | `api_key` | no |
+
+An invalid value is `503 engine_unavailable` naming `MINERU_SHIM_VLM_*`. `http_timeout` and
+`max_concurrency` are left to MinerU's configuration.
 
 The shim serialises parses (one at a time) and the provider file sets `max_concurrency: 1`.
 
@@ -84,12 +103,16 @@ uv run ragcentre provider set-secret mineru api_key --env MINERU_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.2.0+mineru.<mineru version>`. RAGCentre records that version when the provider
+`/info` reports `0.3.0+mineru.<mineru version>`, with `.vlm-<engine>-<model>` added when
+`MINERU_SHIM_VLM_ENGINE` or `MINERU_SHIM_VLM_MODEL` is set (`auto` stands for an unset engine), for
+example `0.3.0+mineru.4.2.2.vlm-llama-cpp-Qwen-Qwen3-VL-4B`; characters outside `[A-Za-z0-9_-]` become `-`. RAGCentre records that version when the provider
 is created and refuses to parse with a service reporting a different one (unless the provider's
 `on_version_drift` is `warn`). Upgrading MinerU means creating a new provider and a new pipeline, so
 parses from two MinerU versions are never mixed in one index.
 
 ## How MinerU output maps to the IR
+
+MinerU's result carries no per-block score, so the IR (schema 1.1) has no `confidence` for its blocks.
 
 See the table at the top of `mineru_shim/convert.py`. In short: titles become headings (MinerU's
 `text_level`), lists and tables-of-contents become `list_item` blocks, tables become Markdown with
@@ -127,6 +150,10 @@ uv run --isolated --no-project --with ../shimkit --with fastapi --with python-mu
 ```sh
 SHIM_LIVE=1 uv run pytest tests/test_live.py -s
 ```
+
+The same file checks that every parameter of `mineru.parse` and every field of `VlmConfig` is accounted
+for in `mineru_shim/engine.py` (an option, a service setting, or deliberately not exposed), so a MinerU
+upgrade that adds one fails it until someone decides where it belongs.
 
 `tests/golden/sample_ir.json` is the IR for a sample document; RAGCentre's own suite validates it
 (`tests/test_parser_shim_goldens.py`). Regenerate it with `UPDATE_GOLDEN=1 uv run pytest`.

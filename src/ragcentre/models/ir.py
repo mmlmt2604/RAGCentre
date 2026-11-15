@@ -46,6 +46,25 @@ class Page(BaseModel):
     image: PageImage | None = None
 
 
+def _check_bbox(v: list[float] | None) -> list[float] | None:
+    if v is not None and len(v) != 4:
+        raise ValueError("bbox must be [x0, y0, x1, y1]")
+    return v
+
+
+class Span(BaseModel):
+    """One location of a block that covers several pages or regions (schema 1.1)."""
+
+    model_config = ConfigDict(extra="allow")
+    page: int = Field(ge=1)
+    bbox: list[float]
+
+    @field_validator("bbox")
+    @classmethod
+    def _bbox(cls, v: list[float]) -> list[float]:
+        return _check_bbox(v) or v
+
+
 class Block(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str | None = None
@@ -57,13 +76,14 @@ class Block(BaseModel):
     html: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     heading_path: list[str] = Field(default_factory=list)
+    # Schema 1.1: both optional, and ignored by the built-in chunkers.
+    confidence: float | None = Field(default=None, ge=0, le=1)  # the engine's confidence in this block
+    spans: list[Span] | None = None  # every location, in order; ``page`` and ``bbox`` are the first
 
     @field_validator("bbox")
     @classmethod
     def _bbox(cls, v: list[float] | None) -> list[float] | None:
-        if v is not None and len(v) != 4:
-            raise ValueError("bbox must be [x0, y0, x1, y1]")
-        return v
+        return _check_bbox(v)
 
 
 class DocumentIR(BaseModel):

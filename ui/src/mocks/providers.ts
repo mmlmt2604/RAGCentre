@@ -3,7 +3,7 @@
 import type { MetadataSchema, Provider, ProviderTestResult, Scalar } from "../api/types";
 import { configFields, METADATA_FIELD_RE, PROVIDER_NAME_RE, SERVER_FIELDS, toConfig, type FormValues } from "../lib/configSchema";
 import { refreshProviderUsage } from "./engine";
-import { provider as makeProvider } from "./fixtures";
+import { DOCLING_OPTIONS_SCHEMA, provider as makeProvider } from "./fixtures";
 import { uuidFrom } from "./hash";
 import { now, type CorpusRec, type MockState } from "./store";
 
@@ -67,6 +67,9 @@ export function createProvider(state: MockState, body: { name?: string; kind?: s
       throw new MockError(502, "provider_error", `Could not read ${name}'s /info to pin its version: ${name}: could not connect to ${url}/info`, { provider: name });
     config.service_name = kind === "parser" ? "docling-shim" : "semantic-chunker";
     config.service_version = kind === "parser" ? "2.14.0" : "1.0.3";
+    // A parser service reports the options it accepts; the schema is captured once and never changes.
+    // A base_url containing "no-schema" stands for a service that reports none.
+    if (kind === "parser") config.options_schema = /no-schema/.test(url) ? null : structuredClone(DOCLING_OPTIONS_SCHEMA);
   }
   if (t.fingerprint_fields.includes("impl_version")) config.impl_version = 1;
   const p = makeProvider(name, kind, type, config, { id: uuidFrom(`provider:${name}:${Date.now()}`), created_at: now(), updated_at: now() });

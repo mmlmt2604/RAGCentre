@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import builtins
 import email.utils
+import json
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -18,6 +19,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 import httpx
+import jsonschema
+import jsonschema.validators
 from pydantic import BaseModel, ConfigDict, Field
 
 from ragcentre.errors import ErrorCode, ExecutionError
@@ -31,6 +34,7 @@ KINDS: tuple[ProviderKind, ...] = ("parser", "chunker", "embedder", "reranker", 
 Role = Literal["document", "query"]
 
 RETRYABLE_STATUS = frozenset({408, 429})
+MAX_OPTIONS_SCHEMA_BYTES = 64 * 1024
 
 
 # ---- configuration models --------------------------------------------------------------------
@@ -56,6 +60,7 @@ class ServiceInfo:
     version: str
     mime_types: list[str] = field(default_factory=list)
     capabilities: dict[str, Any] = field(default_factory=dict)
+    options_schema: dict[str, Any] | None = None
 
 
 # ---- provider interfaces ---------------------------------------------------------------------
@@ -269,13 +274,32 @@ class InfoMixin(HttpService):
             raise invalid_response(self.name, "/info must include string 'name' and 'version'")
         mime_types = body.get("mime_types") or []
         caps = body.get("capabilities") or {}
+        options_schema = self._options_schema(body.get("options_schema"))
         info = ServiceInfo(
             protocol=protocol,
             name=name,
             version=version,
             mime_types=[str(m) for m in mime_types] if isinstance(mime_types, list) else [],
             capabilities=caps if isinstance(caps, dict) else {},
+            options_schema=options_schema,
         )
         with self._info_lock:
             self._info = (time.monotonic(), info)
         return info
+
+    def _options_schema(self, raw: Any) -> dict[str, Any] | None:
+        """``options_schema`` from ``/info``: absent or null is fine; otherwise it must be a valid
+        JSON Schema object of at most ``MAX_OPTIONS_SCHEMA_BYTES`` once serialised."""
+        if raw is None:
+            return None
+        if not isinstance(raw, dict):
+            raise invalid_response(self.name, "/info 'options_schema' must be a JSON Schema object")
+        if len(json.dumps(raw, separators=(",", ":"))) > MAX_OPTIONS_SCHEMA_BYTES:
+            raise invalid_response(self.name, f"/info 'options_schema' is larger than {MAX_OPTIONS_SCHEMA_BYTES} bytes")
+        try:
+            jsonschema.validators.validator_for(raw).check_schema(raw)
+        except jsonschema.SchemaError as exc:
+            raise invalid_response(
+                self.name, f"/info 'options_schema' is not a valid JSON Schema: {exc.message}"
+            ) from None
+        return raw

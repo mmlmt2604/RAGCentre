@@ -1,4 +1,4 @@
-"""Turn a Docling ``DoclingDocument`` into RAGCentre's Document IR (schema 1.0).
+"""Turn a Docling ``DoclingDocument`` into RAGCentre's Document IR (schema 1.1).
 
 This module needs only ``docling-core`` (the document model), not the full Docling converter, so
 it can be tested without models.
@@ -21,14 +21,21 @@ text-like labels                   stores it as ``metadata.original_type``)
 =================================  =========================================================
 
 ``page`` and ``bbox`` come from the item's first provenance entry; boxes are converted to a
-top-left origin in page units, as the IR requires.
+top-left origin in page units, as the IR requires. An item with more than one provenance entry (a
+paragraph or table that runs over a page break) also gets ``spans``: every entry, in order.
+
+A picture's classification (the most confident class) and description are read from
+``item.meta`` (``docling-core`` 2.x) or, failing that, ``item.annotations``; they go to
+``metadata.classification`` and ``metadata.description``, and the description is also appended to
+the figure's ``text`` after the caption and a blank line, so the built-in chunkers can find it.
 """
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
-IR_VERSION = "1.0"
+IR_VERSION = "1.1"
 
 _SAME = {"list_item", "caption", "footnote", "code", "formula", "page_header", "page_footer"}
 _FIGURES = {"picture", "chart"}
@@ -57,6 +64,48 @@ def _location(item: Any, sizes: dict[int, tuple[float, float]]) -> dict[str, Any
     return out
 
 
+def _span(prov: Any, sizes: dict[int, tuple[float, float]]) -> dict[str, Any] | None:
+    size = sizes.get(int(prov.page_no))
+    if size is None or prov.bbox is None:
+        return None
+    box = prov.bbox.to_top_left_origin(page_height=size[1])
+    return {"page": int(prov.page_no), "bbox": [float(box.l), float(box.t), float(box.r), float(box.b)]}
+
+
+def _spans(item: Any, sizes: dict[int, tuple[float, float]]) -> list[dict[str, Any]]:
+    prov = getattr(item, "prov", None) or []
+    if len(prov) < 2:
+        return []
+    return [span for entry in prov if (span := _span(entry, sizes)) is not None]
+
+
+def _figure_details(item: Any) -> tuple[str, str]:
+    """``(description, classification)`` of a picture; ``""`` for what the engine did not produce."""
+    description = classification = ""
+    meta = getattr(item, "meta", None)
+    if meta is not None:
+        text = getattr(getattr(meta, "description", None), "text", None)
+        description = str(text or "").strip()
+        predictions = list(getattr(getattr(meta, "classification", None), "predictions", None) or [])
+        if predictions:
+            best = max(predictions, key=lambda p: float(getattr(p, "confidence", 0) or 0))
+            classification = str(getattr(best, "class_name", "") or "")
+    if not (description and classification):
+        with warnings.catch_warnings():  # ``annotations`` is deprecated in docling-core in favour of ``meta``
+            warnings.simplefilter("ignore", DeprecationWarning)
+            annotations = list(getattr(item, "annotations", None) or [])
+        for annotation in annotations:
+            kind = getattr(annotation, "kind", "")
+            if kind == "description" and not description:
+                description = str(getattr(annotation, "text", "") or "").strip()
+            elif kind == "classification" and not classification:
+                classes = list(getattr(annotation, "predicted_classes", None) or [])
+                if classes:
+                    best = max(classes, key=lambda c: float(getattr(c, "confidence", 0) or 0))
+                    classification = str(getattr(best, "class_name", "") or "")
+    return description, classification
+
+
 def _block(item: Any, doc: Any, sizes: dict[int, tuple[float, float]]) -> dict[str, Any] | None:
     label = _label(item)
     block: dict[str, Any]
@@ -70,7 +119,14 @@ def _block(item: Any, doc: Any, sizes: dict[int, tuple[float, float]]) -> dict[s
         if html:
             block["html"] = html
     elif label in _FIGURES:
-        block = {"type": "figure", "text": item.caption_text(doc) or ""}
+        description, classification = _figure_details(item)
+        caption = (item.caption_text(doc) or "").strip()
+        block = {"type": "figure", "text": "\n\n".join(part for part in (caption, description) if part)}
+        details = {
+            key: value for key, value in (("description", description), ("classification", classification)) if value
+        }
+        if details:
+            block["metadata"] = details
     elif label in _SAME:
         block = {"type": label, "text": getattr(item, "text", "") or ""}
     elif label in _PARAGRAPHS:
@@ -82,6 +138,8 @@ def _block(item: Any, doc: Any, sizes: dict[int, tuple[float, float]]) -> dict[s
     if block["type"] != "figure" and not block["text"].strip():
         return None
     block.update(_location(item, sizes))
+    if spans := _spans(item, sizes):
+        block["spans"] = spans
     return block
 
 

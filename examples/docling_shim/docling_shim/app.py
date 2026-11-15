@@ -3,44 +3,48 @@
     GET  /info   service name, version and supported MIME types
     POST /parse  multipart ``file`` and ``options`` (JSON) -> Document IR
 
-Options (from the pipeline's parse route), both booleans; any other key is ``400 invalid_options``:
+Options (from the pipeline's parse route) are described by ``options.py`` and reported by ``/info``
+as ``options_schema``. Any other key, or a value of the wrong type, is ``400 invalid_options``.
+They apply to PDFs and to image files. ``engine`` hands Docling's own ``PdfPipelineOptions`` fields
+through, after a check that refuses operational ones (paths, URLs, devices, batch sizes).
 
-    ocr                   run OCR (default true)
-    include_page_images   return each rendered page as a base64 PNG (default false)
-
-They apply to PDFs and to image files. Run it with::
+Run it with::
 
     uvicorn docling_shim.app:app --port 8701
 
 Set ``DOCLING_SHIM_API_KEY`` to require ``Authorization: Bearer <key>`` (give RAGCentre the same
 value as the provider's ``api_key`` secret). ``GET /info`` stays open: RAGCentre reads it without
 credentials when it creates the provider.
+
+Service settings (environment, read at start-up; none of them is an option): ``DOCLING_SHIM_DEVICE``
+and ``DOCLING_SHIM_NUM_THREADS`` (accelerator), ``DOCLING_SHIM_PICTURE_DESCRIPTION_URL``,
+``_MODEL`` and ``_API_KEY`` (describe pictures with an OpenAI-compatible server instead of
+Docling's local model). The model is part of the reported version; the URL and key are not.
 """
 
 from __future__ import annotations
 
 import hmac
 import importlib.util
-import io
 import json
 import os
 import platform
 import re
 import sys
-import threading
-from collections import OrderedDict
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from pydantic_core import ErrorDetails
 
 from docling_shim.convert import to_ir
+from docling_shim.engine import MAX_CONVERTERS, DoclingConverter, Settings, ShimError
+from docling_shim.options import Options, OptionsError, parse_options
 
-SHIM_VERSION = "0.2.0"
+__all__ = ["MAX_CONVERTERS", "DoclingConverter", "Options", "create_app", "service_version"]
+
+SHIM_VERSION = "0.3.0"
 PROTOCOL = "ragcentre.parser/v1"
 MIME_TYPES = [
     "application/pdf",
@@ -58,21 +62,8 @@ MIME_TYPES = [
 ]
 
 
-class Options(BaseModel):
-    """The parse route's options. Unknown keys are rejected and types are strict, so ``"false"`` is
-    not a boolean."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    ocr: bool = Field(True, description="Run OCR on pages and images.")
-    include_page_images: bool = Field(False, description="Return each rendered page as a base64 PNG.")
-
-
 # (content, filename, options) -> DoclingDocument
 Converter = Callable[[bytes, str, Options], Any]
-
-# Converters kept at once: each holds its models in memory.
-MAX_CONVERTERS = 4
 
 
 def _docling_version() -> str:
@@ -123,106 +114,13 @@ def _suffix(value: str) -> str:
 
 
 def service_version() -> str:
-    # RAGCentre pins this when the provider is created. A Docling upgrade or a different automatic
-    # OCR engine changes parse output, so both are part of the version.
-    return f"{SHIM_VERSION}+docling.{_docling_version()}.ocr-{_suffix(resolve_ocr_engine())}"
-
-
-class DoclingConverter:
-    """Builds and caches one ``DocumentConverter`` per distinct set of options (the four most
-    recently used)."""
-
-    def __init__(self) -> None:
-        self._converters: OrderedDict[str, Any] = OrderedDict()
-        self._lock = threading.Lock()
-
-    def _converter(self, options: Options) -> Any:
-        from docling.datamodel.base_models import InputFormat
-        from docling.datamodel.pipeline_options import PdfPipelineOptions
-        from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
-
-        key = options.model_dump_json()
-        with self._lock:
-            if key in self._converters:
-                self._converters.move_to_end(key)
-                return self._converters[key]
-            pipeline = PdfPipelineOptions()
-            pipeline.do_ocr = options.ocr
-            pipeline.generate_page_images = options.include_page_images
-            # Images run through the same pipeline as PDFs and need the same options.
-            converter = DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline),
-                    InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline),
-                }
-            )
-            self._converters[key] = converter
-            while len(self._converters) > MAX_CONVERTERS:
-                self._converters.popitem(last=False)
-            return converter
-
-    def __call__(self, content: bytes, filename: str, options: Options) -> Any:
-        from docling.datamodel.base_models import DocumentStream
-
-        result = self._converter(options).convert(DocumentStream(name=filename, stream=io.BytesIO(content)))
-        return result.document
-
-
-# --- option errors ----------------------------------------------------------------------------
-# The same wording as shimkit's (this shim does not import it).
-
-
-def _bounds(key: str) -> dict[str, Any]:
-    field = Options.model_fields.get(key)
-    found: dict[str, Any] = {}
-    for item in field.metadata if field else []:
-        for name in ("ge", "gt", "le", "lt"):
-            if hasattr(item, name):
-                found[name] = getattr(item, name)
-    return found
-
-
-def _range(noun: str, bounds: dict[str, Any]) -> str:
-    low = bounds.get("ge", bounds.get("gt"))
-    high = bounds.get("le", bounds.get("lt"))
-    if "ge" in bounds and "le" in bounds:
-        return f"{noun} from {low} to {high}"
-    parts = []
-    if "ge" in bounds:
-        parts.append(f"at least {low}")
-    if "gt" in bounds:
-        parts.append(f"greater than {low}")
-    if "le" in bounds:
-        parts.append(f"at most {high}")
-    if "lt" in bounds:
-        parts.append(f"less than {high}")
-    return f"{noun} that is {' and '.join(parts)}" if parts else noun
-
-
-def _expectation(error: ErrorDetails) -> str:
-    kind = error["type"]
-    key = str(error["loc"][0]) if error["loc"] else ""
-    if kind == "bool_type":
-        return "true or false"
-    if kind == "literal_error":
-        return str((error.get("ctx") or {}).get("expected", "one of the allowed values")).replace("'", "")
-    if kind in ("int_type", "int_parsing", "int_from_float"):
-        return _range("an integer", _bounds(key))
-    if kind in ("float_type", "float_parsing"):
-        return _range("a number", _bounds(key))
-    simple = {"string_type": "a string", "list_type": "a list", "tuple_type": "a list", "dict_type": "an object"}
-    return simple.get(kind, str(error["msg"]))
-
-
-def options_message(exc: ValidationError) -> str:
-    errors = exc.errors()
-    first = errors[0]
-    top = first["loc"][0] if first["loc"] else None
-    key = str(top) if top is not None else "options"
-    if first["type"] == "extra_forbidden":
-        return f"option {key!r} is not recognised"
-    same = [e for e in errors if e["loc"] and e["loc"][0] == top and e["type"] != "extra_forbidden"]
-    return f"option {key!r} must be {' or '.join(dict.fromkeys(_expectation(e) for e in same))}"
+    # RAGCentre pins this when the provider is created. A Docling upgrade, a different automatic OCR
+    # engine or a different picture-description model changes parse output, so all are part of the
+    # version. Hardware settings, the description URL and its key are not.
+    version_ = f"{SHIM_VERSION}+docling.{_docling_version()}.ocr-{_suffix(resolve_ocr_engine())}"
+    if model := Settings.from_env().picture_description_model:
+        version_ += f".desc-{_suffix(model)}"
+    return version_
 
 
 def error(status: int, code: str, message: str) -> JSONResponse:
@@ -264,13 +162,17 @@ def create_app(converter: Converter | None = None) -> FastAPI:
         if not isinstance(opts, dict):
             return error(400, "invalid_options", "options must be a JSON object")
         try:
-            options_model = Options.model_validate(opts)
-        except ValidationError as exc:
-            return error(400, "invalid_options", options_message(exc))
+            options_model = parse_options(opts)
+        except OptionsError as exc:
+            return error(400, "invalid_options", str(exc))
         content = file.file.read()
         filename = file.filename or "document"
         try:
             doc = convert(content, filename, options_model)
+        except OptionsError as exc:  # the engine rejected a value in ``engine``
+            return error(400, "invalid_options", str(exc))
+        except ShimError as exc:
+            return error(exc.status, exc.code, exc.message)
         except Exception as exc:  # docling.exceptions.ConversionError and friends
             if "format not allowed" in str(exc).lower():  # Docling's message for unsupported formats
                 return error(415, "unsupported_media_type", f"{filename}: {exc}")

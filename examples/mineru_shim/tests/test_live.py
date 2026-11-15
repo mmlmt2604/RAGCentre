@@ -71,7 +71,7 @@ def test_live_parse() -> None:
     assert resp.status_code == 200, resp.text
     ir = resp.json()
     print(json.dumps(ir, indent=1)[:2000])
-    assert ir["schema_version"] == "1.0"
+    assert ir["schema_version"] == "1.1"
     blocks = ir["blocks"]
     assert blocks, "the engine found no text"
     assert len({b["id"] for b in blocks}) == len(blocks)
@@ -85,3 +85,22 @@ def test_live_parse() -> None:
     for b in located:
         x0, y0, x1, y1 = b["bbox"]
         assert x0 <= x1 and y0 <= y1
+
+
+def test_engine_parameters_accounted_for() -> None:
+    """Every parameter of ``mineru.parse`` and every field of ``VlmConfig`` is reached by an option or a
+    service setting, or left out on purpose. A MinerU upgrade that adds one fails this."""
+    import inspect
+
+    import mineru
+    from mineru.config import VlmConfig
+
+    from mineru_shim.engine import NAMED_PARAMETERS, NOT_EXPOSED
+
+    for label, actual in (
+        ("parse", set(inspect.signature(mineru.parse).parameters)),
+        ("VlmConfig", set(VlmConfig.model_fields)),
+    ):
+        known = set(NAMED_PARAMETERS[label]) | set(NOT_EXPOSED[label])
+        assert actual - known == set(), f"new {label} parameters: {sorted(actual - known)}"
+        assert known - actual == set(), f"{label} parameters MinerU no longer has: {sorted(known - actual)}"

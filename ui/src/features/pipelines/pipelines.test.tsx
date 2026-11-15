@@ -164,3 +164,156 @@ describe("pipelines (UI-3)", () => {
     expect(within(dialog).getByText("Make another pipeline active first, then archive this one.")).toBeInTheDocument();
   });
 });
+
+describe("parse route options from the parser's options_schema", () => {
+  type Route = { mime: string; provider: string; options?: Record<string, unknown> };
+  /** Record every plan request, so a test can read the configuration the form is building. */
+  function spyOnPlans() {
+    const bodies: { nodes: { type: string; routes?: Route[] }[] }[] = [];
+    server.use(
+      http.post("/v1/corpora/:id/pipelines", async ({ request }) => {
+        bodies.push((await request.clone().json()) as (typeof bodies)[number]);
+        return undefined; // fall through to the mock
+      }),
+    );
+    const route = () => bodies.at(-1)?.nodes.find((n) => n.type === "parse")?.routes?.[1];
+    return { route };
+  }
+  async function openParse(user: ReturnType<typeof userEvent.setup>) {
+    const graph = await screen.findByRole("group", { name: "Pipeline steps" });
+    await user.click(within(graph).getByText("parse").closest("button")!);
+    return screen.getByRole("region", { name: "Settings for parse" });
+  }
+  const clonePath = `${base}/new?from=${pid("baseline-hybrid")}`;
+
+  it("renders one control per schema property, in order, with defaults as hints", async () => {
+    const user = userEvent.setup();
+    renderApp(clonePath);
+    const parse = await openParse(user);
+    const form = within(parse).getByRole("group", { name: "Parser options" });
+    const labels = within(form).getAllByText(/^(ocr|ocr_languages|include_page_images|image_dpi|tables|table_mode|page_range|engine)$/).map((e) => e.textContent);
+    expect(labels).toEqual(["ocr", "ocr_languages", "include_page_images", "image_dpi", "tables", "table_mode", "page_range", "engine"]);
+    // The stored option is shown; a stored false/true default is not invented for the others.
+    expect(within(form).getByRole("checkbox", { name: "ocr" })).toBeChecked();
+    expect(within(form).getByRole("checkbox", { name: "include_page_images" })).not.toBeChecked();
+    expect(within(form).getByRole("checkbox", { name: "include_page_images" })).toHaveAccessibleDescription(/Default false\./);
+    expect(within(form).getByRole("combobox", { name: "table_mode" })).toHaveValue("");
+    expect(within(form).getByRole("textbox", { name: "image_dpi" })).toHaveAccessibleDescription(/Default 192\..*72–400/);
+    expect(within(form).getByRole("textbox", { name: "engine" })).toBeInTheDocument();
+    expect(within(form).getByRole("textbox", { name: "page_range" })).toBeInTheDocument();
+    // The built-in text route has no schema and keeps its JSON box.
+    expect(within(parse).getByRole("textbox", { name: "Options" })).toBeInTheDocument();
+  });
+
+  it("leaves unset controls out of the options, never writes defaults, and resets a control to unset", async () => {
+    const user = userEvent.setup();
+    renderApp(clonePath);
+    const { route } = spyOnPlans();
+    const parse = await openParse(user);
+    const form = within(parse).getByRole("group", { name: "Parser options" });
+
+    await user.click(form.querySelector<HTMLInputElement>("input[type=checkbox]:not(:checked)")!);
+    await user.selectOptions(within(form).getByRole("combobox", { name: "table_mode" }), "fast");
+    await user.type(within(form).getByRole("textbox", { name: "image_dpi" }), "150");
+    await user.type(within(form).getByRole("textbox", { name: "ocr_languages" }), "en,  de");
+    await waitFor(() => expect(route()?.options).toBeDefined(), { timeout: 3000 });
+    await waitFor(() => expect(route()?.options).toEqual({ ocr: true, include_page_images: true, table_mode: "fast", image_dpi: 150, ocr_languages: ["en", "de"] }), { timeout: 3000 });
+
+    await user.click(within(form).getByRole("button", { name: "Reset include_page_images" }));
+    await user.click(within(form).getByRole("button", { name: "Reset image_dpi" }));
+    await user.click(within(form).getByRole("button", { name: "Reset ocr_languages" }));
+    await waitFor(() => expect(route()?.options).toEqual({ ocr: true, table_mode: "fast" }), { timeout: 3000 });
+    expect(within(form).queryByRole("button", { name: "Reset include_page_images" })).not.toBeInTheDocument();
+
+    // Clearing the last settings leaves no options key at all.
+    await user.click(within(form).getByRole("button", { name: "Reset table_mode" }));
+    await user.click(within(form).getByRole("button", { name: "Reset ocr" }));
+    await waitFor(() => expect(route()).toEqual({ mime: "*/*", provider: "docling" }), { timeout: 3000 });
+    expect(within(form).getByRole("checkbox", { name: "ocr" })).toBeChecked(); // shows the default; nothing is stored
+  });
+
+  it("checks number limits in the control and does not store a value outside them", async () => {
+    const user = userEvent.setup();
+    renderApp(clonePath);
+    const { route } = spyOnPlans();
+    const parse = await openParse(user);
+    const form = within(parse).getByRole("group", { name: "Parser options" });
+    await user.type(within(form).getByRole("textbox", { name: "image_dpi" }), "500");
+    expect(within(form).getByText("Enter a value 72–400.")).toBeInTheDocument();
+    await user.tab();
+    await waitFor(() => expect(route()).toBeDefined(), { timeout: 3000 });
+    expect(route()?.options).toEqual({ ocr: true });
+  });
+
+  it("switches to a JSON box for the whole object and back, keeping the values", async () => {
+    const user = userEvent.setup();
+    renderApp(clonePath);
+    const { route } = spyOnPlans();
+    const parse = await openParse(user);
+    await user.click(within(parse).getByRole("button", { name: "Edit as JSON" }));
+    const box = within(parse).getByRole("textbox", { name: "Options as JSON" });
+    expect(box).toHaveValue('{"ocr":true}');
+    expect(within(parse).queryByRole("group", { name: "Parser options" })).not.toBeInTheDocument();
+    await user.clear(box);
+    await user.click(box);
+    await user.paste('{"ocr": false, "engine": {"beam": 4}}');
+    await user.tab();
+    await waitFor(() => expect(route()?.options).toEqual({ ocr: false, engine: { beam: 4 } }), { timeout: 3000 });
+    await user.click(within(parse).getByRole("button", { name: "Edit as form" }));
+    const form = within(parse).getByRole("group", { name: "Parser options" });
+    expect(within(form).getByRole("checkbox", { name: "ocr" })).not.toBeChecked();
+    expect(within(form).getByRole("textbox", { name: "engine" })).toHaveValue('{"beam":4}');
+    // One key's JSON box edits that key only.
+    const engine = within(form).getByRole("textbox", { name: "engine" });
+    await user.clear(engine);
+    await user.tab();
+    await waitFor(() => expect(route()?.options).toEqual({ ocr: false }), { timeout: 3000 });
+  });
+
+  it("shows server problems on the control they name, including an option the parser does not have", async () => {
+    const user = userEvent.setup();
+    renderApp(clonePath);
+    const parse = await openParse(user);
+    await user.click(within(parse).getByRole("button", { name: "Edit as JSON" }));
+    const box = within(parse).getByRole("textbox", { name: "Options as JSON" });
+    await user.clear(box);
+    await user.click(box);
+    await user.paste('{"ocr": "yes", "image_dpi": 900, "table_mode": "slow", "page_range": [1, 2, 3], "bogus": 1}');
+    await user.tab();
+    // The plan panel lists the same problems; wait for them to come back from the server.
+    expect(await within(parse).findByText(/bogus: This parser has no such option\./, undefined, { timeout: 3000 })).toBeInTheDocument();
+    await user.click(within(parse).getByRole("button", { name: "Edit as form" }));
+    const form = within(parse).getByRole("group", { name: "Parser options" });
+    expect(within(form).getByRole("checkbox", { name: "ocr" })).toHaveAccessibleDescription("Must be true or false.");
+    expect(within(form).getByRole("textbox", { name: "image_dpi" })).toHaveAccessibleDescription("Must be at most 400.");
+    expect(within(form).getByRole("combobox", { name: "table_mode" })).toHaveAccessibleDescription(/^Must be one of: "fast", "accurate"\.$/);
+    expect(within(form).getByRole("textbox", { name: "page_range" })).toHaveAccessibleDescription(/Must have at most 2 items\./);
+    expect(within(form).getByRole("textbox", { name: "bogus" })).toHaveAccessibleDescription("This parser has no such option.");
+    // The unknown option can be removed from the form.
+    await user.click(within(form).getByRole("button", { name: "Remove bogus" }));
+    expect(within(form).queryByRole("textbox", { name: "bogus" })).not.toBeInTheDocument();
+  });
+
+  it("falls back to the JSON box when the provider reports no schema", async () => {
+    const user = userEvent.setup();
+    renderApp(clonePath, "ready", (s) => {
+      s.providers.find((p) => p.name === "docling")!.config.options_schema = null;
+    });
+    const parse = await openParse(user);
+    expect(within(parse).queryByRole("group", { name: "Parser options" })).not.toBeInTheDocument();
+    expect(within(parse).queryByRole("button", { name: "Edit as JSON" })).not.toBeInTheDocument();
+    const boxes = within(parse).getAllByRole("textbox", { name: "Options" });
+    expect(boxes).toHaveLength(2);
+    expect(boxes[1]).toHaveValue('{"ocr":true}');
+  });
+
+  it("falls back to the JSON box when the provider has no options_schema key at all", async () => {
+    const user = userEvent.setup();
+    renderApp(clonePath, "ready", (s) => {
+      delete s.providers.find((p) => p.name === "docling")!.config.options_schema;
+    });
+    const parse = await openParse(user);
+    expect(within(parse).getAllByRole("textbox", { name: "Options" })).toHaveLength(2);
+  });
+});
+

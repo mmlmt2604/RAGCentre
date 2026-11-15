@@ -10,6 +10,7 @@ dependencies = [
     "cryptography>=50.0.2",
     "fastapi>=0.162.5",
     "httpx>=0.28.1",
+    "jsonschema>=4.23",
     "pydantic>=2.14.3",
     "python-multipart>=0.0.33",
     "pyyaml>=6.0.3",
@@ -104,5 +105,6 @@ dev = [
     "mypy>=2.4.1",
     "pytest>=9.2.0",
     "ruff>=0.17.4",
+    "types-jsonschema>=4.23",
     "types-pyyaml>=6.0.12.20261111",
 ]

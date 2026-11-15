@@ -13,9 +13,11 @@ import pytest
 from fastapi.testclient import TestClient
 from shimkit import ShimError
 
-from mineru_shim.app import MIME_TYPES, NAME, create_app
+from mineru_shim import app as app_module
+from mineru_shim import engine as engine_module
+from mineru_shim.app import MIME_TYPES, NAME, create_app, service_version
 from mineru_shim.convert import to_ir
-from mineru_shim.engine import MineruEngine, page_sizes, translate_error
+from mineru_shim.engine import MineruEngine, VlmSettings, page_sizes, translate_error
 
 GOLDEN = Path(__file__).parent / "golden" / "sample_ir.json"
 TABLE_BODY = "<table><tbody><tr><td>Flow</td></tr><tr><td>40 l/min</td></tr></tbody></table>"
@@ -61,7 +63,7 @@ def sample() -> list[dict[str, Any]]:
 
 def test_mapping() -> None:
     ir = to_ir(sample(), SIZES, source_name="manual.pdf")
-    assert ir["schema_version"] == "1.0"
+    assert ir["schema_version"] == "1.1"
     assert ir["metadata"] == {"page_count": 2, "title": "Pump Manual", "source_name": "manual.pdf"}
     assert ir["pages"] == [{"page": 1, "width": 600.0, "height": 800.0}, {"page": 2, "width": 600.0, "height": 800.0}]
     kinds = [(b["type"], b.get("level"), b["text"]) for b in ir["blocks"]]
@@ -266,7 +268,7 @@ def test_service_endpoints() -> None:
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "mineru-shim"
-    assert info["version"].startswith("0.2.0+mineru.")
+    assert info["version"].startswith("0.3.0+mineru.")
     assert "application/pdf" in info["mime_types"] and "text/html" in info["mime_types"]
     assert info["mime_types"] == MIME_TYPES and info["capabilities"] == {"page_images": False}
 
@@ -489,3 +491,102 @@ def test_page_sizes_are_empty_for_other_formats_and_unreadable_files(fake_mineru
     assert page_sizes(tmp_path / "a.docx", "docx") == {}
     assert page_sizes(tmp_path / "a.html", "html") == {}
     assert page_sizes(tmp_path / "a.pdf", "pdf") == {}  # pypdfium2 is not importable here
+
+
+# --- page_range and the VLM settings --------------------------------------------------------------
+
+
+def test_page_range_is_passed_as_first_dash_last_for_pdfs_only() -> None:
+    calls: list[tuple[Any, ...]] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    assert post(client, options={"page_range": [2, 4]}).status_code == 200
+    assert calls[0][2]["page_range"] == "2-4"
+    assert post(client, name="scan.png", options={"page_range": [1, 1]}).status_code == 200
+    assert "page_range" not in calls[1][2]  # MinerU's page selection is for PDFs
+    assert post(client).status_code == 200 and "page_range" not in calls[2][2]
+
+
+@pytest.mark.parametrize("pages", [[3, 1], [0, 2], [1], [1, 2, 3], "1-2", [1.5, 2]])
+def test_bad_page_ranges_are_400(pages: Any) -> None:
+    resp = post(TestClient(create_app(fake_engine([]))), options={"page_range": pages})
+    assert resp.status_code == 400 and "'page_range'" in resp.json()["error"]["message"]
+
+
+def test_the_engine_passes_page_range_and_limits_the_pages_listed(
+    fake_mineru: FakeMineru, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sizes = {1: (612.0, 792.0), 2: (612.0, 792.0), 3: (612.0, 792.0), 4: (612.0, 792.0)}
+    monkeypatch.setattr(engine_module, "page_sizes", lambda path, extension: sizes)
+    _, got = MineruEngine(VlmSettings())(b"x", "a.pdf", {**OPTIONS, "page_range": "2-3"})
+    assert fake_mineru.parse_calls[0][1]["page_range"] == "2-3" and sorted(got) == [2, 3]
+    _, whole = MineruEngine(VlmSettings())(b"x", "a.pdf", OPTIONS)
+    assert "page_range" not in fake_mineru.parse_calls[1][1] and sorted(whole) == [1, 2, 3, 4]
+
+
+@pytest.fixture
+def fake_vlm_config(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    made: list[dict[str, Any]] = []
+
+    class VlmConfig:
+        def __init__(self, **kwargs: Any) -> None:
+            if kwargs.get("engine") == "bogus":
+                raise ValueError("engine must be one of ...")
+            made.append(kwargs)
+            self.kwargs = kwargs
+
+    config = types.ModuleType("mineru.config")
+    config.VlmConfig = VlmConfig  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mineru.config", config)
+    return made
+
+
+def test_vlm_settings_become_a_vlm_config(fake_mineru: FakeMineru, fake_vlm_config: list[dict[str, Any]]) -> None:
+    vlm = VlmSettings(engine="vllm", model="qwen", server_url="http://vlm:8000", api_key="k")
+    MineruEngine(vlm)(b"x", "a.pdf", OPTIONS)
+    assert fake_vlm_config == [{"engine": "vllm", "model": "qwen", "server_url": "http://vlm:8000", "api_key": "k"}]
+    assert fake_mineru.parse_calls[0][1]["vlm_config"].kwargs == fake_vlm_config[0]
+
+
+def test_without_vlm_settings_mineru_uses_its_own_configuration(
+    fake_mineru: FakeMineru, fake_vlm_config: list[dict[str, Any]]
+) -> None:
+    MineruEngine(VlmSettings())(b"x", "a.pdf", OPTIONS)
+    assert "vlm_config" not in fake_mineru.parse_calls[0][1] and fake_vlm_config == []
+
+
+def test_unset_vlm_fields_are_left_out(fake_mineru: FakeMineru, fake_vlm_config: list[dict[str, Any]]) -> None:
+    MineruEngine(VlmSettings(server_url="http://vlm:8000"))(b"x", "a.pdf", OPTIONS)
+    assert fake_vlm_config == [{"server_url": "http://vlm:8000"}]
+
+
+def test_a_bad_vlm_setting_is_503(fake_mineru: FakeMineru, fake_vlm_config: list[dict[str, Any]]) -> None:
+    with pytest.raises(ShimError) as err:
+        MineruEngine(VlmSettings(engine="bogus"))(b"x", "a.pdf", OPTIONS)
+    assert err.value.status == 503 and "MINERU_SHIM_VLM_" in err.value.message
+
+
+def test_vlm_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("ENGINE", "MODEL", "SERVER_URL", "API_KEY"):
+        monkeypatch.delenv(f"MINERU_SHIM_VLM_{name}", raising=False)
+    assert VlmSettings.from_env() == VlmSettings() and not VlmSettings.from_env().configured()
+    monkeypatch.setenv("MINERU_SHIM_VLM_ENGINE", " vllm ")
+    monkeypatch.setenv("MINERU_SHIM_VLM_API_KEY", "k")
+    assert VlmSettings.from_env() == VlmSettings(engine="vllm", api_key="k")
+
+
+def test_the_vlm_engine_and_model_are_part_of_the_version_but_not_the_url_or_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(app_module, "version", lambda name: "4.2.2")
+    for name in ("ENGINE", "MODEL", "SERVER_URL", "API_KEY"):
+        monkeypatch.delenv(f"MINERU_SHIM_VLM_{name}", raising=False)
+    assert service_version() == "0.3.0+mineru.4.2.2"
+    monkeypatch.setenv("MINERU_SHIM_VLM_SERVER_URL", "http://vlm:8000")
+    monkeypatch.setenv("MINERU_SHIM_VLM_API_KEY", "k")
+    assert service_version() == "0.3.0+mineru.4.2.2"
+    monkeypatch.setenv("MINERU_SHIM_VLM_ENGINE", "llama-cpp")
+    assert service_version() == "0.3.0+mineru.4.2.2.vlm-llama-cpp"
+    monkeypatch.setenv("MINERU_SHIM_VLM_MODEL", "Qwen/Qwen3-VL-4B:q4")
+    assert service_version() == "0.3.0+mineru.4.2.2.vlm-llama-cpp-Qwen-Qwen3-VL-4B-q4"
+    monkeypatch.delenv("MINERU_SHIM_VLM_ENGINE")
+    assert service_version() == "0.3.0+mineru.4.2.2.vlm-auto-Qwen-Qwen3-VL-4B-q4"

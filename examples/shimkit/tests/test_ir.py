@@ -20,7 +20,7 @@ def test_ids_and_blank_blocks() -> None:
         {"type": "paragraph", "text": "two", "id": "stale"},
     ]
     ir = build_ir(blocks, [])
-    assert ir["schema_version"] == "1.0"
+    assert ir["schema_version"] == "1.1"
     assert [(b["id"], b["type"]) for b in ir["blocks"]] == [("b1", "paragraph"), ("b2", "figure"), ("b3", "paragraph")]
 
 

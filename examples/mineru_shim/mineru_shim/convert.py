@@ -1,4 +1,4 @@
-"""Turn MinerU's flat content list into RAGCentre's Document IR (schema 1.0). This module imports
+"""Turn MinerU's flat content list into RAGCentre's Document IR (schema 1.1). This module imports
 nothing from MinerU.
 
 ``mineru.render.content_list.render_content_list(result.middle_json)`` returns a list of dicts in

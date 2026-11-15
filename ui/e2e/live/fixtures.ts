@@ -74,7 +74,7 @@ export const fixtureURL = `http://127.0.0.1:${process.env.RAGCENTRE_E2E_FIXTURE_
 export async function parserControl(key: string, mode?: 'ok' | 'fail' | 'hold') {
   const response = await fetch(`${fixtureURL}/${key}/control`, mode ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode }) } : undefined);
   expect(response.ok).toBeTruthy();
-  return response.json() as Promise<{ mode: string; requests: number; completed: number; waiting: number }>;
+  return response.json() as Promise<{ mode: string; requests: number; completed: number; waiting: number; lastOptions: Record<string, unknown> | null }>;
 }
 
 export async function externalPipeline(prefix: string, mode: 'fail' | 'hold') {

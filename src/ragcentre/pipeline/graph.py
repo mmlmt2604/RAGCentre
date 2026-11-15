@@ -7,11 +7,14 @@ pipeline fingerprint. Node ids never enter a fingerprint, so renaming a node cha
 
 from __future__ import annotations
 
+import itertools
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+import jsonschema
+import jsonschema.validators
 from pydantic import ValidationError
 
 from ragcentre.chunking import get_strategy, options_with_defaults
@@ -260,6 +263,12 @@ class _Resolver:
                     rows.append(self.provider(node.id, route.provider, "parser", f"nodes[{i}].routes[{j}].provider"))
                     if not _json_ok(route.options):
                         self.problem(node.id, f"nodes[{i}].routes[{j}].options", "Options must be plain JSON.")
+                    elif rows[-1] is not None:
+                        schema = rows[-1].config.get("options_schema")
+                        if isinstance(schema, dict):
+                            base = f"nodes[{i}].routes[{j}].options"
+                            for suffix, message in option_problems(schema, route.options):
+                                self.problem(node.id, base + suffix, message)
                 entry["routes"] = rows
             elif isinstance(node, ChunkNode):
                 strategy = get_strategy(node.strategy)
@@ -393,6 +402,81 @@ class _Resolver:
         if r.expand is not None and not 0 <= r.expand.neighbors <= 5:
             self.problem(None, "retrieval.expand.neighbors", "neighbors must be between 0 and 5.")
         return reranker
+
+
+def _quoted(value: Any) -> str:
+    return f'"{value}"' if isinstance(value, str) else str(value).lower() if isinstance(value, bool) else str(value)
+
+
+_TYPE_NAMES = {
+    "boolean": "true or false",
+    "integer": "a whole number",
+    "number": "a number",
+    "string": "text",
+    "array": "a list",
+    "object": "an object",
+    "null": "null",
+}
+
+
+def _describe(error: jsonschema.ValidationError) -> str:
+    """A short sentence for one schema violation (not the jsonschema library's own wording)."""
+    kind = error.validator
+    rule: Any = error.validator_value
+    if kind == "type":
+        names = [rule] if isinstance(rule, str) else list(rule)
+        return "Must be " + " or ".join(_TYPE_NAMES.get(str(n), str(n)) for n in names) + "."
+    if kind == "enum":
+        return "Must be one of: " + ", ".join(_quoted(v) for v in rule) + "."
+    if kind == "const":
+        return f"Must be {_quoted(rule)}."
+    if kind == "minimum":
+        return f"Must be at least {rule}."
+    if kind == "maximum":
+        return f"Must be at most {rule}."
+    if kind == "exclusiveMinimum":
+        return f"Must be greater than {rule}."
+    if kind == "exclusiveMaximum":
+        return f"Must be less than {rule}."
+    if kind in ("minLength", "minItems"):
+        return f"Must have at least {rule} {'characters' if kind == 'minLength' else 'items'}."
+    if kind in ("maxLength", "maxItems"):
+        return f"Must have at most {rule} {'characters' if kind == 'maxLength' else 'items'}."
+    if kind in ("anyOf", "oneOf") and error.context:
+        # One sentence per alternative, joined: "Must be true or false or "auto"", "Must have at most 2
+        # items or be null".
+        context: Any = error.context
+        pieces = list(dict.fromkeys(_describe(e).rstrip(".").removeprefix("Must ") for e in context))
+        text = pieces[0]
+        for previous, piece in itertools.pairwise(pieces):
+            text += " or " + (
+                piece.removeprefix("be ") if previous.startswith("be ") and piece.startswith("be ") else piece
+            )
+        return f"Must {text}."
+    if kind == "required":
+        return "Is required."
+    return str(error.message)
+
+
+def option_problems(schema: Mapping[str, Any], options: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Violations of a parser's ``options_schema`` by a route's options, as ``(path suffix, message)``
+    pairs: ``.key`` for an option, ``""`` when the object itself is at fault."""
+    try:
+        validator = jsonschema.validators.validator_for(schema)(schema)
+    except Exception:  # a stored schema that no longer builds is not the pipeline author's fault
+        return []
+    found: list[tuple[str, str]] = []
+    for error in sorted(validator.iter_errors(options), key=lambda e: [str(p) for p in e.absolute_path]):
+        where = "".join(f".{p}" if isinstance(p, str) else f"[{p}]" for p in error.absolute_path)
+        if error.validator == "additionalProperties" and not error.absolute_path:
+            error_schema: Any = error.schema
+            declared = set((error_schema.get("properties") or {}).keys())
+            for key in options:
+                if key not in declared:
+                    found.append((f".{key}", "This parser has no such option."))
+            continue
+        found.append((where, _describe(error)))
+    return found
 
 
 def _json_ok(value: Any) -> bool:

@@ -18,6 +18,20 @@ IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp"
 SUPPORTED_EXTENSIONS = frozenset({"pdf"}) | IMAGE_EXTENSIONS
 DEFAULT_DPI = 192  # surya.settings.settings.IMAGE_DPI_HIGHRES
 
+# Every parameter of the Surya calls the shim makes is in one of these places (the live test
+# ``test_engine_parameters_accounted_for`` compares them with the installed Surya).
+NAMED_PARAMETERS = {
+    "RecognitionPredictor.__call__": {"images": "the pages", "skip_labels": "option ocr_figures"},
+    "load_pdf": {"pdf_path": "the document", "page_range": "option page_range", "dpi": "option dpi"},
+}
+NOT_EXPOSED = {
+    "RecognitionPredictor.__call__": {
+        "layout_results": "never given: Surya then reads whole pages, which is its more accurate mode",
+        "full_page": "True is what Surya picks without layout results; False raises without them",
+    },
+    "load_pdf": {},
+}
+
 # Failures of the inference server (surya/inference/backends use the ``openai`` client and
 # ``SpawnError``); these mean "try again later", not "this document is bad".
 _UNAVAILABLE = {"APIConnectionError", "APITimeoutError", "SpawnError"}
@@ -46,6 +60,7 @@ def reduce_page(prediction: Any, number: int, image: Any, *, with_image: bool) -
                 "label": block.label,
                 "html": block.html,
                 "bbox": list(block.bbox),
+                "confidence": block.confidence,
                 "reading_order": block.reading_order,
                 "skipped": block.skipped,
                 "error": block.error,
@@ -93,10 +108,25 @@ class SuryaEngine:
         predictor = self._get_predictor()
         from surya.input.load import load_image, load_pdf
 
+        # Page numbers in the IR are the pages' numbers in the file, whatever range is parsed.
+        first, last = options.get("page_range") or (None, None)
+        numbers: list[int] | None = None
         with temp_upload(content, filename) as path:
             if file_extension(filename) == "pdf":
-                images, _ = load_pdf(path, dpi=options["dpi"])
+                if first is None:
+                    images, _ = load_pdf(path, dpi=options["dpi"])
+                else:
+                    # load_pdf takes 0-based page indices and rejects any outside the file.
+                    try:
+                        images, _ = load_pdf(path, page_range=list(range(first - 1, last)), dpi=options["dpi"])
+                    except ValueError as exc:
+                        raise ShimError(400, "invalid_options", f"option 'page_range' {[first, last]}: {exc}") from exc
+                    numbers = list(range(first, last + 1))
             else:
+                if first is not None and first > 1:
+                    raise ShimError(
+                        400, "invalid_options", f"option 'page_range' {[first, last]} is outside this 1-page image"
+                    )
                 images, _ = load_image(path)
         try:
             predictions = predictor(images, skip_labels=[] if options["ocr_figures"] else None)
@@ -108,5 +138,7 @@ class SuryaEngine:
             raise
         return [
             reduce_page(prediction, number, image, with_image=options["include_page_images"])
-            for number, (prediction, image) in enumerate(zip(predictions, images, strict=True), start=1)
+            for number, (prediction, image) in zip(
+                numbers or range(1, len(images) + 1), zip(predictions, images, strict=True), strict=True
+            )
         ]

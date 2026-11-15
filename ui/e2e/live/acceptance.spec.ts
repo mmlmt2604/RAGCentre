@@ -2,7 +2,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { Corpus, EvalRunDetail, Pipeline, PipelinePlan, Provider, QueryResponse } from '../../src/api/types';
 import { api } from './api';
-import { documents, expectReady, externalPipeline, parserControl, pipelinePath, readyCorpus, runs, waitForPipeline } from './fixtures';
+import { documents, expectReady, externalPipeline, fixtureURL, parserControl, pipelinePath, readyCorpus, runs, setupCorpus, waitForPipeline } from './fixtures';
 
 async function submit<T>(page: Page, path: string, action: () => Promise<unknown>): Promise<T> {
   const response = page.waitForResponse(r => r.url().endsWith(`/v1${path}`) && r.request().method() === 'POST');
@@ -218,3 +218,60 @@ test('5. guard rails: building query error, permanent provider settings and acti
     await parserControl(key, 'ok');
   }
 });
+
+test('6. parser options: the form comes from the service schema, unset options are omitted and the server checks the rest', async ({ page }, info) => {
+  const key = `options-${info.retry}`;
+  const setup = await setupCorpus(key, 1);
+  const parser = await api<Provider>('POST', '/providers', { name: `${key}-parser`, kind: 'parser', type: 'http', config: { base_url: `${fixtureURL}/${key}`, timeout_seconds: 120 } });
+  expect(parser.config.options_schema).toMatchObject({ type: 'object', additionalProperties: false });
+  expect(Object.keys((parser.config.options_schema as { properties: object }).properties)).toEqual(['ocr', 'table_mode', 'image_dpi', 'engine']);
+
+  await page.goto(`/corpora/${setup.corpus.id}/pipelines`);
+  await page.getByRole('link', { name: 'New pipeline' }).first().click();
+  await page.getByRole('button', { name: /^Hybrid Vector/ }).click();
+  await page.getByRole('textbox', { name: 'Name *', exact: true }).fill(`${key}-pipeline`);
+  const graph = page.getByRole('group', { name: 'Pipeline steps' });
+  await graph.getByText('parse', { exact: true }).click();
+  const settings = page.getByRole('region', { name: 'Settings for parse' });
+  await expect(settings.getByRole('textbox', { name: 'Options', exact: true })).toBeVisible(); // builtin-text reports no schema
+  await settings.getByLabel('Parser', { exact: true }).selectOption(`${key}-parser`);
+
+  const form = settings.getByRole('group', { name: 'Parser options' });
+  await expect(form).toBeVisible();
+  await expect(form.getByRole('checkbox', { name: 'ocr', exact: true })).toBeChecked(); // the default is shown, not stored
+  await expect(form.getByRole('textbox', { name: 'image_dpi', exact: true })).toHaveAttribute('placeholder', '192');
+
+  // The service rejects an option it does not list; the problem lands on that option's control.
+  await settings.getByRole('button', { name: 'Edit as JSON', exact: true }).click();
+  await settings.getByRole('textbox', { name: 'Options as JSON', exact: true }).fill('{"bogus": 1}');
+  await settings.getByRole('textbox', { name: 'Options as JSON', exact: true }).blur();
+  const plan = page.getByRole('complementary', { name: 'Plan' });
+  await expect(plan.getByText('This parser has no such option.')).toBeVisible();
+  await settings.getByRole('button', { name: 'Edit as form', exact: true }).click();
+  await expect(form.getByRole('textbox', { name: 'bogus', exact: true })).toHaveAccessibleDescription('This parser has no such option.');
+  await expect(plan.getByRole('button', { name: 'Create pipeline' })).toBeDisabled();
+  await form.getByRole('button', { name: 'Remove bogus', exact: true }).click();
+
+  // Set two options and leave the others unset.
+  await form.getByRole('checkbox', { name: 'ocr', exact: true }).uncheck();
+  await form.getByRole('combobox', { name: 'table_mode', exact: true }).selectOption('fast');
+  await expect(plan.getByText('Valid', { exact: true })).toBeVisible();
+  const pipeline = await submit<Pipeline>(page, `/corpora/${setup.corpus.id}/pipelines`, () => plan.getByRole('button', { name: 'Create pipeline' }).click());
+  const parse = pipeline.config.nodes.find(n => n.type === 'parse');
+  expect(parse && 'routes' in parse && parse.routes[0]).toEqual({ mime: 'text/*', provider: `${key}-parser`, options: { ocr: false, table_mode: 'fast' } });
+
+  // The service receives exactly those options: no defaults were filled in.
+  await waitForPipeline(pipeline.id);
+  expect((await parserControl(key)).lastOptions).toEqual({ ocr: false, table_mode: 'fast' });
+
+  // The server enforces the schema on its own, whatever the UI does.
+  const bad = { ...pipeline.config, name: `${key}-bad`, nodes: pipeline.config.nodes.map(n => n.type === 'parse' ? { ...n, routes: [{ mime: 'text/*', provider: `${key}-parser`, options: { ocr: 'yes', image_dpi: 900, nope: 1 } }] } : n) };
+  const dryRun = await api<PipelinePlan>('POST', `/corpora/${setup.corpus.id}/pipelines?dry_run=true`, bad);
+  expect(dryRun.valid).toBe(false);
+  if (!dryRun.valid) expect(dryRun.problems.map(p => [p.path, p.message])).toEqual(expect.arrayContaining([
+    ['nodes[0].routes[0].options.ocr', 'Must be true or false.'],
+    ['nodes[0].routes[0].options.image_dpi', 'Must be at most 400.'],
+    ['nodes[0].routes[0].options.nope', 'This parser has no such option.'],
+  ]));
+});
+

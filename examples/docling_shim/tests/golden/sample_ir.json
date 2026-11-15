@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "metadata": {
     "page_count": 2,
     "title": "Pump Manual",
@@ -108,7 +108,11 @@
     },
     {
       "type": "figure",
-      "text": "Figure 1: exploded view",
+      "text": "Figure 1: exploded view\n\nAn exploded view of the pump.",
+      "metadata": {
+        "description": "An exploded view of the pump.",
+        "classification": "engineering_drawing"
+      },
       "page": 2,
       "bbox": [
         50.0,
@@ -117,6 +121,70 @@
         380.0
       ],
       "id": "b8"
+    },
+    {
+      "type": "paragraph",
+      "text": "A paragraph that runs over the page break.",
+      "page": 2,
+      "bbox": [
+        50.0,
+        440.0,
+        550.0,
+        460.0
+      ],
+      "spans": [
+        {
+          "page": 2,
+          "bbox": [
+            50.0,
+            440.0,
+            550.0,
+            460.0
+          ]
+        },
+        {
+          "page": 2,
+          "bbox": [
+            50.0,
+            470.0,
+            550.0,
+            500.0
+          ]
+        }
+      ],
+      "id": "b9"
+    },
+    {
+      "type": "paragraph",
+      "text": "Continued on the next page.",
+      "page": 1,
+      "bbox": [
+        50.0,
+        710.0,
+        550.0,
+        730.0
+      ],
+      "spans": [
+        {
+          "page": 1,
+          "bbox": [
+            50.0,
+            710.0,
+            550.0,
+            730.0
+          ]
+        },
+        {
+          "page": 2,
+          "bbox": [
+            50.0,
+            10.0,
+            550.0,
+            30.0
+          ]
+        }
+      ],
+      "id": "b10"
     }
   ]
 }

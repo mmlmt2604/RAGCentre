@@ -171,6 +171,8 @@ class ProviderManager:
             info = self._capture_info(spec, provider_id, name, model)
             stored["service_name"] = info.name
             stored["service_version"] = info.version
+            if "options_schema" in spec.captured_fields:
+                stored["options_schema"] = info.options_schema
         if self.by_name(name) is not None:
             raise Conflict(f"A provider named {name!r} already exists.")
         now = now_iso()

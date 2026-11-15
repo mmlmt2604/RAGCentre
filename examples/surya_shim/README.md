@@ -70,15 +70,22 @@ retries.
 
 ## Options
 
-The parse route's `options` are passed to the service:
+The parse route's `options` are validated by the service and reported by `/info` as `options_schema`;
+RAGCentre checks a pipeline's route against it when the pipeline is created. An unknown key or a
+value of the wrong type is `400 invalid_options` naming the option.
 
 | Option | Default | Meaning |
 |---|---|---|
 | `include_page_images` | `false` | Return each rendered page as a base64 PNG in `pages[].image`. Its pixels are the unit of the boxes |
 | `ocr_figures` | `false` | Also read text inside pictures, figures and diagrams (otherwise they are left empty) |
 | `dpi` | `192` | Render resolution for PDF pages, an integer from 72 to 400 |
+| `page_range` | whole file | `[first, last]`, 1-based and inclusive. IR page numbers are the file's, not positions in the range. A range outside a PDF is `400 invalid_options`; for an image only a range that includes page 1 is accepted |
 
-Options are strictly typed and unknown keys are rejected with `400 invalid_options` naming the key. `/info` reports the schema as `options_schema`.
+There is no `engine` passthrough and no `full_page` option: the shim never gives Surya layout results,
+so Surya always reads whole pages (its more accurate mode), and `full_page=False` would raise without
+them. The backend, model and inference-server settings are Surya's own `SURYA_*` environment variables
+(`SURYA_INFERENCE_BACKEND`, `SURYA_INFERENCE_URL`, `SURYA_MODEL_CHECKPOINT`, `SURYA_GGUF_*`); the ones
+that change the output are in the version below.
 
 The shim does not serialise parses: it is a client of the inference server. The provider file sets
 `max_concurrency: 2`. Only the first frame of a multi-page TIFF is read.
@@ -96,8 +103,8 @@ uv run ragcentre provider set-secret surya api_key --env SURYA_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.2.0+surya.<surya-ocr version>.<model>.<backend>`, with `.gguf-<file>` added for a
-llama.cpp model file other than the default, for example `0.2.0+surya.0.24.0.surya-ocr-2.5.llamacpp`:
+`/info` reports `0.3.0+surya.<surya-ocr version>.<model>.<backend>`, with `.gguf-<file>` added for a
+llama.cpp model file other than the default, for example `0.3.0+surya.0.24.0.surya-ocr-2.5.llamacpp`:
 
 - `<model>` is the last segment of `SURYA_MODEL_CHECKPOINT`.
 - `<backend>` is `SURYA_INFERENCE_BACKEND` if set, otherwise what Surya's own auto-detection picks
@@ -127,6 +134,8 @@ footnotes, page headers and page footers keep their names. Blocks come in readin
 - **No document title.** Surya has no title label, so a document has a level-1 heading only when
   the model wrote an `<h1>`. Nothing is promoted.
 - **Captions** are separate `caption` blocks next to the figure or table they belong to.
+- **Confidence.** Surya's per-block `confidence` is carried as `blocks[].confidence` (schema 1.1),
+  clamped to 0 to 1; every `list_item` made from one list block carries the list's value.
 
 ## Licence
 
@@ -150,6 +159,10 @@ uv run --isolated --no-project --with ../shimkit --with fastapi --with python-mu
 ```sh
 SHIM_LIVE=1 uv run pytest tests/test_live.py -s
 ```
+
+The same file checks that every parameter of the Surya calls the shim makes
+(`RecognitionPredictor.__call__`, `load_pdf`) is accounted for in `surya_shim/engine.py`, so a Surya
+upgrade that adds one fails it until someone decides where it belongs.
 
 `tests/golden/sample_ir.json` is the IR for a sample document; RAGCentre's own suite validates it
 (`tests/test_parser_shim_goldens.py`). Regenerate it with `UPDATE_GOLDEN=1 uv run pytest`.

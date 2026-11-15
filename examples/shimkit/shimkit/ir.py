@@ -1,11 +1,11 @@
-"""Assemble a Document IR (schema 1.0) from blocks and pages that a shim's ``convert`` built."""
+"""Assemble a Document IR (schema 1.1) from blocks and pages that a shim's ``convert`` built."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-IR_VERSION = "1.0"
+IR_VERSION = "1.1"
 
 
 def build_ir(

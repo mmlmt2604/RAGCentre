@@ -13,9 +13,17 @@ import pytest
 from fastapi.testclient import TestClient
 from shimkit import ShimError
 
+from paddleocr_shim import engine as engine_module
 from paddleocr_shim.app import NAME, create_app, service_version
 from paddleocr_shim.convert import to_ir
-from paddleocr_shim.engine import PaddleEngine, reduce_page
+from paddleocr_shim.engine import (
+    ENGINE_INIT_ARGUMENTS,
+    ENGINE_PREDICT_ARGUMENTS,
+    NAMED_ARGUMENTS,
+    PaddleEngine,
+    reduce_page,
+    split_engine,
+)
 
 GOLDEN = Path(__file__).parent / "golden" / "sample_ir.json"
 TABLE_HTML = "<html><body><table><tr><td>Flow</td></tr><tr><td>40 l/min</td></tr></table></body></html>"
@@ -59,7 +67,7 @@ def sample() -> list[dict[str, Any]]:
 
 def test_mapping() -> None:
     ir = to_ir(sample(), source_name="manual.pdf")
-    assert ir["schema_version"] == "1.0"
+    assert ir["schema_version"] == "1.1"
     assert ir["metadata"] == {"page_count": 2, "title": "Pump Manual", "source_name": "manual.pdf"}
     assert ir["pages"] == [
         {"page": 1, "width": 1200.0, "height": 1600.0},
@@ -237,7 +245,7 @@ def test_service_endpoints() -> None:
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "paddleocr-shim"
-    assert info["version"].startswith("0.2.0+paddleocr.")
+    assert info["version"].startswith("0.3.0+paddleocr.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/bmp", "image/tiff", "image/webp"]
     assert info["capabilities"] == {"page_images": False}
 
@@ -253,9 +261,16 @@ def test_service_endpoints() -> None:
         "orientation": False,
         "unwarp": False,
     }
-    assert calls[0] == (b"%PDF", "m.pdf", {**defaults, "tables": False, "heading_levels": True})
+    unset = {
+        "languages": None,
+        "ocr_version": None,
+        "textline_orientation": None,
+        "region_detection": None,
+        "engine": {},
+    }
+    assert calls[0] == (b"%PDF", "m.pdf", {**defaults, **unset, "tables": False, "heading_levels": True})
     assert post(client).status_code == 200
-    assert calls[1][2] == {**defaults, "heading_levels": False}  # no options: the defaults
+    assert calls[1][2] == {**defaults, **unset, "heading_levels": False}  # no options: the defaults
 
     bad = post(client, options='["not an object"]')
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
@@ -288,7 +303,7 @@ def test_lang_is_part_of_the_version(monkeypatch: pytest.MonkeyPatch) -> None:
     assert service_version("en").endswith(".lang-en")
     monkeypatch.setenv("PADDLEOCR_SHIM_LANG", "fr")
     info = TestClient(create_app(fake_engine([]))).get("/info").json()
-    assert info["version"].endswith(".lang-fr") and info["version"].startswith("0.2.0+paddleocr.")
+    assert info["version"].endswith(".lang-fr") and info["version"].startswith("0.3.0+paddleocr.")
 
 
 def test_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -475,3 +490,127 @@ def test_heading_levels_failure_is_ignored(fake_paddleocr: type[FakePipeline]) -
     # PaddleX is not importable here, so the levelling raises ImportError; the parse still succeeds.
     pages = PaddleEngine()(b"x", "a.pdf", {**OPTIONS, "heading_levels": True})
     assert pages[0]["blocks"][0]["title_level"] is None
+
+
+# --- the new options ----------------------------------------------------------------------------
+
+
+def test_languages_replace_the_environment_default(fake_paddleocr: type[FakePipeline]) -> None:
+    engine = PaddleEngine(lang="en")
+    engine(b"x", "a.pdf", {**OPTIONS, "languages": ["fr"]})
+    engine(b"x", "a.pdf", OPTIONS)
+    assert [p.kwargs["lang"] for p in fake_paddleocr.instances] == ["fr", "en"]
+    assert all("lang" not in p.predict_calls[0][1] for p in fake_paddleocr.instances)  # constructor only
+
+
+def test_ocr_version_and_the_optional_flags_reach_the_pipeline(fake_paddleocr: type[FakePipeline]) -> None:
+    PaddleEngine()(
+        b"x",
+        "a.pdf",
+        {**OPTIONS, "ocr_version": "PP-OCRv4", "textline_orientation": False, "region_detection": True},
+    )
+    (pipeline,) = fake_paddleocr.instances
+    assert pipeline.kwargs["ocr_version"] == "PP-OCRv4"
+    assert pipeline.kwargs["use_textline_orientation"] is False and pipeline.kwargs["use_region_detection"] is True
+    assert pipeline.predict_calls[0][1]["use_textline_orientation"] is False
+    assert "ocr_version" not in pipeline.predict_calls[0][1]
+
+
+def test_unset_optional_flags_are_not_sent(fake_paddleocr: type[FakePipeline]) -> None:
+    PaddleEngine()(b"x", "a.pdf", {**OPTIONS, "textline_orientation": None, "region_detection": None})
+    assert "use_textline_orientation" not in fake_paddleocr.instances[0].kwargs
+
+
+def test_engine_arguments_go_to_the_constructor_and_predict_by_signature(fake_paddleocr: type[FakePipeline]) -> None:
+    engine = {
+        "text_recognition_model_name": "PP-OCRv5_mobile_rec",  # constructor only
+        "use_ocr_results_with_table_cells": False,  # predict only
+        "layout_threshold": 0.3,  # both
+    }
+    PaddleEngine()(b"x", "a.pdf", {**OPTIONS, "engine": engine})
+    (pipeline,) = fake_paddleocr.instances
+    assert pipeline.kwargs == {**FLAGS, "text_recognition_model_name": "PP-OCRv5_mobile_rec", "layout_threshold": 0.3}
+    assert pipeline.predict_calls[0][1] == {**FLAGS, "use_ocr_results_with_table_cells": False, "layout_threshold": 0.3}
+
+
+@pytest.mark.parametrize(
+    ("engine", "text"),
+    [
+        ({"text_det_model_dir": "/x"}, "'text_det_model_dir'"),
+        ({"layout_detection_model_dir": "/x"}, "'layout_detection_model_dir'"),
+        ({"text_recognition_batch_size": 64}, "'text_recognition_batch_size'"),
+        ({"layout_threshold": {"api_key": "k"}}, "'layout_threshold.api_key'"),
+        ({"kwargs": {}}, "'kwargs'"),
+        ({"input": "/etc/passwd"}, "'input'"),
+        ({"use_table_recognition": False}, "use the option 'tables'"),
+        ({"use_textline_orientation": True}, "use the option 'textline_orientation'"),
+        ({"lang": "fr"}, "use the option 'languages'"),
+        ({"ocr_version": "PP-OCRv4"}, "use the option 'ocr_version'"),
+        ({"layout_treshold": 0.3}, "no PP-StructureV3 argument 'layout_treshold'"),
+    ],
+)
+def test_engine_refuses_denied_named_and_unknown_arguments(engine: dict[str, Any], text: str) -> None:
+    with pytest.raises(ShimError) as err:
+        split_engine(engine)
+    assert err.value.status == 400 and err.value.code == "invalid_options" and text in err.value.message
+
+
+def test_the_service_answers_a_bad_engine_with_400_before_the_engine_runs() -> None:
+    calls: list[tuple[Any, ...]] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    resp = post(client, options={"engine": {"text_det_model_dir": "/x"}})
+    assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options"
+    assert post(client, options={"engine": {"layout_threshold": 0.3}}).status_code == 200
+    assert len(calls) == 1
+
+
+def test_named_arguments_and_engine_arguments_do_not_overlap() -> None:
+    assert not set(NAMED_ARGUMENTS) & (ENGINE_INIT_ARGUMENTS | ENGINE_PREDICT_ARGUMENTS)
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"languages": []},
+        {"languages": ["en", "fr"]},
+        {"languages": "en"},
+        {"ocr_version": "PP-OCRv9"},
+        {"textline_orientation": "yes"},
+        {"engine": []},
+        {"page_range": [1, 2]},  # PP-StructureV3 has no page selection, so the option does not exist
+    ],
+)
+def test_new_options_are_validated(options: dict[str, Any]) -> None:
+    resp = post(TestClient(create_app(fake_engine([]))), options=options)
+    assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options"
+    assert f"'{next(iter(options))}'" in resp.json()["error"]["message"]
+
+
+def test_the_pipeline_cache_is_bounded_and_least_recently_used(
+    fake_paddleocr: type[FakePipeline], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert engine_module.MAX_PIPELINES == 4
+    monkeypatch.setattr(engine_module, "MAX_PIPELINES", 2)
+    engine = PaddleEngine()
+    a, b, c = OPTIONS, {**OPTIONS, "charts": True}, {**OPTIONS, "seals": True}
+    engine(b"x", "a.pdf", a)
+    engine(b"x", "a.pdf", b)
+    engine(b"x", "a.pdf", a)  # a is now the most recently used
+    engine(b"x", "a.pdf", c)  # evicts b
+    assert len(fake_paddleocr.instances) == 3
+    engine(b"x", "a.pdf", a)  # still cached
+    assert len(fake_paddleocr.instances) == 3
+    engine(b"x", "a.pdf", b)  # was evicted: built again
+    assert len(fake_paddleocr.instances) == 4
+
+
+def test_the_pipeline_cache_is_keyed_on_everything_that_reaches_the_constructor(
+    fake_paddleocr: type[FakePipeline],
+) -> None:
+    engine = PaddleEngine()
+    engine(b"x", "a.pdf", {**OPTIONS, "engine": {"layout_threshold": 0.3}})
+    engine(b"x", "a.pdf", {**OPTIONS, "engine": {"layout_threshold": 0.3}})
+    engine(b"x", "a.pdf", {**OPTIONS, "engine": {"layout_threshold": 0.4}})
+    engine(b"x", "a.pdf", {**OPTIONS, "languages": ["fr"]})
+    engine(b"x", "a.pdf", {**OPTIONS, "ocr_version": "PP-OCRv4"})
+    assert len(fake_paddleocr.instances) == 4

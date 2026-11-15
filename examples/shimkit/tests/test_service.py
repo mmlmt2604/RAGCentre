@@ -11,10 +11,14 @@ from fastapi.testclient import TestClient
 from pydantic import Field
 
 from shimkit.service import (
+    PAGE_RANGE_DESCRIPTION,
     PROTOCOL,
+    PageRange,
     ShimError,
     ShimOptions,
+    check_engine_options,
     create_app,
+    denied_engine_key,
     file_extension,
     temp_upload,
 )
@@ -29,6 +33,7 @@ class Demo(ShimOptions):
     dpi: int = Field(192, ge=72, le=400, description="Resolution.")
     scale: float = Field(1.0, gt=0, description="Scale.")
     limit: int | None = Field(None, ge=1, description="At most this many.")
+    pages: PageRange | None = Field(None, description=PAGE_RANGE_DESCRIPTION)
 
 
 def make_client(parse: Any = None, *, serialise: bool = False, version: Any = None) -> TestClient:
@@ -72,7 +77,7 @@ def test_info() -> None:
 
 def test_info_reports_the_options_schema() -> None:
     schema = make_client().get("/info").json()["options_schema"]
-    assert set(schema["properties"]) == {"tables", "ocr", "tier", "dpi", "scale", "limit"}
+    assert set(schema["properties"]) == {"tables", "ocr", "tier", "dpi", "scale", "limit", "pages"}
     assert schema["additionalProperties"] is False
     assert schema["properties"]["dpi"]["minimum"] == 72 and schema["properties"]["dpi"]["maximum"] == 400
     assert all(spec["description"] for spec in schema["properties"].values())
@@ -165,7 +170,7 @@ def test_valid_options_are_accepted() -> None:
 
     body = {"tables": False, "ocr": "auto", "tier": "flash", "dpi": 72, "scale": 2, "limit": 3}
     assert post(make_client(parse), options=json.dumps(body)).status_code == 200
-    assert seen[0].model_dump() == {**body, "scale": 2.0}
+    assert seen[0].model_dump() == {**body, "scale": 2.0, "pages": None}
 
 
 def test_other_exceptions_are_conversion_failed() -> None:
@@ -328,3 +333,70 @@ def test_shutdown_hook_runs_when_the_server_stops() -> None:
 def test_no_shutdown_hook_is_fine() -> None:
     with TestClient(make_client().app):
         pass
+
+
+# --- page_range and the engine passthrough --------------------------------------------------------
+
+
+@pytest.mark.parametrize("pages", [[1, 1], [2, 5], [1, 1000]])
+def test_page_range_accepts_first_last(pages: list[int]) -> None:
+    seen: list[Demo] = []
+
+    def parse(content: bytes, filename: str, opts: Demo) -> dict[str, Any]:
+        seen.append(opts)
+        return IR
+
+    assert post(make_client(parse), options=json.dumps({"pages": pages})).status_code == 200
+    assert seen[0].pages == pages
+
+
+@pytest.mark.parametrize(
+    "pages",
+    [[5, 2], [0, 3], [-1, 3], [1], [1, 2, 3], "1-3", [1.5, 2], ["1", "2"], [True, 2], {"first": 1}],
+)
+def test_page_range_rejects_everything_else(pages: Any) -> None:
+    resp = post(make_client(), options=json.dumps({"pages": pages}))
+    assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options"
+    assert "'pages'" in resp.json()["error"]["message"]
+
+
+def test_page_range_error_says_what_is_wrong() -> None:
+    message = post(make_client(), options=json.dumps({"pages": [5, 2]})).json()["error"]["message"]
+    assert message == "option 'pages' is invalid: must be [first, last] with first not after last"
+
+
+def test_page_range_is_a_two_item_array_in_the_schema() -> None:
+    spec = make_client().get("/info").json()["options_schema"]["properties"]["pages"]
+    array = next(branch for branch in spec["anyOf"] if branch["type"] == "array")
+    assert array["minItems"] == array["maxItems"] == 2 and array["items"]["minimum"] == 1
+
+
+@pytest.mark.parametrize(
+    ("engine", "denied"),
+    [
+        ({"artifacts_path": "/x"}, "artifacts_path"),
+        ({"ocr_options": {"url": "http://x"}}, "ocr_options.url"),
+        ({"a": {"b": {"headers": {}}}}, "a.b.headers"),
+        ({"a": [{"api_key": "k"}]}, "a.api_key"),
+        ({"det_model_path": "m"}, "det_model_path"),
+        ({"model_dir": "m"}, "model_dir"),
+        ({"x_directory": "m"}, "x_directory"),
+        ({"ocr_batch_size": 8}, "ocr_batch_size"),
+        ({"queue_max_size": 1}, "queue_max_size"),
+        ({"tesseract_cmd": "sh"}, "tesseract_cmd"),
+        ({"accelerator_options": {"device": "cuda"}}, "accelerator_options"),
+        ({"kwargs": {}}, "kwargs"),
+        ({"input": "/etc/passwd"}, "input"),
+    ],
+)
+def test_denied_engine_keys_are_found_at_any_depth(engine: dict[str, Any], denied: str) -> None:
+    assert denied_engine_key(engine) == denied
+    with pytest.raises(ShimError) as err:
+        check_engine_options(engine)
+    assert err.value.status == 400 and err.value.code == "invalid_options" and f"'{denied}'" in err.value.message
+
+
+def test_ordinary_engine_keys_pass() -> None:
+    check_engine_options({"layout_threshold": 0.4, "ocr_options": {"lang": ["en"], "scale": 2.0}, "x": [{"y": 1}]})
+    check_engine_options(None)
+    check_engine_options({})

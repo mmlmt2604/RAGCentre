@@ -7,10 +7,15 @@ Options (from the pipeline's parse route):
 
     tier            ``flash``, ``basic``, ``standard`` or ``advanced`` (default ``standard``). Only PDFs
                     and images support every tier; other formats are always parsed with ``flash``.
-    ocr             ``true`` forces OCR, ``false`` reads the text layer, ``"auto"`` decides
-                    (default ``"auto"``)
+    ocr             ``true`` forces OCR, ``false`` prefers the text layer (above ``flash`` MinerU still
+                    OCRs regions that have no usable text), ``"auto"`` decides (default ``"auto"``)
     image_analysis  describe pictures with a vision model (default false; MinerU's own default is
                     true, which needs a VLM for every picture)
+    page_range      ``[first, last]``, 1-based and inclusive; PDFs only (default: the whole file)
+
+Service settings (environment, none of them an option): ``MINERU_SHIM_VLM_ENGINE`` and
+``MINERU_SHIM_VLM_MODEL`` (part of the reported version), ``MINERU_SHIM_VLM_SERVER_URL`` and
+``MINERU_SHIM_VLM_API_KEY`` point the ``standard`` and ``advanced`` tiers at a VLM server.
 
 Run it with::
 
@@ -22,19 +27,20 @@ Environment: ``MINERU_SHIM_API_KEY`` requires ``Authorization: Bearer <key>`` (e
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Literal
 
 from fastapi import FastAPI
 from pydantic import Field
-from shimkit import ShimError, ShimOptions, file_extension
+from shimkit import PAGE_RANGE_DESCRIPTION, PageRange, ShimError, ShimOptions, file_extension
 from shimkit import create_app as create_shim_app
 
 from mineru_shim.convert import PageSizes, to_ir
-from mineru_shim.engine import SUPPORTED_EXTENSIONS, TIERED_EXTENSIONS, MineruEngine
+from mineru_shim.engine import SUPPORTED_EXTENSIONS, TIERED_EXTENSIONS, MineruEngine, VlmSettings
 
-SHIM_VERSION = "0.2.0"
+SHIM_VERSION = "0.3.0"
 NAME = "mineru-shim"
 # mineru/filetypes.py (MIME_TYPE_BY_EXTENSION), for the extensions MinerU parses.
 MIME_TYPES = [
@@ -71,10 +77,15 @@ class Options(ShimOptions):
         description="MinerU tier. Only PDFs and images support every tier; other formats are always parsed with flash.",
     )
     ocr: bool | Literal["auto"] = Field(
-        "auto", description='true forces OCR, false reads the text layer, "auto" decides.'
+        "auto",
+        description='true forces OCR, false prefers the text layer (above flash, MinerU still OCRs regions without text), "auto" decides.',
     )
     image_analysis: bool = Field(
         False, description="Describe pictures with a vision model (MinerU's own default is true, which needs a VLM)."
+    )
+    page_range: PageRange | None = Field(
+        None,
+        description=PAGE_RANGE_DESCRIPTION + " PDF only; pages are numbered as in the file. Default: the whole file.",
     )
 
 
@@ -90,8 +101,15 @@ def _mineru_version() -> str:
 
 
 def service_version() -> str:
-    # RAGCentre pins this when the provider is created; a MinerU upgrade changes parse output.
-    return f"{SHIM_VERSION}+mineru.{_mineru_version()}"
+    # RAGCentre pins this when the provider is created. A MinerU upgrade, or a different VLM engine or
+    # model for the standard and advanced tiers, changes parse output. The VLM server's URL and key do not.
+    version_ = f"{SHIM_VERSION}+mineru.{_mineru_version()}"
+    vlm = VlmSettings.from_env()
+    if vlm.engine or vlm.model:
+        version_ += ".vlm-" + "-".join(
+            re.sub(r"[^A-Za-z0-9_-]", "-", part) for part in (vlm.engine or "auto", vlm.model) if part
+        )
+    return version_
 
 
 def _ocr_mode(value: bool | str) -> str:
@@ -112,6 +130,8 @@ def create_app(engine: Engine | None = None) -> FastAPI:
             "ocr_mode": _ocr_mode(options.ocr),
             "image_analysis": options.image_analysis,
         }
+        if options.page_range is not None and extension == "pdf":
+            opts["page_range"] = f"{options.page_range[0]}-{options.page_range[1]}"
         if extension not in SUPPORTED_EXTENSIONS:
             raise ShimError(
                 415, "unsupported_media_type", f"{filename}: MinerU does not read .{extension or '?'} files"

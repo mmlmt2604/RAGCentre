@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "metadata": {
     "page_count": 2,
     "title": "Pump Manual",
@@ -29,6 +29,7 @@
         600.0,
         140.0
       ],
+      "confidence": 0.99,
       "id": "b1"
     },
     {
@@ -54,6 +55,7 @@
         1100.0,
         320.0
       ],
+      "confidence": 0.91,
       "id": "b3"
     },
     {
@@ -66,6 +68,7 @@
         600.0,
         370.0
       ],
+      "confidence": 0.5,
       "id": "b4"
     },
     {

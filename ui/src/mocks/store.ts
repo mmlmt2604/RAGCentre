@@ -18,6 +18,7 @@ import type {
   RunState,
 } from "../api/types";
 import { fp } from "./hash";
+import { optionProblems } from "./optionSchema";
 
 export interface CorpusRec {
   id: string;
@@ -216,7 +217,12 @@ export function resolvePipeline(state: MockState, config: PipelineConfig): Resol
     }
     if (node.type === "parse") {
       if (!node.routes.length) problems.push({ node_id: node.id, path: `nodes[${i}].routes`, message: "Add at least one route." });
-      node.routes.forEach((r, j) => checkProvider(node, r.provider, "parser", `nodes[${i}].routes[${j}].provider`));
+      node.routes.forEach((r, j) => {
+        const p = checkProvider(node, r.provider, "parser", `nodes[${i}].routes[${j}].provider`);
+        if (p)
+          for (const o of optionProblems(p.config.options_schema, r.options))
+            problems.push({ node_id: node.id, path: `nodes[${i}].routes[${j}].options${o.suffix}`, message: o.message });
+      });
     }
     if (node.type === "chunk" && node.strategy === "http") checkProvider(node, node.provider, "chunker", `nodes[${i}].provider`);
     const kind = PROVIDER_KIND[node.type];

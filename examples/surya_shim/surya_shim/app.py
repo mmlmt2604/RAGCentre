@@ -8,6 +8,10 @@ Options (from the pipeline's parse route):
     include_page_images  return each rendered page as a base64 PNG (default false)
     ocr_figures          also read text inside pictures, figures and diagrams (default false)
     dpi                  render resolution for PDF pages, 72 to 400 (default 192)
+    page_range           [first, last], 1-based and inclusive (default: the whole file)
+
+There is no ``full_page`` option: the shim never gives Surya layout results, so Surya always reads
+whole pages (``full_page=False`` would raise).
 
 Run it with::
 
@@ -30,13 +34,13 @@ from typing import Any
 
 from fastapi import FastAPI
 from pydantic import Field
-from shimkit import ShimError, ShimOptions, file_extension
+from shimkit import PAGE_RANGE_DESCRIPTION, PageRange, ShimError, ShimOptions, file_extension
 from shimkit import create_app as create_shim_app
 
 from surya_shim.convert import to_ir
 from surya_shim.engine import DEFAULT_DPI, SUPPORTED_EXTENSIONS, SuryaEngine
 
-SHIM_VERSION = "0.2.0"
+SHIM_VERSION = "0.3.0"
 DEFAULT_GGUF_FILE = "surya-2.5.gguf"  # surya.settings.SURYA_GGUF_MODEL_FILE
 NAME = "surya-shim"
 MIME_TYPES = [
@@ -53,6 +57,10 @@ class Options(ShimOptions):
     include_page_images: bool = Field(False, description="Return each rendered page as a base64 PNG.")
     ocr_figures: bool = Field(False, description="Also read text inside pictures, figures and diagrams.")
     dpi: int = Field(DEFAULT_DPI, ge=72, le=400, description="Render resolution for PDF pages.")
+    page_range: PageRange | None = Field(
+        None,
+        description=PAGE_RANGE_DESCRIPTION + " Pages are numbered as in the file. Default: the whole file.",
+    )
 
 
 # (content, filename, options) -> reduced pages (see convert.py)

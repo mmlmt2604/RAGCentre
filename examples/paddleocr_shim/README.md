@@ -65,30 +65,54 @@ routes:
 
 ## Options
 
-The parse route's `options` are passed to the service. All are booleans.
+The parse route's `options` are validated by the service and reported by `/info` as `options_schema`;
+RAGCentre checks a pipeline's route against it when the pipeline is created. An unknown key or a
+value of the wrong type is `400 invalid_options` naming the option.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `tables` | `true` | Recognise table structure (without it a table's text is plain text, with no HTML) |
-| `formulas` | `true` | Recognise formulas as LaTeX |
-| `charts` | `false` | Recognise charts (loads a vision-language model) |
-| `seals` | `false` | Recognise seals and stamps |
-| `orientation` | `false` | Detect and correct page orientation |
-| `unwarp` | `false` | Flatten curved or photographed pages |
+| `tables` | `true` | Recognise table structure (without it a table's text is plain text, with no HTML). `use_table_recognition` |
+| `formulas` | `true` | Recognise formulas as LaTeX. `use_formula_recognition` |
+| `charts` | `false` | Recognise charts (loads a vision-language model). `use_chart_recognition` |
+| `seals` | `false` | Recognise seals and stamps. `use_seal_recognition` |
+| `orientation` | `false` | Detect and correct page orientation. `use_doc_orientation_classify` |
+| `unwarp` | `false` | Flatten curved or photographed pages. `use_doc_unwarping` |
 | `heading_levels` | `false` | Rank section titles with PaddleX's own heading-level assignment. Off, every section title is level 2 and the document title (if PaddleOCR finds one) is level 1 |
+| `languages` | the service's | One PaddleOCR language code (`en`, `ch`, `fr`, `japan`, ...), as `lang`. Replaces `PADDLEOCR_SHIM_LANG` for this route |
+| `ocr_version` | PaddleOCR's | `PP-OCRv3`, `PP-OCRv4` or `PP-OCRv5` (PP-StructureV3 does not take v6) |
+| `textline_orientation` | PP-StructureV3's | `use_textline_orientation`: classify each text line's orientation |
+| `region_detection` | PP-StructureV3's | `use_region_detection` |
+| `engine` | `{}` | Other `PPStructureV3` arguments, see below |
 
-Options are strictly typed and unknown keys are rejected with `400 invalid_options` naming the key. `/info` reports the schema as `options_schema`.
+PP-StructureV3 has no page selection, so there is no `page_range` option.
 
-PaddleX loads models for a feature when a pipeline is *built*, so the shim builds and keeps one
-pipeline per combination of the first six options; a request can only use features its pipeline
-was built with. Using many different combinations holds many pipelines in memory.
+### The `engine` passthrough
+
+`engine` is an object of other `PPStructureV3` arguments, so a new PaddleOCR parameter is usable the
+day it ships. Each key goes to the constructor, to `predict`, or to both, by which signature accepts
+it (`engine.py` lists them: the layout and text thresholds such as `layout_threshold` and
+`text_det_thresh`, the `*_model_name` arguments, the table switches such as
+`use_ocr_results_with_table_cells`, `format_block_content`, `markdown_ignore_labels`). A key must be one
+of those: an unknown one is `400 invalid_options`.
+
+- An argument that has a named option (`use_table_recognition`, `lang`, ...) is refused in `engine`:
+  use the option.
+- Refused at any depth, as operational: `*_model_dir` (so a model is picked by name, never by path),
+  `*_batch_size`, `url`, `headers`, `api_key`, `params`, `kwargs`, `input`, and the other keys listed
+  in `shimkit.DENIED_ENGINE_KEYS`.
+- Options are stored in the pipeline and hashed into its fingerprint; keep paths, URLs and keys out.
+
+PaddleX loads models for a feature when a pipeline is *built*, so the shim builds and keeps a pipeline
+per distinct set of constructor arguments (the four most recently used, since each holds models in
+memory); a request can only use features its pipeline was built with.
 
 The shim serialises parses (one at a time) and the provider file sets `max_concurrency: 1`.
 
 ### Language
 
 Set `PADDLEOCR_SHIM_LANG` (for example `en`, `ch`, `fr`) before starting the service to choose
-PaddleOCR's text models. It changes the output, so it is part of the version below.
+PaddleOCR's text models. It changes the output, so it is part of the version below. The option
+`languages` replaces it for one route; the version names only this environment default.
 
 ## Authentication
 
@@ -103,13 +127,15 @@ uv run ragcentre provider set-secret paddleocr api_key --env PADDLEOCR_SHIM_API_
 
 ## Versioning
 
-`/info` reports `0.2.0+paddleocr.<paddleocr version>`, with `.lang-<lang>` added when
+`/info` reports `0.3.0+paddleocr.<paddleocr version>`, with `.lang-<lang>` added when
 `PADDLEOCR_SHIM_LANG` is set. RAGCentre records that version when the provider is created and
 refuses to parse with a service reporting a different one (unless the provider's
 `on_version_drift` is `warn`). Upgrading PaddleOCR or changing the language therefore means creating
 a new provider and a new pipeline.
 
 ## How PaddleOCR output maps to the IR
+
+PaddleOCR's result carries no per-block score, so the IR (schema 1.1) has no `confidence` for its blocks.
 
 See the table at the top of `paddleocr_shim/convert.py`. In short: `doc_title` becomes a level-1
 heading and the other title labels become level-2 headings, text-like labels become paragraphs,
@@ -146,6 +172,10 @@ uv run --isolated --no-project --with ../shimkit --with fastapi --with python-mu
 ```sh
 SHIM_LIVE=1 uv run pytest tests/test_live.py -s
 ```
+
+The same file checks that every argument of `PPStructureV3.__init__` and `predict` is accounted for in
+`paddleocr_shim/engine.py` (a named option, allowed through `engine`, or refused on purpose), so a
+PaddleOCR upgrade that adds one fails it until someone decides where it belongs.
 
 `tests/golden/sample_ir.json` is the IR for a sample document; RAGCentre's own suite validates it
 (`tests/test_parser_shim_goldens.py`). Regenerate it with `UPDATE_GOLDEN=1 uv run pytest`.

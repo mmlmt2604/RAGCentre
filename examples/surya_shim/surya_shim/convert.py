@@ -1,5 +1,5 @@
 """Turn Surya page results (reduced to plain dicts by ``engine.py``) into RAGCentre's Document IR
-(schema 1.0). This module imports nothing from Surya, and nothing from Pillow.
+(schema 1.1). This module imports nothing from Surya, and nothing from Pillow.
 
 Input, one dict per page::
 
@@ -91,6 +91,14 @@ def _blocks(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"type": "paragraph", "text": html_to_text(html), "metadata": {"original_type": label or "unknown"}}]
 
 
+def _confidence(value: Any) -> float | None:
+    """Surya's per-block confidence as the IR's number from 0 to 1; ``None`` when there is none (an
+    IR with a value outside 0 to 1 is invalid, so values are clamped, not passed on)."""
+    if isinstance(value, bool) or not isinstance(value, int | float) or value != value:
+        return None
+    return min(1.0, max(0.0, float(value)))
+
+
 def to_ir(
     pages: list[dict[str, Any]], *, source_name: str | None = None, include_page_images: bool = False
 ) -> dict[str, Any]:
@@ -111,5 +119,8 @@ def to_ir(
                 block["page"] = number
                 if raw.get("bbox") is not None:
                     block["bbox"] = [float(v) for v in raw["bbox"]]
+                confidence = _confidence(raw.get("confidence"))
+                if confidence is not None:
+                    block["confidence"] = confidence  # a list block's items all carry the block's value
                 blocks.append(block)
     return build_ir(blocks, ir_pages, source_name=source_name)

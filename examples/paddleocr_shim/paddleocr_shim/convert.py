@@ -1,5 +1,5 @@
 """Turn PP-StructureV3 page results (reduced to plain dicts by ``engine.py``) into RAGCentre's
-Document IR (schema 1.0). This module imports nothing from PaddleOCR.
+Document IR (schema 1.1). This module imports nothing from PaddleOCR.
 
 Input, one dict per page::
 

@@ -9,6 +9,22 @@ const int = (description: string, extra: Record<string, unknown> = {}) => ({ typ
 const bool = (description: string) => ({ type: "boolean", description });
 const http = { base_url: str("Service URL", { format: "uri" }), timeout_seconds: int("Request timeout", { default: 60 }), max_concurrency: int("Parallel requests", { default: 4 }) };
 
+/** What a Docling-like parser service reports as `options_schema` in /info (pydantic, extra="forbid"). */
+export const DOCLING_OPTIONS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    ocr: { type: "boolean", default: true, description: "Run OCR on scanned pages and images." },
+    ocr_languages: { type: "array", items: { type: "string" }, description: "Language codes the OCR engine should expect." },
+    include_page_images: { type: "boolean", default: false, description: "Attach a rendered image of each page to the result." },
+    image_dpi: { type: "integer", minimum: 72, maximum: 400, default: 192, description: "Resolution of the page images." },
+    tables: { type: "boolean", default: true, description: "Recognise table structure." },
+    table_mode: { enum: ["fast", "accurate"], type: "string", default: "accurate", description: "Trade table accuracy for speed." },
+    page_range: { anyOf: [{ type: "array", items: { type: "integer" }, minItems: 2, maxItems: 2 }, { type: "null" }], default: null, description: "First and last page to parse, counting from 1." },
+    engine: { type: "object", description: "Options passed straight to the engine; see the shim's README." },
+  },
+} as const;
+
 export const providerTypes: ProviderType[] = [
   {
     kind: "parser", type: "builtin_text", label: "Built-in text", description: "Plain text and Markdown, parsed in-process.",
@@ -79,7 +95,7 @@ export const builtinText = () => provider("builtin-text", "parser", "builtin_tex
 export function allProviders(): Provider[] {
   return [
     builtinText(),
-    provider("docling", "parser", "http", { base_url: "http://parse-01:5001", timeout_seconds: 600, max_concurrency: 2, service_name: "docling-shim", service_version: "2.14.0", revision: "", on_version_drift: "fail" }),
+    provider("docling", "parser", "http", { base_url: "http://parse-01:5001", timeout_seconds: 600, max_concurrency: 2, service_name: "docling-shim", service_version: "2.14.0", options_schema: DOCLING_OPTIONS_SCHEMA, revision: "", on_version_drift: "fail" }),
     provider("bge-small", "embedder", "openai_compatible", { base_url: "http://gpu-01:8080/v1", model: "BAAI/bge-small-en-v1.5", dimensions: 384, normalize: true, query_prefix: "Represent this sentence for searching relevant passages: ", document_prefix: "", batch_size: 64, revision: "" }),
     provider("bge-m3", "embedder", "openai_compatible", { base_url: "http://gpu-02:8080/v1", model: "BAAI/bge-m3", dimensions: 1024, normalize: true, query_prefix: "", document_prefix: "", batch_size: 32, revision: "" }),
     provider("jina-rerank", "reranker", "http", { base_url: "http://gpu-01:8081", model: "jina-reranker-v2-base-multilingual", revision: "" }),

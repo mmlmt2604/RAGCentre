@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { tick } from "./engine";
 import { hybrid } from "./fixtures";
+import { optionProblems } from "./optionSchema";
+import { createProvider, patchProvider } from "./providers";
 import { buildScenario } from "./scenarios";
 import { indexRuns, pipelineHealth, planRuns, resolvePipeline } from "./store";
 
@@ -57,5 +59,33 @@ describe("mock scenarios", () => {
     const after = pipelineHealth(state, structure, indexRuns(state));
     expect(after.coverage).toBeGreaterThan(before);
     expect(after.status).toBe("ready");
+  });
+});
+
+describe("mock parser option schemas", () => {
+  it("seeds the HTTP parser with a schema and stores one on providers created later, immutably", () => {
+    const state = buildScenario("ready");
+    expect(state.providers.find((p) => p.name === "docling")!.config.options_schema).toMatchObject({ additionalProperties: false });
+    const made = createProvider(state, { name: "docling-two", kind: "parser", type: "http", config: { base_url: "http://parse-02:5001" } });
+    expect(made.config.options_schema).toMatchObject({ type: "object" });
+    const plain = createProvider(state, { name: "plain-parser", kind: "parser", type: "http", config: { base_url: "http://no-schema:5001" } });
+    expect(plain.config.options_schema).toBeNull();
+    expect(() => patchProvider(state, made.id, { options_schema: null })).toThrow(/cannot be changed/);
+    expect(state.providers.find((p) => p.name === "builtin-text")!.config).not.toHaveProperty("options_schema");
+  });
+
+  it("reports problems with the backend's paths and wording", () => {
+    const schema = buildScenario("ready").providers.find((p) => p.name === "docling")!.config.options_schema;
+    expect(optionProblems(schema, { ocr: true, table_mode: "fast", page_range: [1, 4], engine: { x: 1 } })).toEqual([]);
+    expect(optionProblems(schema, { nope: 1, ocr: "yes", image_dpi: 900, image_dpi_x: 1, table_mode: "slow", page_range: [1] })).toEqual([
+      { suffix: ".nope", message: "This parser has no such option." },
+      { suffix: ".ocr", message: "Must be true or false." },
+      { suffix: ".image_dpi", message: "Must be at most 400." },
+      { suffix: ".image_dpi_x", message: "This parser has no such option." },
+      { suffix: ".table_mode", message: 'Must be one of: "fast", "accurate".' },
+      { suffix: ".page_range", message: "Must have at least 2 items." },
+    ]);
+    expect(optionProblems(schema, { image_dpi: 1.5 })).toEqual([{ suffix: ".image_dpi", message: "Must be a whole number." }]);
+    expect(optionProblems(null, { anything: 1 })).toEqual([]);
   });
 });

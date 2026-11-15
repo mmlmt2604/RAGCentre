@@ -24,9 +24,24 @@ PNG_BYTES = b"\x89PNG fake"
 
 
 def block(
-    label: str, html: str, bbox: list[float], order: int, *, skipped: bool = False, error: bool = False
+    label: str,
+    html: str,
+    bbox: list[float],
+    order: int,
+    *,
+    skipped: bool = False,
+    error: bool = False,
+    confidence: float | None = None,
 ) -> dict[str, Any]:
-    return {"label": label, "html": html, "bbox": bbox, "reading_order": order, "skipped": skipped, "error": error}
+    return {
+        "label": label,
+        "html": html,
+        "bbox": bbox,
+        "confidence": confidence,
+        "reading_order": order,
+        "skipped": skipped,
+        "error": error,
+    }
 
 
 def sample() -> list[dict[str, Any]]:
@@ -40,10 +55,10 @@ def sample() -> list[dict[str, Any]]:
             "height": 1600,
             "image": {"mime": "image/png", "data_b64": "AAAA"},
             "blocks": [
-                block("Text", "<p>Mount the pump on a level surface.</p>", [100, 280, 1100, 320], 2),
+                block("Text", "<p>Mount the pump on a level surface.</p>", [100, 280, 1100, 320], 2, confidence=0.91),
                 block("SectionHeader", "<h2><b>Installation</b></h2>", [100, 200, 400, 240], 1),
-                block("SectionHeader", "<h1><b>Pump Manual</b></h1>", [100, 80, 600, 140], 0),
-                block("ListGroup", "<ul><li>Close the valve.</li></ul>", [120, 340, 600, 370], 3),
+                block("SectionHeader", "<h1><b>Pump Manual</b></h1>", [100, 80, 600, 140], 0, confidence=0.99),
+                block("ListGroup", "<ul><li>Close the valve.</li></ul>", [120, 340, 600, 370], 3, confidence=0.5),
                 block("Text", "<p> </p>", [100, 400, 200, 410], 4),  # blank: dropped
             ],
         },
@@ -69,7 +84,7 @@ def sample() -> list[dict[str, Any]]:
 
 def test_mapping() -> None:
     ir = to_ir(sample(), source_name="manual.pdf")
-    assert ir["schema_version"] == "1.0"
+    assert ir["schema_version"] == "1.1"
     assert ir["metadata"] == {"page_count": 2, "title": "Pump Manual", "source_name": "manual.pdf"}
     assert ir["pages"] == [
         {"page": 1, "width": 1200.0, "height": 1600.0},
@@ -92,6 +107,45 @@ def test_mapping() -> None:
     assert caption["text"] == "Figure 1: exploded view" and caption["page"] == 2
     assert [b["id"] for b in ir["blocks"]] == [f"b{i}" for i in range(1, len(ir["blocks"]) + 1)]
     assert all(b["text"].strip() or b["type"] == "figure" for b in ir["blocks"])
+
+
+def test_confidence_is_carried_to_every_block_made_from_a_surya_block() -> None:
+    blocks = {b["text"]: b for b in to_ir(sample())["blocks"]}
+    assert blocks["Pump Manual"]["confidence"] == 0.99
+    assert blocks["Mount the pump on a level surface."]["confidence"] == 0.91
+    assert blocks["Close the valve."]["confidence"] == 0.5
+    two_items = [
+        {
+            "page": 1,
+            "width": 10,
+            "height": 10,
+            "blocks": [block("ListGroup", "<ul><li>a</li><li>b</li></ul>", [0, 0, 1, 1], 0, confidence=0.7)],
+        }
+    ]
+    assert [b["confidence"] for b in to_ir(two_items)["blocks"]] == [0.7, 0.7]
+    assert "confidence" not in blocks["Installation"]  # Surya gave none: left out, not made up
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0, 0.0),
+        (1, 1.0),
+        (0.25, 0.25),
+        (1.0000001, 1.0),
+        (-0.1, 0.0),
+        (None, None),
+        ("0.9", None),
+        (True, None),
+        (float("nan"), None),
+    ],
+)
+def test_confidence_is_clamped_to_the_irs_range_or_left_out(value: Any, expected: float | None) -> None:
+    pages = [
+        {"page": 1, "width": 10, "height": 10, "blocks": [block("Text", "<p>x</p>", [0, 0, 1, 1], 0, confidence=value)]}
+    ]
+    got = to_ir(pages)["blocks"][0].get("confidence")
+    assert got == expected
 
 
 def test_blocks_are_in_reading_order() -> None:
@@ -255,7 +309,7 @@ def test_service_endpoints() -> None:
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "surya-shim"
-    assert info["version"].startswith("0.2.0+surya.")
+    assert info["version"].startswith("0.3.0+surya.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/tiff", "image/bmp", "image/webp"]
     assert info["capabilities"] == {"page_images": True}
 
@@ -263,10 +317,14 @@ def test_service_endpoints() -> None:
     assert resp.status_code == 200
     ir = resp.json()
     assert ir["blocks"][0]["text"] == "Pump Manual" and ir["pages"][0]["image"]["mime"] == "image/png"
-    assert calls[0] == (b"%PDF", "m.pdf", {"include_page_images": True, "ocr_figures": True, "dpi": 150})
+    assert calls[0] == (
+        b"%PDF",
+        "m.pdf",
+        {"include_page_images": True, "ocr_figures": True, "dpi": 150, "page_range": None},
+    )
     plain = post(client)
     assert plain.status_code == 200 and "image" not in plain.json()["pages"][0]
-    assert calls[1][2] == {"include_page_images": False, "ocr_figures": False, "dpi": 192}
+    assert calls[1][2] == {"include_page_images": False, "ocr_figures": False, "dpi": 192, "page_range": None}
 
     bad = post(client, options="[1]")
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
@@ -303,9 +361,9 @@ def test_version_includes_the_package_and_the_model(monkeypatch: pytest.MonkeyPa
     settings.settings = types.SimpleNamespace(SURYA_MODEL_CHECKPOINT="datalab-to/surya-ocr-2.5")  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "surya.settings", settings)
     monkeypatch.setattr(app_module, "version", lambda name: "0.24.0")
-    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5"
+    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5"
     settings.settings.SURYA_MODEL_CHECKPOINT = "/models/my-finetune/"
-    assert service_version() == "0.2.0+surya.0.24.0.my-finetune"
+    assert service_version() == "0.3.0+surya.0.24.0.my-finetune"
 
 
 def fake_surya(monkeypatch: pytest.MonkeyPatch, *, autodetect: Any = "llamacpp", **settings_values: Any) -> Any:
@@ -330,19 +388,19 @@ def fake_surya(monkeypatch: pytest.MonkeyPatch, *, autodetect: Any = "llamacpp",
 
 def test_version_names_the_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = fake_surya(monkeypatch, autodetect="vllm")
-    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5.vllm"  # auto-detected
+    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5.vllm"  # auto-detected
     settings.SURYA_INFERENCE_BACKEND = "MLX"
-    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5.mlx"  # the setting wins
+    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5.mlx"  # the setting wins
 
 
 def test_version_backend_falls_back_to_auto_when_detection_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_surya(monkeypatch, autodetect=None)
-    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5.auto"
+    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5.auto"
 
 
 def test_version_names_a_non_default_gguf_file(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = fake_surya(monkeypatch)
-    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5.llamacpp"  # the default file adds nothing
+    assert service_version() == "0.3.0+surya.0.24.0.surya-ocr-2.5.llamacpp"  # the default file adds nothing
     settings.SURYA_GGUF_MODEL_FILE = "surya-2.5-q4.gguf"
     assert service_version().endswith(".llamacpp.gguf-surya-2-5-q4-gguf")
     # A local path counts only with its mmproj, as in surya/inference/backends/llamacpp.py.
@@ -371,7 +429,7 @@ def test_unknown_option_is_400(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_info_reports_the_options_schema() -> None:
     schema = TestClient(create_app(fake_engine([]))).get("/info").json()["options_schema"]
-    assert set(schema["properties"]) == {"include_page_images", "ocr_figures", "dpi"}
+    assert set(schema["properties"]) == {"include_page_images", "ocr_figures", "dpi", "page_range"}
     assert schema["additionalProperties"] is False
 
 
@@ -380,7 +438,7 @@ def test_version_without_surya(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         app_module, "version", lambda name: (_ for _ in ()).throw(app_module.PackageNotFoundError(name))
     )
-    assert service_version() == "0.2.0+surya.unknown"
+    assert service_version() == "0.3.0+surya.unknown"
 
 
 def test_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -409,7 +467,13 @@ class FakeImage:
 def prediction(width: float = 1632, height: float = 2112) -> types.SimpleNamespace:
     blocks = [
         types.SimpleNamespace(
-            label="Text", html="<p>hi</p>", bbox=[1.5, 2, 3, 4], reading_order=0, skipped=False, error=False
+            label="Text",
+            html="<p>hi</p>",
+            bbox=[1.5, 2, 3, 4],
+            confidence=0.93,
+            reading_order=0,
+            skipped=False,
+            error=False,
         )
     ]
     return types.SimpleNamespace(image_bbox=[0.0, 0.0, width, height], blocks=blocks)
@@ -423,6 +487,7 @@ class Env:
         self.manager_stopped = 0
         self.predict_calls: list[tuple[list[Any], dict[str, Any]]] = []
         self.load_calls: list[tuple[str, Path, Any, bytes]] = []
+        self.page_ranges: list[list[int] | None] = []
         self.fail_manager: Exception | None = None
         self.fail_predict: Exception | None = None
 
@@ -450,9 +515,15 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Env:
                 raise state.fail_predict
             return [prediction() for _ in images]
 
-    def load_pdf(path: Path, dpi: int) -> tuple[list[Any], list[str]]:
+    def load_pdf(path: Path, dpi: int, page_range: list[int] | None = None) -> tuple[list[Any], list[str]]:
+        # Like surya.input.load.load_pdf: 0-based indices, an error for any outside the file (5 pages).
         state.load_calls.append(("pdf", path, dpi, path.read_bytes()))
-        return [FakeImage((1632, 2112)), FakeImage((1632, 2112))], ["a", "a"]
+        state.page_ranges.append(page_range)
+        if page_range is None:
+            return [FakeImage((1632, 2112)), FakeImage((1632, 2112))], ["a", "a"]
+        if not all(0 <= page < 5 for page in page_range):
+            raise ValueError(f"Invalid page range {page_range} for PDF with 5 page(s).")
+        return [FakeImage((1632, 2112)) for _ in page_range], ["a"] * len(page_range)
 
     def load_image(path: Path) -> tuple[list[Any], list[str]]:
         state.load_calls.append(("image", path, None, path.read_bytes()))
@@ -470,7 +541,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Env:
     return state
 
 
-OPTIONS = {"include_page_images": False, "ocr_figures": False, "dpi": 192}
+OPTIONS = {"include_page_images": False, "ocr_figures": False, "dpi": 192, "page_range": None}
 
 
 def test_reduce_page_and_encode_png() -> None:
@@ -484,6 +555,7 @@ def test_reduce_page_and_encode_png() -> None:
                 "label": "Text",
                 "html": "<p>hi</p>",
                 "bbox": [1.5, 2, 3, 4],
+                "confidence": 0.93,
                 "reading_order": 0,
                 "skipped": False,
                 "error": False,
@@ -568,6 +640,7 @@ def test_engine_end_to_end_through_the_service(env: Env) -> None:
         "text": "hi",
         "page": 1,
         "bbox": [1.5, 2.0, 3.0, 4.0],
+        "confidence": 0.93,
         "id": "b1",
     }
     assert ir["pages"][0]["image"]["mime"] == "image/png"
@@ -597,3 +670,41 @@ def test_a_failing_stop_does_not_break_shutdown(env: Env, monkeypatch: pytest.Mo
     engine(b"x", "a.pdf", OPTIONS)
     monkeypatch.setattr(engine._manager, "stop", lambda: (_ for _ in ()).throw(RuntimeError("already gone")))
     engine.close()
+
+
+def test_page_range_loads_zero_based_indices_and_keeps_the_files_page_numbers(env: Env) -> None:
+    pages = SuryaEngine()(b"x", "a.pdf", {**OPTIONS, "page_range": [2, 4]})
+    assert env.page_ranges == [[1, 2, 3]]  # 1-based inclusive in, 0-based indices out
+    assert [p["page"] for p in pages] == [2, 3, 4]
+    assert len(env.predict_calls[0][0]) == 3
+    pages = SuryaEngine()(b"x", "a.pdf", {**OPTIONS, "page_range": [5, 5]})
+    assert env.page_ranges[-1] == [4] and [p["page"] for p in pages] == [5]
+
+
+def test_without_a_page_range_pages_are_numbered_from_one_and_load_pdf_gets_none(env: Env) -> None:
+    pages = SuryaEngine()(b"x", "a.pdf", OPTIONS)
+    assert env.page_ranges == [None] and [p["page"] for p in pages] == [1, 2]
+
+
+def test_a_page_range_outside_the_file_is_400(env: Env) -> None:
+    with pytest.raises(ShimError) as err:
+        SuryaEngine()(b"x", "a.pdf", {**OPTIONS, "page_range": [4, 7]})
+    assert err.value.status == 400 and err.value.code == "invalid_options"
+    assert "'page_range' [4, 7]" in err.value.message and "5 page(s)" in err.value.message
+
+
+def test_page_range_on_an_image(env: Env) -> None:
+    assert [p["page"] for p in SuryaEngine()(b"x", "a.png", {**OPTIONS, "page_range": [1, 3]})] == [1]
+    with pytest.raises(ShimError) as err:
+        SuryaEngine()(b"x", "a.png", {**OPTIONS, "page_range": [2, 3]})
+    assert err.value.status == 400 and "1-page image" in err.value.message
+
+
+def test_page_range_and_the_missing_full_page_option_through_the_service() -> None:
+    client = TestClient(create_app(fake_engine([])))
+    schema = client.get("/info").json()["options_schema"]["properties"]
+    assert "page_range" in schema and "full_page" not in schema
+    for bad in ({"page_range": [3, 1]}, {"page_range": [0, 1]}, {"full_page": True}):
+        resp = post(client, options=bad)
+        assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options"
+    assert post(client, options={"page_range": [1, 2]}).status_code == 200

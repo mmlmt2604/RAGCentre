@@ -71,7 +71,7 @@ def test_live_parse() -> None:
     assert resp.status_code == 200, resp.text
     ir = resp.json()
     print(json.dumps(ir, indent=1)[:2000])
-    assert ir["schema_version"] == "1.0"
+    assert ir["schema_version"] == "1.1"
     blocks = ir["blocks"]
     assert blocks, "the engine found no text"
     assert len({b["id"] for b in blocks}) == len(blocks)
@@ -85,3 +85,24 @@ def test_live_parse() -> None:
     for b in located:
         x0, y0, x1, y1 = b["bbox"]
         assert x0 <= x1 and y0 <= y1
+
+
+def test_engine_parameters_accounted_for() -> None:
+    """Every parameter of the Surya calls the shim makes is reached by an option or left out on purpose.
+    A Surya upgrade that adds one fails this until someone decides where it belongs."""
+    import inspect
+
+    from surya import RecognitionPredictor
+    from surya.input.load import load_pdf
+
+    from surya_shim.engine import NAMED_PARAMETERS, NOT_EXPOSED
+
+    def names(function: object) -> set[str]:
+        parameters = inspect.signature(function).parameters  # type: ignore[call-overload]
+        return {n for n, p in parameters.items() if n != "self" and p.kind is not p.VAR_KEYWORD}
+
+    for label, function in (("RecognitionPredictor.__call__", RecognitionPredictor.__call__), ("load_pdf", load_pdf)):
+        actual = names(function)
+        known = set(NAMED_PARAMETERS[label]) | set(NOT_EXPOSED[label])
+        assert actual - known == set(), f"new {label} parameters: {sorted(actual - known)}"
+        assert known - actual == set(), f"{label} parameters Surya no longer has: {sorted(known - actual)}"

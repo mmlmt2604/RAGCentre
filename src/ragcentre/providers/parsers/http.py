@@ -50,6 +50,6 @@ SPEC = ProviderTypeSpec(
     fingerprint_fields=("service_name", "service_version", "revision"),
     secret_keys=("api_key",),
     factory=_factory,
-    captured_fields=("service_name", "service_version"),
+    captured_fields=("service_name", "service_version", "options_schema"),
     info_protocol=PROTOCOL,
 )

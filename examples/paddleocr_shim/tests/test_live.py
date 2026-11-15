@@ -71,7 +71,7 @@ def test_live_parse() -> None:
     assert resp.status_code == 200, resp.text
     ir = resp.json()
     print(json.dumps(ir, indent=1)[:2000])
-    assert ir["schema_version"] == "1.0"
+    assert ir["schema_version"] == "1.1"
     blocks = ir["blocks"]
     assert blocks, "the engine found no text"
     assert len({b["id"] for b in blocks}) == len(blocks)
@@ -85,3 +85,38 @@ def test_live_parse() -> None:
     for b in located:
         x0, y0, x1, y1 = b["bbox"]
         assert x0 <= x1 and y0 <= y1
+
+
+def test_engine_parameters_accounted_for() -> None:
+    """Every argument of PP-StructureV3's constructor and ``predict`` is reached by a named option,
+    allowed through ``engine``, or refused on purpose. A PaddleOCR upgrade that adds one fails this."""
+    import inspect
+
+    from paddleocr import PPStructureV3
+    from shimkit import DENIED_ENGINE_KEYS
+    from shimkit.service import DENIED_ENGINE_SUFFIXES
+
+    from paddleocr_shim.engine import (
+        ENGINE_INIT_ARGUMENTS,
+        ENGINE_PREDICT_ARGUMENTS,
+        NAMED_ARGUMENTS,
+        NOT_EXPOSED,
+    )
+
+    def names(function: object) -> set[str]:
+        parameters = inspect.signature(function).parameters  # type: ignore[call-overload]
+        return {n for n, p in parameters.items() if n != "self" and p.kind is not p.VAR_KEYWORD}
+
+    def refused(name: str) -> bool:
+        return name in DENIED_ENGINE_KEYS or name.endswith(DENIED_ENGINE_SUFFIXES)
+
+    for label, actual, allowed in (
+        ("__init__", names(PPStructureV3.__init__), ENGINE_INIT_ARGUMENTS),
+        ("predict", names(PPStructureV3.predict), ENGINE_PREDICT_ARGUMENTS),
+    ):
+        known = set(NAMED_ARGUMENTS) | set(allowed) | set(NOT_EXPOSED) | {n for n in actual if refused(n)}
+        assert actual - known == set(), f"new PPStructureV3.{label} arguments: {sorted(actual - known)}"
+        assert set(allowed) - actual == set(), (
+            f"{label} arguments PaddleOCR no longer has: {sorted(set(allowed) - actual)}"
+        )
+    assert (set(NAMED_ARGUMENTS) - {"lang", "ocr_version"}) <= names(PPStructureV3.predict)

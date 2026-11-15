@@ -37,6 +37,12 @@ services:
       - docling-models:/home/shim/.cache
     environment:
       DOCLING_SHIM_API_KEY: ${DOCLING_SHIM_API_KEY:-}
+      # Service settings (see examples/docling_shim/README.md); none of them is a pipeline option.
+      DOCLING_SHIM_DEVICE: ${DOCLING_SHIM_DEVICE:-}
+      DOCLING_SHIM_NUM_THREADS: ${DOCLING_SHIM_NUM_THREADS:-}
+      DOCLING_SHIM_PICTURE_DESCRIPTION_URL: ${DOCLING_SHIM_PICTURE_DESCRIPTION_URL:-}
+      DOCLING_SHIM_PICTURE_DESCRIPTION_MODEL: ${DOCLING_SHIM_PICTURE_DESCRIPTION_MODEL:-}
+      DOCLING_SHIM_PICTURE_DESCRIPTION_API_KEY: ${DOCLING_SHIM_PICTURE_DESCRIPTION_API_KEY:-}
     restart: unless-stopped
 
   mineru:
@@ -50,6 +56,11 @@ services:
       - mineru-models:/home/shim/.cache
     environment:
       MINERU_SHIM_API_KEY: ${MINERU_SHIM_API_KEY:-}
+      # Where the standard and advanced tiers find their VLM (see examples/mineru_shim/README.md).
+      MINERU_SHIM_VLM_ENGINE: ${MINERU_SHIM_VLM_ENGINE:-}
+      MINERU_SHIM_VLM_MODEL: ${MINERU_SHIM_VLM_MODEL:-}
+      MINERU_SHIM_VLM_SERVER_URL: ${MINERU_SHIM_VLM_SERVER_URL:-}
+      MINERU_SHIM_VLM_API_KEY: ${MINERU_SHIM_VLM_API_KEY:-}
     restart: unless-stopped
 
   paddleocr:

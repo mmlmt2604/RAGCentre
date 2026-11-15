@@ -19,11 +19,11 @@ import threading
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
 from pydantic_core import ErrorDetails
 
 PROTOCOL = "ragcentre.parser/v1"
@@ -59,6 +59,61 @@ class ShimOptions(BaseModel):
 
 def _invalid(message: str) -> ShimError:
     return ShimError(400, "invalid_options", message)
+
+
+def _check_page_range(value: list[int] | None) -> list[int] | None:
+    if value is not None and value[0] > value[1]:
+        raise ValueError("must be [first, last] with first not after last")
+    return value
+
+
+# ``[first, last]``: 1-based page numbers, inclusive. Use it as ``PageRange | None``; page numbers in
+# the IR are always the page's number in the original file, whatever range was parsed.
+PageRange = Annotated[
+    list[Annotated[int, Field(ge=1)]],
+    Field(min_length=2, max_length=2),
+    AfterValidator(_check_page_range),
+]
+
+PAGE_RANGE_DESCRIPTION = "Parse only these pages: [first, last], 1-based and inclusive."
+
+# Keys that must not reach an engine through the ``engine`` passthrough, at any depth: they are
+# operational (paths, devices, batch sizes, timeouts) or let a pipeline author make the service read
+# files, run programs or call URLs. Options are stored in pipelines and hashed into fingerprints, so
+# they never carry secrets or deployment settings.
+DENIED_ENGINE_KEYS = frozenset(
+    {
+        "artifacts_path", "enable_remote_services", "allow_external_plugins", "accelerator_options",
+        "document_timeout", "url", "headers", "api_key", "params", "kwargs", "input",
+        "queue_max_size", "batch_polling_interval_seconds", "stage_shutdown_timeout_seconds",
+        "path", "tesseract_cmd", "batch_size", "concurrency", "timeout", "num_threads", "device",
+        "use_gpu",
+    }
+)  # fmt: skip
+DENIED_ENGINE_SUFFIXES = ("_path", "_dir", "_directory", "_batch_size")
+
+
+def denied_engine_key(value: Any, prefix: str = "") -> str | None:
+    """The first key of ``value`` (an ``engine`` object) that is on the denylist, as a dotted path;
+    ``None`` when there is none. Looks inside nested objects and lists."""
+    if isinstance(value, Mapping):
+        for key, inner in value.items():
+            name = str(key)
+            if name in DENIED_ENGINE_KEYS or name.endswith(DENIED_ENGINE_SUFFIXES):
+                return f"{prefix}{name}"
+            if found := denied_engine_key(inner, f"{prefix}{name}."):
+                return found
+    elif isinstance(value, list | tuple):
+        for item in value:
+            if found := denied_engine_key(item, prefix):
+                return found
+    return None
+
+
+def check_engine_options(engine: Mapping[str, Any] | None) -> None:
+    """Raise ``400 invalid_options`` naming the first denied key in an ``engine`` object."""
+    if engine and (key := denied_engine_key(engine)):
+        raise _invalid(f"option 'engine' may not set {key!r}: it is a service setting, not a parse option")
 
 
 def _bounds(model: type[BaseModel], key: str) -> dict[str, Any]:
@@ -121,6 +176,10 @@ def options_message(model: type[BaseModel], exc: ValidationError) -> str:
         return f"option {key!r} is not recognised"
     if first["type"] == "missing":
         return f"option {key!r} is required"
+    nested = len(first["loc"]) > 1 and isinstance(first["loc"][1], int)
+    if nested or first["type"] in ("too_short", "too_long", "value_error", "assertion_error"):
+        detail = str(first["msg"]).removeprefix("Value error, ").removeprefix("Assertion failed, ")
+        return f"option {key!r} is invalid: {detail}"
     # A union field reports one error per branch; describe them together.
     same = [e for e in errors if e["loc"] and e["loc"][0] == top and e["type"] != "extra_forbidden"]
     expected = " or ".join(dict.fromkeys(_expectation(model, e) for e in same))

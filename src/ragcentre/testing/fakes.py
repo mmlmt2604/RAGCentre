@@ -80,6 +80,7 @@ class FakeServices:
         self.parser_name = "fake-parser"
         self.parser_version = "1.0.0"
         self.parser_mime_types = ["application/pdf", "text/*"]
+        self.parser_options_schema: Any = None  # reported as /info "options_schema" when not None
         self.chunker_name = "fake-chunker"
         self.chunker_version = "0.3.0"
         self.echo_auth_in_errors = False
@@ -151,16 +152,16 @@ class FakeServices:
     # ---- parser -------------------------------------------------------------------------------
 
     def _parser_info(self, request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "protocol": "ragcentre.parser/v1",
-                "name": self.parser_name,
-                "version": self.parser_version,
-                "mime_types": self.parser_mime_types,
-                "capabilities": {"page_images": False},
-            },
-        )
+        body: dict[str, Any] = {
+            "protocol": "ragcentre.parser/v1",
+            "name": self.parser_name,
+            "version": self.parser_version,
+            "mime_types": self.parser_mime_types,
+            "capabilities": {"page_images": False},
+        }
+        if self.parser_options_schema is not None:
+            body["options_schema"] = self.parser_options_schema
+        return httpx.Response(200, json=body)
 
     def _parser_parse(self, request: httpx.Request) -> httpx.Response:
         form = _multipart(request)
