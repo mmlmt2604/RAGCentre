@@ -48,6 +48,12 @@ describe("what falls back to a JSON box", () => {
     expect(control({ type: "array", items: { type: "integer" } })).toEqual({ kind: "json" });
     expect(control({ type: "array", items: { type: "integer" }, minItems: 3, maxItems: 3 })).toEqual({ kind: "json" });
   });
+  it("a two-number list is a pair only for page_range: another one (a width and a height) stays JSON", () => {
+    const pair = { anyOf: [{ type: "array", items: { type: "integer", minimum: 1 }, minItems: 2, maxItems: 2 }, { type: "null" }] };
+    const kind = (key: string) => optionSpecs({ properties: { [key]: pair } })![0]!.control.kind;
+    expect(kind("page_range")).toBe("pair");
+    expect(kind("size")).toBe("json");
+  });
   it("a nullable value is the control of the value: unset is how the form says null", () => {
     expect(control({ anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }] })).toEqual({ kind: "integer", min: 1, max: undefined, exclusiveMin: undefined, exclusiveMax: undefined });
     expect(control({ anyOf: [{ type: "string" }, { type: "null" }] })).toEqual({ kind: "string" });

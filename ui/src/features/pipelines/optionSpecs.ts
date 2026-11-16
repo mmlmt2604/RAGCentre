@@ -37,7 +37,7 @@ function valuesOf(alt: Json): Scalar[] | null {
 }
 
 /** `X | None` is `anyOf [X, {type: null}]`: the control of X, and whether null was allowed. Unset is how the form says null. */
-function controlFor(p: Json): Control {
+function controlFor(p: Json, key: string): Control {
   const union = Array.isArray(p.anyOf) ? p.anyOf : Array.isArray(p.oneOf) ? p.oneOf : null;
   if (union) {
     const alts = union.filter(isObject);
@@ -46,7 +46,7 @@ function controlFor(p: Json): Control {
     const nullable = rest.length < alts.length;
     const only = rest[0];
     if (rest.length === 1 && only) {
-      const inner = controlFor(only);
+      const inner = controlFor(only, key);
       // A nullable boolean has three states, which a checkbox cannot show.
       return nullable && inner.kind === "boolean" ? { kind: "choice", choices: [true, false] } : inner;
     }
@@ -70,7 +70,9 @@ function controlFor(p: Json): Control {
       return { kind: "string" };
     case "array": {
       const items = p.items;
-      if (isObject(items) && items.type === "integer" && p.minItems === 2 && p.maxItems === 2 && !("enum" in items)) return { kind: "pair", min: num(items.minimum) };
+      // Only a page range: the pair control says "first" and "last" and refuses first > last, which is wrong for
+      // another two-number option (a width and a height). Those stay JSON.
+      if (key === "page_range" && isObject(items) && items.type === "integer" && p.minItems === 2 && p.maxItems === 2 && !("enum" in items)) return { kind: "pair", min: num(items.minimum) };
       // Free text items, however many are allowed: the server words an item count that is wrong.
       return isObject(items) && items.type === "string" && !("enum" in items) ? { kind: "strings" } : { kind: "json" };
     }
@@ -86,6 +88,6 @@ export function optionSpecs(schema: unknown): OptionSpec[] | null {
   if (!entries.length) return null;
   return entries.map(([key, raw]) => {
     const p = isObject(raw) ? raw : {};
-    return { key, control: controlFor(p), description: typeof p.description === "string" ? p.description : null, default: p.default };
+    return { key, control: controlFor(p, key), description: typeof p.description === "string" ? p.description : null, default: p.default };
   });
 }

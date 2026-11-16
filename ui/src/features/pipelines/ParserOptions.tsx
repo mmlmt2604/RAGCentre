@@ -1,5 +1,5 @@
 import { RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button, IconButton } from "../../components/Button";
 import { Checkbox, Field, Select, TextArea, TextInput } from "../../components/Field";
 import { NumberInput } from "../../components/NumberInput";
@@ -129,17 +129,24 @@ function PairInput({ spec, min, value, onChange, error }: { spec: OptionSpec; mi
   const local =
     first !== undefined && last !== undefined && first > last ? "The first number must not be larger than the last." : partial ? "Enter both numbers, or clear both." : null;
   const shown = error ?? local;
+  const messageId = useId();
+  // Both boxes are described by the one message under them; a problem marks both as invalid.
+  const note = shown ? messageId : hintFor(spec) ? messageId : undefined;
   return (
-    <fieldset className="opt-pair">
+    <fieldset className="opt-pair" aria-describedby={note}>
       <legend className="rc-field__label">{code(spec.key)}</legend>
       <div className="opt-pair__row">
-        <NumberInput label="first" min={min} value={first} onChange={(v) => put(v, last)} placeholder="first" />
-        <NumberInput label="last" min={min} value={last} onChange={(v) => put(first, v)} placeholder="last" />
+        <NumberInput label="first" min={min} value={first} onChange={(v) => put(v, last)} placeholder="first" describedBy={note} invalid={Boolean(shown)} />
+        <NumberInput label="last" min={min} value={last} onChange={(v) => put(first, v)} placeholder="last" describedBy={note} invalid={Boolean(shown)} />
       </div>
       {shown ? (
-        <p className="rc-field__error">{shown}</p>
+        <p className="rc-field__error" id={messageId}>
+          {shown}
+        </p>
       ) : hintFor(spec) ? (
-        <p className="rc-field__hint">{hintFor(spec)}</p>
+        <p className="rc-field__hint" id={messageId}>
+          {hintFor(spec)}
+        </p>
       ) : null}
     </fieldset>
   );

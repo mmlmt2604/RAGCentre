@@ -17,6 +17,8 @@ export function NumberInput({
   hint,
   placeholder,
   error,
+  describedBy,
+  invalid,
 }: {
   label: React.ReactNode;
   value: number | undefined;
@@ -30,6 +32,9 @@ export function NumberInput({
   hint?: string;
   placeholder?: string;
   error?: string | null;
+  /** Id of a message elsewhere that also describes this box (a group's shared error), and whether it is the problem. */
+  describedBy?: string;
+  invalid?: boolean;
 }) {
   // While focused, the field shows exactly what was typed; otherwise it shows the value.
   const [draft, setDraft] = useState<string | null>(null);
@@ -50,6 +55,8 @@ export function NumberInput({
       {(a11y) => (
         <TextInput
           {...a11y}
+          aria-describedby={[a11y["aria-describedby"], describedBy].filter(Boolean).join(" ") || undefined}
+          aria-invalid={a11y["aria-invalid"] || invalid || undefined}
           mono
           inputMode={integer ? "numeric" : "decimal"}
           value={text}

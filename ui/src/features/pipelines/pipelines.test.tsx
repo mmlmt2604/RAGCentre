@@ -411,9 +411,16 @@ describe("the parser options form with the schemas the four shims report", () =>
     const last = within(range).getByRole("textbox", { name: "last" });
     await user.type(first, "2");
     expect(range).toHaveTextContent("Enter both numbers, or clear both.");
+    // The message describes both boxes and marks them invalid, as it does for any other control.
+    for (const box of [first, last]) {
+      expect(box).toHaveAccessibleDescription(/Enter both numbers, or clear both\./);
+      expect(box).toBeInvalid();
+    }
+    expect(range).toHaveAccessibleDescription(/^Enter both numbers, or clear both\.$/);
     await user.type(last, "5");
     await waitFor(() => expect(options()).toEqual({ ocr: true, page_range: [2, 5] }), { timeout: 3000 });
     expect(range).not.toHaveTextContent("Enter both numbers");
+    expect(first).toBeValid();
 
     await user.clear(last); // half a pair is not stored, and the first box keeps its number
     expect(first).toHaveValue("2");

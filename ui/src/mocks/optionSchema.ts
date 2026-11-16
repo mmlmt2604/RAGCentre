@@ -86,6 +86,7 @@ function validate(root: Json, schema: unknown, value: unknown, path: Seg[], dept
   const out: Err[] = [];
   const add = (kind: string, message: string, extra: Partial<Err> = {}) => out.push({ path, kind, message, ...extra });
   let typeError: Err | undefined;
+  let pinned = false; // this node's own `enum` or `const` failed (not one of an `allOf` or `$ref` below it)
   for (const [kind, rule] of Object.entries(schema)) {
     switch (kind) {
       case "$ref":
@@ -100,10 +101,16 @@ function validate(root: Json, schema: unknown, value: unknown, path: Seg[], dept
         break;
       }
       case "enum":
-        if (Array.isArray(rule) && !rule.some((v) => same(v, value))) add(kind, `Must be one of: ${rule.map(literal).join(", ")}.`);
+        if (Array.isArray(rule) && !rule.some((v) => same(v, value))) {
+          add(kind, `Must be one of: ${rule.map(literal).join(", ")}.`);
+          pinned = true;
+        }
         break;
       case "const":
-        if (!same(rule, value)) add(kind, `Must be ${literal(rule)}.`);
+        if (!same(rule, value)) {
+          add(kind, `Must be ${literal(rule)}.`);
+          pinned = true;
+        }
         break;
       case "minimum":
         if (typeof value === "number" && typeof rule === "number" && value < rule) add(kind, `Must be at least ${rule}.`);
@@ -167,8 +174,9 @@ function validate(root: Json, schema: unknown, value: unknown, path: Seg[], dept
     }
   }
   // pydantic writes a Literal as {"enum": [...], "type": "string"}: a wrong value fails both. Keep the
-  // sentence that names the allowed values.
-  if (typeError && out.some((e) => e.kind === "enum" || e.kind === "const")) return out.filter((e) => e !== typeError);
+  // sentence that names the allowed values. Only on the same node, as the backend does: an `enum` inside an
+  // `allOf` is another node, and the wrong type is still worth saying.
+  if (typeError && pinned) return out.filter((e) => e !== typeError);
   return out;
 }
 
