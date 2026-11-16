@@ -14,8 +14,9 @@ Options (from the pipeline's parse route):
                     which needs a VLM for every picture)
     page_range      ``[first, last]``, 1-based and inclusive; PDFs only (default: the whole file)
 
-Service settings (environment, none of them an option): ``MINERU_SHIM_VLM_ENGINE`` and
-``MINERU_SHIM_VLM_MODEL`` (part of the reported version), ``MINERU_SHIM_VLM_SERVER_URL`` and
+Service settings (environment, none of them an option): ``MINERU_SHIM_VLM_ENGINE`` (used
+without a server URL) and ``MINERU_SHIM_VLM_MODEL`` (used with one); whichever takes effect is part of the
+reported version, ``MINERU_SHIM_VLM_SERVER_URL`` and
 ``MINERU_SHIM_VLM_API_KEY`` point the ``standard`` and ``advanced`` tiers at a VLM server. A failing
 VLM (server down, key refused, engine package missing) is ``503 engine_unavailable`` naming the setting.
 
@@ -107,14 +108,15 @@ def _mineru_version() -> str:
 
 
 def service_version() -> str:
-    # RAGCentre pins this when the provider is created. A MinerU upgrade, or a different VLM engine or
-    # model for the standard and advanced tiers, changes parse output. The VLM server's URL and key do not.
+    # RAGCentre pins this when the provider is created. A MinerU upgrade, or a different VLM for the
+    # standard and advanced tiers, changes parse output. The server's URL and key do not. MinerU uses
+    # ``model`` only to address a remote server and ``engine`` only without one (mineru/model/vlm/
+    # client.py), so only the one that takes effect is in the version.
     version_ = f"{SHIM_VERSION}+mineru.{_mineru_version()}"
     vlm = VlmSettings.from_env()
-    if vlm.engine or vlm.model:
-        version_ += ".vlm-" + "-".join(
-            re.sub(r"[^A-Za-z0-9_-]", "-", part) for part in (vlm.engine or "auto", vlm.model) if part
-        )
+    chosen = vlm.model if vlm.server_url else vlm.engine
+    if chosen:
+        version_ += ".vlm-" + re.sub(r"[^A-Za-z0-9_-]", "-", chosen)
     return version_
 
 

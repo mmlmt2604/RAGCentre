@@ -104,3 +104,24 @@ def test_engine_parameters_accounted_for() -> None:
         known = set(NAMED_PARAMETERS[label]) | set(NOT_EXPOSED[label])
         assert actual - known == set(), f"new {label} parameters: {sorted(actual - known)}"
         assert known - actual == set(), f"{label} parameters MinerU no longer has: {sorted(known - actual)}"
+
+
+def test_vlm_error_wording_is_still_what_the_shim_matches() -> None:
+    """``translate_vlm_error`` recognises MinerU's VLM failures by class name and by the wording of a few
+    messages in ``mineru_vl_utils`` (they carry no code). A mineru-vl-utils release that rewords them fails
+    this, instead of quietly turning a 503 back into a 422."""
+    import inspect
+
+    from mineru_vl_utils.vlm_client import base_client, http_client
+
+    from mineru_shim.engine import _SETTING_ERRORS, _STATUS
+
+    for name in ("ServerError", "RequestError", "HttpResponseError", "EngineUnavailableError"):
+        assert getattr(base_client, name).__module__.startswith("mineru_vl_utils"), name
+    assert issubclass(base_client.HttpResponseError, base_client.ServerError)
+    source = inspect.getsource(http_client)
+    for prefix, _setting in _SETTING_ERRORS:
+        assert f'f"{prefix}' in source or f'"{prefix}' in source, f"mineru-vl-utils no longer says {prefix!r}"
+    # model discovery reports the status only in the text of a bare ServerError
+    assert "Status code: {response.status_code}" in source
+    assert _STATUS.search("Failed to get model name from http://x. Status code: 401, response body: {}")

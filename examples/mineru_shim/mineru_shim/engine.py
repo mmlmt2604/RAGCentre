@@ -33,7 +33,7 @@ NAMED_PARAMETERS = {
         "page_range": "option page_range", "vlm_config": "the MINERU_SHIM_VLM_* settings",
     },
     "VlmConfig": {
-        "engine": "MINERU_SHIM_VLM_ENGINE (in the version)", "model": "MINERU_SHIM_VLM_MODEL (in the version)",
+        "engine": "MINERU_SHIM_VLM_ENGINE (in the version, without a URL)", "model": "MINERU_SHIM_VLM_MODEL (in the version, with a URL)",
         "server_url": "MINERU_SHIM_VLM_SERVER_URL", "api_key": "MINERU_SHIM_VLM_API_KEY",
     },
 }  # fmt: skip
@@ -54,8 +54,8 @@ class VlmSettings:
     """Where MinerU's ``standard`` and ``advanced`` tiers find their vision-language model. Service
     settings, read from the environment at start-up (they are URLs and keys, not options):
     ``MINERU_SHIM_VLM_ENGINE`` (``auto``, ``llama-cpp``, ``vllm``, ``lmdeploy`` or ``mlx``),
-    ``_MODEL``, ``_SERVER_URL`` and ``_API_KEY``. Only the engine and the model change the output, so
-    only they are part of the reported version."""
+    ``_MODEL``, ``_SERVER_URL`` and ``_API_KEY``. The engine (without a URL) or the model (with one)
+    changes the output, so that one is part of the reported version; the URL and key are not."""
 
     engine: str = ""
     model: str = ""
@@ -155,18 +155,38 @@ _SETTING_ERRORS = (
 )
 
 
-def translate_vlm_error(exc: Exception, vlm: VlmSettings) -> ShimError | None:
+# Tiers whose pipeline loads the vision model (mineru/parser/tier.py: effort high and xhigh).
+VLM_TIERS = ("standard", "advanced")
+# Packages of MinerU's VLM engines (mineru/model/vlm/selector.py ``VLM_REQUIRED_MODULES``, and the
+# ``transformers`` backend). ``runtime.py`` and the clients also raise a bare "Please install X to use
+# the X backend" ``ImportError`` with no module name.
+_VLM_MODULES = frozenset(
+    {"vllm", "lmdeploy", "qwen_vl_utils", "mlx", "mlx_vlm", "mineru_llama_cpp", "mineru_vl_utils", "transformers"}
+)
+
+
+def _is_vlm_import(exc: ImportError) -> bool:
+    name = (exc.name or "").split(".")[0]
+    return name in _VLM_MODULES or " backend" in str(exc)
+
+
+def translate_vlm_error(exc: Exception, vlm: VlmSettings, tier: str = "standard") -> ShimError | None:
     """A failure of the vision-model backend as a ``503 engine_unavailable`` that names the setting to
     look at; ``None`` for anything else (a fault of the document, left to the service's ``422``).
 
     MinerU lets these escape as plain exceptions, not as ``MineruError``: ``ServerError`` when the server
     is down or refuses the request, ``RequestError`` for a setting the server rejects, and
     ``ImportError`` when the selected engine's package is not installed. All of them are properties of
-    the service, so fixing its settings helps and re-sending the file does not."""
+    the service, so fixing its settings helps and re-sending the file does not. ``tier`` is the tier the
+    parse ran at: below ``standard`` MinerU loads no VLM."""
     for item in _chain(exc):
         if isinstance(item, ImportError):
+            # Only the VLM tiers load a VLM engine, and only a VLM engine's own package is this
+            # branch's business: a missing onnxruntime or torch is the small models' (and a plain 422).
+            if tier not in VLM_TIERS or not _is_vlm_import(item):
+                continue
             if vlm.server_url:
-                hint = "install it in the service's environment"
+                hint = "MINERU_SHIM_VLM_SERVER_URL is set, so this is its HTTP client's dependency: install it in the service's environment"
             elif vlm.engine:
                 hint = f"MINERU_SHIM_VLM_ENGINE is '{vlm.engine}': install it, change that setting, or set MINERU_SHIM_VLM_SERVER_URL"
             else:
@@ -235,10 +255,27 @@ class MineruEngine:
                 result = mineru.parse(path, **kwargs)
                 content_list = render_content_list(result.middle_json)
             except Exception as exc:
-                translated = translate_error(exc) or translate_vlm_error(exc, self.vlm)
+                translated = translate_error(exc) or translate_vlm_error(exc, self.vlm, options["tier"])
                 if translated is None:
                     raise
                 raise translated from exc
+            if (
+                not content_list
+                and self.vlm.server_url
+                and options["tier"] in VLM_TIERS
+                and extension in TIERED_EXTENSIONS
+            ):
+                # MinerU reads the server's layout output as special tokens; a server that strips them
+                # (llama-server without --special) answers 200 and MinerU finds nothing. An empty IR would
+                # be cached as a success, so say what to check. A document that really is blank gets the
+                # same answer: that is the price of not caching the other.
+                raise ShimError(
+                    422,
+                    "conversion_failed",
+                    f"{filename}: MinerU found no content. If the page is not blank, check that the VLM "
+                    "server behind MINERU_SHIM_VLM_SERVER_URL returns special tokens (llama-server needs "
+                    "--special) and serves a MinerU model",
+                )
             sizes = page_sizes(path, extension)
             if options.get("page_range") and extension == "pdf":
                 first, last = (int(n) for n in options["page_range"].split("-"))
