@@ -679,17 +679,23 @@ def test_a_language_the_ocr_engine_lacks_is_400_when_engine_asked_for_it(
 
 
 def test_default_languages_the_ocr_engine_lacks_are_503_and_name_the_option(
-    fake_docling: type[FakeDocumentConverter],
+    fake_docling: type[FakeDocumentConverter], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(engine_module.shutil, "which", lambda name: "/usr/bin/tesseract")
     fake_docling.failure = fake_docling_module.OcrLanguageNotSupportedError("No traineddata file 'spa' is installed.")
     response = _service_post({"ocr_engine": "tesseract_cli"})
+    assert len(fake_docling.instances) == 1 and len(fake_docling.instances[0].calls) == 1
     assert response.status_code == 503 and response.json()["error"]["code"] == "engine_unavailable"
     assert "'languages'" in response.json()["error"]["message"] and "'spa'" in response.json()["error"]["message"]
 
 
-def test_an_ocr_engine_that_is_installed_but_unusable_is_503(fake_docling: type[FakeDocumentConverter]) -> None:
+def test_an_ocr_engine_that_is_installed_but_unusable_is_503(
+    fake_docling: type[FakeDocumentConverter], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(engine_module, "_installed", lambda module: True)
     fake_docling.failure = ImportError("tesserocr is not correctly configured. No language models have been detected.")
     response = _service_post({"ocr_engine": "tesseract"})
+    assert len(fake_docling.instances) == 1 and len(fake_docling.instances[0].calls) == 1
     assert response.status_code == 503 and response.json()["error"]["code"] == "engine_unavailable"
     assert "tesserocr" in response.json()["error"]["message"]
 
