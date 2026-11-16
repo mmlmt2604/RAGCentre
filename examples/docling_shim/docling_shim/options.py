@@ -30,7 +30,7 @@ PageRange = Annotated[
     AfterValidator(_check_page_range),
 ]
 
-OcrEngine = Literal["auto", "easyocr", "rapidocr", "tesseract", "tesseract_cli"]
+OcrEngine = Literal["auto", "easyocr", "ocrmac", "rapidocr", "tesseract", "tesseract_cli"]
 # Docling's VLM presets (``VlmConvertOptions.list_preset_ids()``) are a closed set of 28 names, many of
 # which need ``trust_remote_code``, a remote server or a specific runtime. Only the DocTags presets,
 # whose output Docling turns into a ``DoclingDocument`` with boxes, are offered.
@@ -70,8 +70,9 @@ class Options(BaseModel):
     )
     ocr_engine: OcrEngine = Field(
         "auto",
-        description="OCR engine. auto picks the first installed of the engines Docling tries; tesseract is "
-        "tesserocr (Python bindings) and tesseract_cli runs the tesseract program.",
+        description="OCR engine. auto picks the first installed of the engines Docling tries; ocrmac is Apple's "
+        "Vision framework (macOS only); tesseract is tesserocr (Python bindings) and tesseract_cli runs the "
+        "tesseract program.",
     )
     force_full_page_ocr: bool = Field(
         False, description="OCR the whole page, even where there is a text layer (Docling OcrMode full_page)."

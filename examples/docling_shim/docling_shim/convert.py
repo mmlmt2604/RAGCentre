@@ -28,6 +28,9 @@ A picture's classification (the most confident class) and description are read f
 ``item.meta`` (``docling-core`` 2.x) or, failing that, ``item.annotations``; they go to
 ``metadata.classification`` and ``metadata.description``, and the description is also appended to
 the figure's ``text`` after the caption and a blank line, so the built-in chunkers can find it.
+The values of a chart that Docling's chart extraction (option ``charts``) read go to
+``metadata.chart_data`` (``{"title", "rows"}``, the first row being the header) and, as a Markdown
+table, to the end of the figure's ``text``.
 """
 
 from __future__ import annotations
@@ -106,6 +109,24 @@ def _figure_details(item: Any) -> tuple[str, str]:
     return description, classification
 
 
+def _chart_data(item: Any) -> tuple[str, list[list[str]]]:
+    """``(title, rows)`` of the values Docling's chart extraction stored in ``item.meta.tabular_chart``;
+    ``("", [])`` when there are none. The first row is the header row."""
+    chart = getattr(getattr(item, "meta", None), "tabular_chart", None)
+    data = getattr(chart, "chart_data", None)
+    if data is None:
+        return "", []
+    rows = [[str(cell.text or "").strip() for cell in row] for row in data.grid]
+    return str(getattr(chart, "title", "") or "").strip(), [row for row in rows if any(row)]
+
+
+def _markdown_rows(rows: list[list[str]]) -> str:
+    def line(row: list[str]) -> str:
+        return "| " + " | ".join(cell.replace("|", "\\|").replace("\n", " ") for cell in row) + " |"
+
+    return "\n".join([line(rows[0]), line(["---"] * len(rows[0])), *(line(row) for row in rows[1:])])
+
+
 def _block(item: Any, doc: Any, sizes: dict[int, tuple[float, float]]) -> dict[str, Any] | None:
     label = _label(item)
     block: dict[str, Any]
@@ -121,10 +142,14 @@ def _block(item: Any, doc: Any, sizes: dict[int, tuple[float, float]]) -> dict[s
     elif label in _FIGURES:
         description, classification = _figure_details(item)
         caption = (item.caption_text(doc) or "").strip()
-        block = {"type": "figure", "text": "\n\n".join(part for part in (caption, description) if part)}
-        details = {
+        title, rows = _chart_data(item)
+        table = _markdown_rows(rows) if rows else ""
+        block = {"type": "figure", "text": "\n\n".join(part for part in (caption, description, table) if part)}
+        details: dict[str, Any] = {
             key: value for key, value in (("description", description), ("classification", classification)) if value
         }
+        if rows:
+            details["chart_data"] = {"title": title, "rows": rows}
         if details:
             block["metadata"] = details
     elif label in _SAME:

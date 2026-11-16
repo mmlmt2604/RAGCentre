@@ -48,6 +48,13 @@ class EasyOcrOptions(OcrOptions):
     confidence_threshold: float = 0.5
 
 
+class OcrMacOptions(OcrOptions):
+    kind: ClassVar[str] = "ocrmac"
+    lang: list[str] = ["en-US", "es-ES", "fr-FR", "de-DE"]
+    recognition: str = "accurate"
+    framework: str = "vision"
+
+
 class RapidOcrOptions(OcrOptions):
     kind: ClassVar[str] = "rapidocr"
     lang: list[str] = ["ch"]
@@ -94,6 +101,7 @@ class PictureDescriptionApiOptions(Base):
     headers: dict[str, str] = {}
     params: dict[str, Any] = {}
     prompt: str = "Describe this image in a few sentences."
+    timeout: float = 20.0
 
 
 class PdfPipelineOptions(Base):
@@ -139,6 +147,10 @@ class VlmPipelineOptions(Base):
     vlm_options: VlmConvertOptions = VlmConvertOptions()
 
 
+class OcrLanguageNotSupportedError(RuntimeError):
+    """Docling's ``docling.exceptions.OcrLanguageNotSupportedError`` (a ``BaseError``, a ``RuntimeError``)."""
+
+
 class FakeFormatOption:
     def __init__(self, pipeline_options: Any = None, pipeline_cls: Any = None) -> None:
         self.pipeline_options = pipeline_options
@@ -147,6 +159,8 @@ class FakeFormatOption:
 
 class FakeDocumentConverter:
     instances: ClassVar[list[FakeDocumentConverter]] = []
+    # an exception ``convert`` raises, as Docling does when it builds its OCR model on the first page
+    failure: ClassVar[Exception | None] = None
 
     def __init__(self, format_options: dict[str, FakeFormatOption]) -> None:
         self.format_options = format_options
@@ -155,18 +169,23 @@ class FakeDocumentConverter:
 
     def convert(self, stream: Any, **kwargs: Any) -> Any:
         self.calls.append((stream, kwargs))
+        if FakeDocumentConverter.failure is not None:
+            raise FakeDocumentConverter.failure
         return types.SimpleNamespace(document="doc")
 
 
 @pytest.fixture
 def fake_docling(monkeypatch: pytest.MonkeyPatch) -> type[FakeDocumentConverter]:
     FakeDocumentConverter.instances = []
+    FakeDocumentConverter.failure = None
+    exceptions = types.ModuleType("docling.exceptions")
+    exceptions.OcrLanguageNotSupportedError = OcrLanguageNotSupportedError  # type: ignore[attr-defined]
     base = types.ModuleType("docling.datamodel.base_models")
     base.InputFormat = types.SimpleNamespace(PDF="pdf", IMAGE="image")  # type: ignore[attr-defined]
     base.DocumentStream = lambda name, stream: (name, stream.read())  # type: ignore[attr-defined]
     pipeline = types.ModuleType("docling.datamodel.pipeline_options")
     for cls in (
-        OcrMode, TableFormerMode, OcrAutoOptions, EasyOcrOptions, RapidOcrOptions, TesseractOcrOptions,
+        OcrMode, TableFormerMode, OcrAutoOptions, EasyOcrOptions, OcrMacOptions, RapidOcrOptions, TesseractOcrOptions,
         TesseractCliOcrOptions, TableStructureOptions, AcceleratorOptions, PictureDescriptionApiOptions,
         PdfPipelineOptions, VlmConvertOptions, VlmPipelineOptions,
     ):  # fmt: skip
@@ -181,6 +200,7 @@ def fake_docling(monkeypatch: pytest.MonkeyPatch) -> type[FakeDocumentConverter]
     vlm_module.VlmPipeline = "VlmPipeline"  # type: ignore[attr-defined]
     for name, module in {
         "docling": types.ModuleType("docling"),
+        "docling.exceptions": exceptions,
         "docling.pipeline": types.ModuleType("docling.pipeline"),
         "docling.pipeline.vlm_pipeline": vlm_module,
         "docling.datamodel": datamodel,

@@ -10,6 +10,7 @@ import importlib.util
 import io
 import os
 import shutil
+import sys
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -41,16 +42,23 @@ class Settings:
     picture_description_url: str = ""
     picture_description_model: str = ""
     picture_description_api_key: str = ""
+    picture_description_timeout: float | None = None
     device: str = ""
     num_threads: int | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
         threads = os.environ.get("DOCLING_SHIM_NUM_THREADS", "").strip()
+        timeout = os.environ.get("DOCLING_SHIM_PICTURE_DESCRIPTION_TIMEOUT", "").strip()
+        try:
+            timeout_value = float(timeout) if timeout else None
+        except ValueError:
+            timeout_value = None
         return cls(
             picture_description_url=os.environ.get("DOCLING_SHIM_PICTURE_DESCRIPTION_URL", "").strip(),
             picture_description_model=os.environ.get("DOCLING_SHIM_PICTURE_DESCRIPTION_MODEL", "").strip(),
             picture_description_api_key=os.environ.get("DOCLING_SHIM_PICTURE_DESCRIPTION_API_KEY", "").strip(),
+            picture_description_timeout=timeout_value,
             device=os.environ.get("DOCLING_SHIM_DEVICE", "").strip(),
             num_threads=int(threads) if threads.isdigit() and int(threads) > 0 else None,
         )
@@ -60,6 +68,7 @@ class Settings:
 _OCR_CLASSES = {
     "auto": ("OcrAutoOptions", ()),
     "easyocr": ("EasyOcrOptions", ("easyocr",)),
+    "ocrmac": ("OcrMacOptions", ("ocrmac",)),  # macOS only, see ``check_ocr_engine_available``
     "rapidocr": ("RapidOcrOptions", ("rapidocr",)),  # plus its backend, see ``_RAPIDOCR_BACKENDS``
     "tesseract": ("TesseractOcrOptions", ("tesserocr",)),
     "tesseract_cli": ("TesseractCliOcrOptions", ()),
@@ -79,6 +88,8 @@ _RAPIDOCR_BACKENDS = {"onnxruntime": "onnxruntime", "openvino": "openvino", "pad
 
 def check_ocr_engine_available(name: str, engine: dict[str, Any] | None = None) -> None:
     """``503 engine_unavailable`` naming the missing package or program."""
+    if name == "ocrmac" and sys.platform != "darwin":
+        raise ShimError(503, "engine_unavailable", "ocr_engine 'ocrmac' (Apple Vision) works on macOS only")
     needed = list(_OCR_CLASSES[name][1])
     if name == "rapidocr":
         backend = ((engine or {}).get("ocr_options") or {}).get("backend", "onnxruntime")
@@ -140,6 +151,8 @@ def _common_kwargs(options: Options, settings: Settings, po: Any) -> dict[str, A
             api["params"] = {"model": settings.picture_description_model}
         if settings.picture_description_api_key:
             api["headers"] = {"Authorization": f"Bearer {settings.picture_description_api_key}"}
+        if settings.picture_description_timeout is not None:
+            api["timeout"] = settings.picture_description_timeout
         kwargs["picture_description_options"] = po.PictureDescriptionApiOptions(**api)
         kwargs["enable_remote_services"] = True
     return kwargs
@@ -197,6 +210,34 @@ def build_pipeline_options(options: Options, settings: Settings | None = None) -
     return pipeline
 
 
+def translate_engine_error(exc: Exception, options: Options) -> Exception | None:
+    """The protocol error for a Docling failure that is not a conversion failure, else ``None``.
+
+    Docling builds its OCR model when the first page is converted, and two problems come out of that
+    as plain exceptions: an OCR engine with no model for a language (``OcrLanguageNotSupportedError``:
+    Tesseract's default languages include ``spa``, ``fra`` and ``deu``, of which a default install has
+    none), and an engine that is installed but not usable (``ImportError``: ``tesserocr`` without
+    ``TESSDATA_PREFIX``). Neither is a bad document, so neither is ``422 conversion_failed``."""
+    import docling.exceptions as errors
+
+    # Older supported Docling releases do not define this exception.
+    ocr_error: type[Exception] | tuple[()] = getattr(errors, "OcrLanguageNotSupportedError", ())
+    if isinstance(exc, ocr_error):
+        language_option = "languages" if options.languages is not None else None
+        if "lang" in (options.engine.get("ocr_options") or {}):
+            language_option = "engine.ocr_options.lang"
+        if language_option:
+            return OptionsError(f"option {language_option!r} is invalid: {exc}")  # type: ignore[no-any-return]
+        return ShimError(
+            503,
+            "engine_unavailable",
+            f"the OCR engine cannot serve its default languages here; set the option 'languages'. {exc}",
+        )
+    if isinstance(exc, ImportError):
+        return ShimError(503, "engine_unavailable", f"a Docling dependency is not usable: {exc}")
+    return None
+
+
 class DoclingConverter:
     """``(content, filename, options) -> DoclingDocument``."""
 
@@ -240,4 +281,10 @@ class DoclingConverter:
         if options.page_range is not None:
             extra["page_range"] = (options.page_range[0], options.page_range[1])
         stream = DocumentStream(name=filename, stream=io.BytesIO(content))
-        return self._converter(options).convert(stream, **extra).document
+        converter = self._converter(options)
+        try:
+            return converter.convert(stream, **extra).document
+        except Exception as exc:
+            if (translated := translate_engine_error(exc, options)) is not None:
+                raise translated from exc
+            raise

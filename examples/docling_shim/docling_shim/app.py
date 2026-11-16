@@ -18,8 +18,8 @@ credentials when it creates the provider.
 
 Service settings (environment, read at start-up; none of them is an option): ``DOCLING_SHIM_DEVICE``
 and ``DOCLING_SHIM_NUM_THREADS`` (accelerator), ``DOCLING_SHIM_PICTURE_DESCRIPTION_URL``,
-``_MODEL`` and ``_API_KEY`` (describe pictures with an OpenAI-compatible server instead of
-Docling's local model). The model is part of the reported version; the URL and key are not.
+``_MODEL``, ``_API_KEY`` and ``_TIMEOUT`` (describe pictures with an OpenAI-compatible server instead
+of Docling's local model). The model is part of the reported version; the URL, key and timeout are not.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from docling_shim.options import Options, OptionsError, parse_options
 
 __all__ = ["MAX_CONVERTERS", "DoclingConverter", "Options", "create_app", "service_version"]
 
-SHIM_VERSION = "0.3.0"
+SHIM_VERSION = "0.4.0"
 PROTOCOL = "ragcentre.parser/v1"
 MIME_TYPES = [
     "application/pdf",

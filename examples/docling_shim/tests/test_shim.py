@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import fake_docling as fake_docling_module
 import pytest
 from docling_core.types.doc import (
     BoundingBox,
@@ -133,6 +134,35 @@ def test_figure_text_is_the_caption_then_the_description() -> None:
     assert blocks[1]["text"] == "A logo." and blocks[1]["metadata"] == {"description": "A logo."}
 
 
+def test_extracted_chart_data_reaches_the_ir() -> None:
+    """``charts: true`` stores the chart's values in ``picture.meta.tabular_chart``; the IR keeps them as
+    rows in ``metadata.chart_data`` and as a Markdown table in the figure's text."""
+    from docling_core.types.doc.document import TabularChartMetaField
+
+    cells = [
+        TableCell(text=text, start_row_offset_idx=r, end_row_offset_idx=r + 1, start_col_offset_idx=c,
+                  end_col_offset_idx=c + 1, column_header=r == 0)
+        for r, row in enumerate([["Quarter", "Units"], ["Q1", "10"], ["Q2", "25"]])
+        for c, text in enumerate(row)
+    ]  # fmt: skip
+    doc = DoclingDocument(name="m")
+    doc.add_page(page_no=1, size=Size(width=600, height=800))
+    picture = doc.add_picture(prov=prov(1, 0, 100, 100, 0))
+    picture.meta = PictureMeta(
+        description=DescriptionMetaField(text="Units per quarter.", created_by="vlm"),
+        tabular_chart=TabularChartMetaField(
+            title="Sales", chart_data=TableData(num_rows=3, num_cols=2, table_cells=cells)
+        ),
+    )
+    (block,) = to_ir(doc)["blocks"]
+    assert block["metadata"]["chart_data"] == {
+        "title": "Sales",
+        "rows": [["Quarter", "Units"], ["Q1", "10"], ["Q2", "25"]],
+    }
+    assert block["text"].startswith("Units per quarter.\n\n")
+    assert "| Quarter | Units |" in block["text"] and "| Q2 | 25 |" in block["text"]
+
+
 def test_older_annotations_are_read_when_there_is_no_meta() -> None:
     from docling_core.types.doc.document import (
         PictureClassificationClass,
@@ -194,7 +224,7 @@ def test_service_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(create_app(fake_converter(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == PROTOCOL and info["name"] == "docling-shim"
-    assert info["version"].startswith("0.3.0+docling.") and ".ocr-" in info["version"]
+    assert info["version"].startswith("0.4.0+docling.") and ".ocr-" in info["version"]
     assert "application/pdf" in info["mime_types"]
     resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
                        data={"options": json.dumps({"ocr": False})})  # fmt: skip
@@ -279,7 +309,7 @@ def test_version_names_the_automatic_ocr_engine(
 ) -> None:
     fake_environment(monkeypatch, platform_name, installed)
     assert app_module.resolve_ocr_engine() == engine
-    assert service_version() == f"0.3.0+docling.2.150.1.ocr-{engine}"
+    assert service_version() == f"0.4.0+docling.2.150.1.ocr-{engine}"
 
 
 def test_version_ocr_suffix_is_sanitised(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -311,7 +341,10 @@ def test_info_schema_lists_every_named_option(monkeypatch: pytest.MonkeyPatch) -
     ("options", "message"),
     [
         ({"table_mode": "slow"}, "option 'table_mode' must be fast or accurate"),
-        ({"ocr_engine": "nope"}, "option 'ocr_engine' must be auto, easyocr, rapidocr, tesseract or tesseract_cli"),
+        (
+            {"ocr_engine": "nope"},
+            "option 'ocr_engine' must be auto, easyocr, ocrmac, rapidocr, tesseract or tesseract_cli",
+        ),
         ({"images_scale": 0}, "option 'images_scale' must be a number that is greater than 0 and at most 4"),
         ({"images_scale": 9}, "option 'images_scale' must be a number that is greater than 0 and at most 4"),
         ({"languages": "en"}, "option 'languages' must be a list"),
@@ -358,6 +391,7 @@ def test_defaults_match_doclings_own(fake_docling: Any) -> None:
     [
         ("auto", "OcrAutoOptions", "auto"),
         ("easyocr", "EasyOcrOptions", "easyocr"),
+        ("ocrmac", "OcrMacOptions", "ocrmac"),
         ("rapidocr", "RapidOcrOptions", "rapidocr"),
         ("tesseract", "TesseractOcrOptions", "tesserocr"),
         ("tesseract_cli", "TesseractCliOcrOptions", "tesseract"),
@@ -368,6 +402,7 @@ def test_ocr_engine_picks_the_options_class(
 ) -> None:
     monkeypatch.setattr(engine_module, "_installed", lambda module: True)
     monkeypatch.setattr(engine_module.shutil, "which", lambda name: "/usr/bin/tesseract")
+    monkeypatch.setattr(engine_module.sys, "platform", "darwin")
     pipeline = build_pipeline_options(opts(ocr_engine=engine, languages=["x"], force_full_page_ocr=True))
     assert type(pipeline.ocr_options).__name__ == cls and pipeline.ocr_options.kind == kind
     assert pipeline.ocr_options.lang == ["x"] and pipeline.ocr_options.mode.value == "full_page"
@@ -381,15 +416,26 @@ def test_languages_default_to_the_engines_own(fake_docling: Any, monkeypatch: py
 
 @pytest.mark.parametrize(
     ("engine", "missing"),
-    [("easyocr", "easyocr"), ("rapidocr", "rapidocr"), ("tesseract", "tesserocr")],
+    [("easyocr", "easyocr"), ("rapidocr", "rapidocr"), ("tesseract", "tesserocr"), ("ocrmac", "ocrmac")],
 )
 def test_a_missing_ocr_package_is_503_and_named(
     fake_docling: Any, monkeypatch: pytest.MonkeyPatch, engine: str, missing: str
 ) -> None:
+    monkeypatch.setattr(engine_module.sys, "platform", "darwin")
     monkeypatch.setattr(engine_module, "_installed", lambda module: False)
     with pytest.raises(ShimError) as err:
         build_pipeline_options(opts(ocr_engine=engine))
     assert err.value.status == 503 and err.value.code == "engine_unavailable" and f"'{missing}'" in err.value.message
+
+
+def test_ocrmac_is_503_off_macos_even_when_the_package_is_installed(
+    fake_docling: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(engine_module, "_installed", lambda module: True)
+    monkeypatch.setattr(engine_module.sys, "platform", "linux")
+    with pytest.raises(ShimError) as err:
+        build_pipeline_options(opts(ocr_engine="ocrmac"))
+    assert err.value.status == 503 and "macOS" in err.value.message
 
 
 def test_missing_tesseract_program_is_503(fake_docling: Any, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -530,11 +576,13 @@ def test_picture_description_uses_the_configured_server(fake_docling: Any) -> No
         picture_description_url="http://llm:8000/v1/chat/completions",
         picture_description_model="llava",
         picture_description_api_key="k",
+        picture_description_timeout=90.0,
     )
     pipeline = build_pipeline_options(opts(picture_description=True), settings)
     described = pipeline.picture_description_options
     assert described.url == "http://llm:8000/v1/chat/completions"
     assert described.params == {"model": "llava"} and described.headers == {"Authorization": "Bearer k"}
+    assert described.timeout == 90.0
     assert pipeline.enable_remote_services is True
     # Not asked for: no remote services.
     off = build_pipeline_options(opts(), settings)
@@ -560,20 +608,24 @@ def test_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings.from_env()
     assert settings.device == "cuda" and settings.num_threads == 8 and settings.picture_description_url == "http://x"
     monkeypatch.setenv("DOCLING_SHIM_NUM_THREADS", "many")
+    monkeypatch.setenv("DOCLING_SHIM_PICTURE_DESCRIPTION_TIMEOUT", " 90 ")
     assert Settings.from_env().num_threads is None
+    assert Settings.from_env().picture_description_timeout == 90.0
+    monkeypatch.setenv("DOCLING_SHIM_PICTURE_DESCRIPTION_TIMEOUT", "slow")
+    assert Settings.from_env().picture_description_timeout is None
 
 
 def test_the_description_model_is_part_of_the_version(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_environment(monkeypatch, "linux", {"easyocr"})
     monkeypatch.delenv("DOCLING_SHIM_PICTURE_DESCRIPTION_MODEL", raising=False)
-    assert service_version() == "0.3.0+docling.2.150.1.ocr-easyocr"
+    assert service_version() == "0.4.0+docling.2.150.1.ocr-easyocr"
     monkeypatch.setenv("DOCLING_SHIM_PICTURE_DESCRIPTION_MODEL", "org/llava:7b")
-    assert service_version() == "0.3.0+docling.2.150.1.ocr-easyocr.desc-org-llava-7b"
+    assert service_version() == "0.4.0+docling.2.150.1.ocr-easyocr.desc-org-llava-7b"
     # URL, key, device and threads are not.
     monkeypatch.delenv("DOCLING_SHIM_PICTURE_DESCRIPTION_MODEL")
     for name in ("PICTURE_DESCRIPTION_URL", "PICTURE_DESCRIPTION_API_KEY", "DEVICE", "NUM_THREADS"):
         monkeypatch.setenv(f"DOCLING_SHIM_{name}", "3")
-    assert service_version() == "0.3.0+docling.2.150.1.ocr-easyocr"
+    assert service_version() == "0.4.0+docling.2.150.1.ocr-easyocr"
 
 
 # --- the converter -------------------------------------------------------------------------------
@@ -598,6 +650,54 @@ def test_page_range_reaches_convert_as_a_tuple_and_does_not_make_a_new_converter
     convert(b"x", "a.pdf", opts())
     (instance,) = fake_docling.instances
     assert [kwargs for _, kwargs in instance.calls] == [{"page_range": (2, 4)}, {"page_range": (5, 6)}, {}]
+
+
+def _service_post(options: dict[str, Any]) -> Any:
+    client = TestClient(create_app(DoclingConverter(Settings())))
+    return client.post("/parse", files={"file": ("scan.png", b"x", "image/png")}, data={"options": json.dumps(options)})
+
+
+def test_a_language_the_ocr_engine_lacks_is_400_when_it_was_asked_for(
+    fake_docling: type[FakeDocumentConverter],
+) -> None:
+    fake_docling.failure = fake_docling_module.OcrLanguageNotSupportedError("EasyOcr has no model for 'zz'")
+    response = _service_post({"languages": ["zz"]})
+    assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_options"
+    assert "option 'languages'" in response.json()["error"]["message"] and "'zz'" in response.json()["error"]["message"]
+
+
+def test_a_language_the_ocr_engine_lacks_is_400_when_engine_asked_for_it(
+    fake_docling: type[FakeDocumentConverter],
+) -> None:
+    fake_docling.failure = fake_docling_module.OcrLanguageNotSupportedError("EasyOcr has no model for 'zz'")
+    response = _service_post({"engine": {"ocr_options": {"lang": ["zz"]}}})
+    assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_options"
+    assert (
+        "option 'engine.ocr_options.lang'" in response.json()["error"]["message"]
+        and "'zz'" in response.json()["error"]["message"]
+    )
+
+
+def test_default_languages_the_ocr_engine_lacks_are_503_and_name_the_option(
+    fake_docling: type[FakeDocumentConverter],
+) -> None:
+    fake_docling.failure = fake_docling_module.OcrLanguageNotSupportedError("No traineddata file 'spa' is installed.")
+    response = _service_post({"ocr_engine": "tesseract_cli"})
+    assert response.status_code == 503 and response.json()["error"]["code"] == "engine_unavailable"
+    assert "'languages'" in response.json()["error"]["message"] and "'spa'" in response.json()["error"]["message"]
+
+
+def test_an_ocr_engine_that_is_installed_but_unusable_is_503(fake_docling: type[FakeDocumentConverter]) -> None:
+    fake_docling.failure = ImportError("tesserocr is not correctly configured. No language models have been detected.")
+    response = _service_post({"ocr_engine": "tesseract"})
+    assert response.status_code == 503 and response.json()["error"]["code"] == "engine_unavailable"
+    assert "tesserocr" in response.json()["error"]["message"]
+
+
+def test_any_other_conversion_failure_stays_422(fake_docling: type[FakeDocumentConverter]) -> None:
+    fake_docling.failure = RuntimeError("bad pdf")
+    response = _service_post({})
+    assert response.status_code == 422 and response.json()["error"]["code"] == "conversion_failed"
 
 
 def test_converters_are_cached_per_options(fake_docling: type[FakeDocumentConverter]) -> None:
