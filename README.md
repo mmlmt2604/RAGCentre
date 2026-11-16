@@ -37,7 +37,7 @@ Office documents and images:
 docker compose --profile docling up --build     # RAGCentre, and Docling on http://docling:8701
 ```
 
-The other profiles are `mineru`, `paddleocr` and `surya`. Register the parser with the `base_url`
+The other profiles are `mineru`, `paddleocr`, `paddleocr-vl` and `surya`. Register the parser with the `base_url`
 shown (see [`examples/providers/`](examples/providers/)); each service's README has the details.
 
 ## Concepts
@@ -92,8 +92,9 @@ Run `ragcentre COMMAND --help` for details.
 
 - [`docs/protocols/parser-v1.md`](docs/protocols/parser-v1.md): parse files into the Document IR.
   [`examples/docling_shim/`](examples/docling_shim/) is a complete parser service built on Docling;
-  [`mineru_shim/`](examples/mineru_shim/), [`paddleocr_shim/`](examples/paddleocr_shim/) and
-  [`surya_shim/`](examples/surya_shim/) do the same for MinerU, PaddleOCR and Surya, on a small
+  [`mineru_shim/`](examples/mineru_shim/), [`paddleocr_shim/`](examples/paddleocr_shim/),
+  [`paddleocr_vl_shim/`](examples/paddleocr_vl_shim/) and [`surya_shim/`](examples/surya_shim/) do the same for MinerU,
+  PaddleOCR (PP-StructureV3 and PaddleOCR-VL) and Surya, on a small
   shared package, [`shimkit/`](examples/shimkit/).
 - [`docs/protocols/chunker-v1.md`](docs/protocols/chunker-v1.md): custom chunking.
 - [`docs/protocols/embedder-v1.md`](docs/protocols/embedder-v1.md): OpenAI-compatible embeddings.
@@ -155,6 +156,6 @@ docker compose -f tests/docker-compose.yml down
 ```
 
 The parser shims describe how each engine maps to the Document IR in their own READMEs:
-[`mineru_shim`](examples/mineru_shim/), [`paddleocr_shim`](examples/paddleocr_shim/) and
-[`surya_shim`](examples/surya_shim/). Working plans and design notes are kept locally, not in the
+[`mineru_shim`](examples/mineru_shim/), [`paddleocr_shim`](examples/paddleocr_shim/),
+[`paddleocr_vl_shim`](examples/paddleocr_vl_shim/) and [`surya_shim`](examples/surya_shim/). Working plans and design notes are kept locally, not in the
 repository.

@@ -2,7 +2,7 @@
 #
 # The example parser services are opt-in profiles, started next to RAGCentre:
 #   docker compose --profile docling up --build
-# (also: mineru, paddleocr, surya; several --profile flags may be given). Inside this network a
+# (also: mineru, paddleocr, paddleocr-vl, surya; several --profile flags may be given). Inside this network a
 # parser is reached by its service name, so register it with `base_url: http://docling:8701`
 # (see examples/providers/). Each one downloads its models on the first parse, into its volume.
 services:
@@ -23,6 +23,7 @@ services:
       DOCLING_SHIM_API_KEY: ${DOCLING_SHIM_API_KEY:-}
       MINERU_SHIM_API_KEY: ${MINERU_SHIM_API_KEY:-}
       PADDLEOCR_SHIM_API_KEY: ${PADDLEOCR_SHIM_API_KEY:-}
+      PADDLEOCR_VL_SHIM_API_KEY: ${PADDLEOCR_VL_SHIM_API_KEY:-}
       SURYA_SHIM_API_KEY: ${SURYA_SHIM_API_KEY:-}
     restart: unless-stopped
 
@@ -77,6 +78,29 @@ services:
       PADDLEOCR_SHIM_LANG: ${PADDLEOCR_SHIM_LANG:-}
     restart: unless-stopped
 
+  paddleocr-vl:
+    profiles: [paddleocr-vl]
+    build:
+      context: examples
+      dockerfile: paddleocr_vl_shim/Dockerfile
+    ports:
+      - "127.0.0.1:8705:8705"
+    volumes:
+      - paddleocr-vl-models:/home/shim/.paddlex
+    environment:
+      PADDLEOCR_VL_SHIM_API_KEY: ${PADDLEOCR_VL_SHIM_API_KEY:-}
+      # Where the recognition model runs (see examples/paddleocr_vl_shim/README.md). Unset: the native
+      # backend, inside this container. A server backend, such as llama.cpp on the host, needs a URL
+      # the container can reach (http://host.docker.internal:8080/v1).
+      PADDLEOCR_VL_SHIM_PIPELINE_VERSION: ${PADDLEOCR_VL_SHIM_PIPELINE_VERSION:-}
+      PADDLEOCR_VL_SHIM_REC_BACKEND: ${PADDLEOCR_VL_SHIM_REC_BACKEND:-}
+      PADDLEOCR_VL_SHIM_REC_SERVER_URL: ${PADDLEOCR_VL_SHIM_REC_SERVER_URL:-}
+      PADDLEOCR_VL_SHIM_REC_MODEL: ${PADDLEOCR_VL_SHIM_REC_MODEL:-}
+      PADDLEOCR_VL_SHIM_REC_API_MODEL: ${PADDLEOCR_VL_SHIM_REC_API_MODEL:-}
+      PADDLEOCR_VL_SHIM_REC_API_KEY: ${PADDLEOCR_VL_SHIM_REC_API_KEY:-}
+      PADDLEOCR_VL_SHIM_REC_MAX_CONCURRENCY: ${PADDLEOCR_VL_SHIM_REC_MAX_CONCURRENCY:-}
+    restart: unless-stopped
+
   surya:
     profiles: [surya]
     build:
@@ -95,4 +119,5 @@ volumes:
   docling-models:
   mineru-models:
   paddleocr-models:
+  paddleocr-vl-models:
   surya-models:

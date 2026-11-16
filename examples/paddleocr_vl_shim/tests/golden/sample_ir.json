@@ -1,0 +1,362 @@
+{
+  "schema_version": "1.1",
+  "metadata": {
+    "page_count": 2,
+    "title": "Pump Manual",
+    "source_name": "manual.pdf"
+  },
+  "pages": [
+    {
+      "page": 1,
+      "width": 1224.0,
+      "height": 1584.0
+    },
+    {
+      "page": 2,
+      "width": 1224.0,
+      "height": 1584.0
+    }
+  ],
+  "blocks": [
+    {
+      "type": "page_header",
+      "text": "Acme Pumps",
+      "page": 1,
+      "bbox": [
+        100.0,
+        40.0,
+        400.0,
+        70.0
+      ],
+      "id": "b1"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Pump Manual",
+      "page": 1,
+      "bbox": [
+        100.0,
+        100.0,
+        700.0,
+        160.0
+      ],
+      "id": "b2"
+    },
+    {
+      "type": "paragraph",
+      "text": "Abstract. This manual covers installation and service.",
+      "page": 1,
+      "bbox": [
+        100.0,
+        180.0,
+        1100.0,
+        230.0
+      ],
+      "id": "b3"
+    },
+    {
+      "type": "paragraph",
+      "text": "1 Installation 2\n2 Specifications 3",
+      "page": 1,
+      "bbox": [
+        100.0,
+        250.0,
+        600.0,
+        320.0
+      ],
+      "id": "b4"
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "text": "Installation",
+      "page": 1,
+      "bbox": [
+        100.0,
+        340.0,
+        400.0,
+        380.0
+      ],
+      "id": "b5"
+    },
+    {
+      "type": "paragraph",
+      "text": "Mount the pump on a level surface.",
+      "page": 1,
+      "bbox": [
+        100.0,
+        400.0,
+        1100.0,
+        440.0
+      ],
+      "id": "b6"
+    },
+    {
+      "type": "paragraph",
+      "text": "Side note, rotated",
+      "page": 1,
+      "bbox": [
+        1150.0,
+        400.0,
+        1190.0,
+        700.0
+      ],
+      "id": "b7"
+    },
+    {
+      "type": "code",
+      "text": "if pressure > limit:\n    close_valve()",
+      "page": 1,
+      "bbox": [
+        100.0,
+        460.0,
+        800.0,
+        540.0
+      ],
+      "id": "b8"
+    },
+    {
+      "type": "formula",
+      "text": "E = mc^2",
+      "page": 1,
+      "bbox": [
+        100.0,
+        560.0,
+        500.0,
+        620.0
+      ],
+      "id": "b9"
+    },
+    {
+      "type": "formula",
+      "text": "p_{in}",
+      "page": 1,
+      "bbox": [
+        100.0,
+        640.0,
+        200.0,
+        670.0
+      ],
+      "id": "b10"
+    },
+    {
+      "type": "footnote",
+      "text": "1 See the safety sheet.",
+      "page": 1,
+      "bbox": [
+        100.0,
+        1400.0,
+        600.0,
+        1430.0
+      ],
+      "id": "b11"
+    },
+    {
+      "type": "aside_text",
+      "text": "arXiv:0000.00000",
+      "page": 1,
+      "bbox": [
+        20.0,
+        300.0,
+        60.0,
+        900.0
+      ],
+      "id": "b12"
+    },
+    {
+      "type": "page_footer",
+      "text": "1",
+      "page": 1,
+      "bbox": [
+        600.0,
+        1500.0,
+        640.0,
+        1530.0
+      ],
+      "id": "b13"
+    },
+    {
+      "type": "page_footer",
+      "text": "Confidential",
+      "page": 1,
+      "bbox": [
+        100.0,
+        1500.0,
+        400.0,
+        1530.0
+      ],
+      "id": "b14"
+    },
+    {
+      "type": "heading",
+      "level": 3,
+      "text": "Specifications",
+      "page": 2,
+      "bbox": [
+        100.0,
+        80.0,
+        500.0,
+        120.0
+      ],
+      "id": "b15"
+    },
+    {
+      "type": "table",
+      "text": "| Flow |\n| --- |\n| 40 l/min |",
+      "html": "<table><tr><td>Flow</td></tr><tr><td>40 l/min</td></tr></table>",
+      "page": 2,
+      "bbox": [
+        100.0,
+        160.0,
+        600.0,
+        400.0
+      ],
+      "id": "b16"
+    },
+    {
+      "type": "caption",
+      "text": "Table 1: Ratings",
+      "page": 2,
+      "bbox": [
+        100.0,
+        410.0,
+        600.0,
+        440.0
+      ],
+      "id": "b17"
+    },
+    {
+      "type": "figure",
+      "text": "",
+      "page": 2,
+      "bbox": [
+        100.0,
+        460.0,
+        600.0,
+        900.0
+      ],
+      "id": "b18"
+    },
+    {
+      "type": "caption",
+      "text": "Figure 1: exploded view",
+      "page": 2,
+      "bbox": [
+        100.0,
+        920.0,
+        600.0,
+        960.0
+      ],
+      "id": "b19"
+    },
+    {
+      "type": "figure",
+      "text": "Flow against head",
+      "page": 2,
+      "bbox": [
+        100.0,
+        980.0,
+        600.0,
+        1200.0
+      ],
+      "id": "b20"
+    },
+    {
+      "type": "figure",
+      "text": "ACME QA",
+      "page": 2,
+      "bbox": [
+        700.0,
+        980.0,
+        900.0,
+        1100.0
+      ],
+      "id": "b21"
+    },
+    {
+      "type": "footnote",
+      "text": "Source: test bench.",
+      "page": 2,
+      "bbox": [
+        100.0,
+        1210.0,
+        600.0,
+        1240.0
+      ],
+      "id": "b22"
+    },
+    {
+      "type": "paragraph",
+      "text": "References\n[1] ISO 5199",
+      "page": 2,
+      "bbox": [
+        100.0,
+        1260.0,
+        600.0,
+        1330.0
+      ],
+      "id": "b23"
+    },
+    {
+      "type": "paragraph",
+      "text": "[2] API 610",
+      "page": 2,
+      "bbox": [
+        100.0,
+        1340.0,
+        600.0,
+        1370.0
+      ],
+      "id": "b24"
+    },
+    {
+      "type": "paragraph",
+      "text": "Plain page text",
+      "page": 2,
+      "bbox": [
+        100.0,
+        1380.0,
+        600.0,
+        1410.0
+      ],
+      "id": "b25"
+    },
+    {
+      "type": "paragraph",
+      "text": "Spotted text",
+      "page": 2,
+      "bbox": [
+        100.0,
+        1420.0,
+        600.0,
+        1450.0
+      ],
+      "id": "b26"
+    },
+    {
+      "type": "formula",
+      "text": "x + y",
+      "page": 2,
+      "bbox": [
+        100.0,
+        1460.0,
+        300.0,
+        1490.0
+      ],
+      "id": "b27"
+    },
+    {
+      "type": "table",
+      "text": "<fcel>Flow<fcel>40<nl>",
+      "page": 2,
+      "bbox": [
+        100.0,
+        1500.0,
+        300.0,
+        1540.0
+      ],
+      "id": "b28"
+    }
+  ]
+}

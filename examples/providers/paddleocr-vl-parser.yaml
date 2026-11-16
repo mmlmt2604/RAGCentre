@@ -1,0 +1,10 @@
+# The example PaddleOCR-VL parser service in examples/paddleocr_vl_shim (ragcentre.parser/v1).
+# Start the service first: RAGCentre reads its /info when the provider is created.
+name: paddleocr-vl
+kind: parser
+type: http
+config:
+  # With `docker compose --profile paddleocr-vl up`, RAGCentre reaches it as http://paddleocr-vl:8705 instead.
+  base_url: http://127.0.0.1:8705
+  timeout_seconds: 900
+  max_concurrency: 1
