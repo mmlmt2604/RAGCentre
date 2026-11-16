@@ -25,9 +25,11 @@ that Surya starts on the first parse:
   server. The first parse downloads the GGUF model and its projector (about 1.3 GB).
 - **Apple Silicon, with MLX** (optional, instead of llama.cpp): `pip install mlx-vlm==0.7.10` in the
   shim's environment (the version Surya tested), build an MLX checkpoint with Surya's script
-  (`python <site-packages>/surya/scripts/build_mlx.py --checkpoint datalab-to/surya-ocr-2.5 --out-dir ./mlx-build --q-bits 8`),
-  then start the service with `SURYA_INFERENCE_BACKEND=mlx` and `SURYA_MLX_MODEL=<that directory>`.
-  The version then ends in `.mlx.mlx-<directory name>`.
+  (`python <site-packages>/surya/scripts/build_mlx.py --checkpoint datalab-to/surya-ocr-2.5 --out-dir ./mlx-build --name surya-ocr-2.5-mlx-q8 --q-bits 8`),
+  then start the service with `SURYA_INFERENCE_BACKEND=mlx` and `SURYA_MLX_MODEL=./mlx-build/surya-ocr-2.5-mlx-q8`
+  (the folder the script prints, not `--out-dir`). The version then ends in
+  `.mlx.mlx-surya-ocr-2-5-mlx-q8`: the version names the last folder only, so give every checkpoint
+  its own `--name`.
 - **NVIDIA GPUs**: Surya uses `vllm` in Docker. This backend has not been run with the shim.
 - **A server you already run**: set `SURYA_INFERENCE_BACKEND` and `SURYA_INFERENCE_URL`.
 
@@ -124,14 +126,21 @@ loads when they are not the defaults, for example `0.3.1+surya.0.24.0.surya-ocr-
   - `.gguf-<file>`: the model file, `SURYA_GGUF_MODEL_FILE` (default `surya-2.5.gguf`).
   - `.mmproj-<file>`: the vision projector, `SURYA_GGUF_MMPROJ_FILE` (default `surya-2.5-mmproj.gguf`).
 
+  The two file settings are names inside the repo and may include a folder, so the whole value is
+  used: `q4/surya-2.5.gguf` is `.gguf-q4--surya-2-5-gguf`, not the default.
+
   Surya uses `SURYA_GGUF_LOCAL_MODEL_PATH` and `SURYA_GGUF_LOCAL_MMPROJ_PATH` only together, and then
-  downloads nothing: the two files are named by the base names of the paths and the repo is left out.
-  With only one of them set, Surya ignores both and the settings above apply.
+  downloads nothing: the repo is left out and each file is named by the base name of its path. A local
+  file that has the default name is still not known to be the default weights (it can be a fine-tune
+  saved under that name), so it is reported as `.gguflocal-<folder>` or `.mmprojlocal-<folder>`, with
+  the name of the folder that holds it (nothing after `local` for a bare file name).
+  With only one of the two set, Surya ignores both and the settings above apply.
+  A setting that a future Surya release no longer has drops only its own suffix.
 - With `mlx`: `.mlx-<model>`, the last segment of `SURYA_MLX_MODEL` (an MLX checkpoint directory or
   Hugging Face repo), when it is set. A directory is named by its own name only, so give each
   checkpoint (for example each quantisation) a distinct directory name.
 
-Characters outside `[A-Za-z0-9_-]` become `-`. Only the settings of the backend in use count.
+Characters outside `[A-Za-z0-9_-]` become `-`, except `/`, which becomes `--` so that `a/b` and `a-b` differ. Only the settings of the backend in use count.
 
 Settings that are left out of the version, because they choose neither the package, the weights nor the
 backend:

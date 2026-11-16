@@ -410,7 +410,7 @@ def test_version_names_a_non_default_gguf_file(monkeypatch: pytest.MonkeyPatch) 
     settings.SURYA_GGUF_LOCAL_MODEL_PATH = "/models/my tune.gguf"
     assert service_version().endswith(".gguf-surya-2-5-q4-gguf")
     settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/surya-2.5-mmproj.gguf"  # the default projector's name
-    assert service_version().endswith(".llamacpp.gguf-my-tune-gguf")
+    assert service_version().endswith(".llamacpp.gguf-my-tune-gguf.mmprojlocal-models")
 
 
 def test_gguf_file_is_ignored_for_other_backends(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -427,20 +427,20 @@ def test_gguf_file_is_ignored_for_other_backends(monkeypatch: pytest.MonkeyPatch
 def test_version_names_a_non_default_gguf_repo(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = fake_surya(monkeypatch)
     settings.SURYA_GGUF_REPO = "someone/surya-2.5-gguf"
-    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.llamacpp.ggufrepo-someone-surya-2-5-gguf"
+    assert service_version() == "0.3.1+surya.0.24.0.surya-ocr-2.5.llamacpp.ggufrepo-someone--surya-2-5-gguf"
     # The same file name in another repo is another model: the repo and the file are both named.
     settings.SURYA_GGUF_MODEL_FILE = "surya-2.5-q4.gguf"
-    assert service_version().endswith(".llamacpp.ggufrepo-someone-surya-2-5-gguf.gguf-surya-2-5-q4-gguf")
+    assert service_version().endswith(".llamacpp.ggufrepo-someone--surya-2-5-gguf.gguf-surya-2-5-q4-gguf")
     # The default repo name adds nothing, and the repo is not fetched from when both local paths are set.
     settings.SURYA_GGUF_REPO = "datalab-to/surya-ocr-2.5-gguf"
     assert service_version().endswith(".llamacpp.gguf-surya-2-5-q4-gguf")
     settings.SURYA_GGUF_REPO = "someone/surya-2.5-gguf"
     settings.SURYA_GGUF_LOCAL_MODEL_PATH = "/models/a.gguf"
     settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/" + settings.SURYA_GGUF_MMPROJ_FILE
-    assert service_version().endswith(".llamacpp.gguf-a-gguf")
+    assert service_version().endswith(".llamacpp.gguf-a-gguf.mmprojlocal-models")
     # One local path alone is not used by Surya, so the repo still counts.
     settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = None
-    assert ".ggufrepo-someone-surya-2-5-gguf." in service_version()
+    assert ".ggufrepo-someone--surya-2-5-gguf." in service_version()
 
 
 def test_version_names_a_non_default_mmproj_file(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -450,6 +450,45 @@ def test_version_names_a_non_default_mmproj_file(monkeypatch: pytest.MonkeyPatch
     settings.SURYA_GGUF_LOCAL_MODEL_PATH = "/models/m.gguf"
     settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/my-proj.gguf"
     assert service_version().endswith(".llamacpp.gguf-m-gguf.mmproj-my-proj-gguf")
+
+
+def test_gguf_file_names_keep_their_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    # SURYA_GGUF_MODEL_FILE is a file name inside the Hugging Face repo and may include a folder:
+    # q4/surya-2.5.gguf is not the default surya-2.5.gguf.
+    settings = fake_surya(monkeypatch)
+    settings.SURYA_GGUF_MODEL_FILE = "q4/surya-2.5.gguf"
+    settings.SURYA_GGUF_MMPROJ_FILE = "q4/surya-2.5-mmproj.gguf"
+    assert service_version().endswith(".llamacpp.gguf-q4--surya-2-5-gguf.mmproj-q4--surya-2-5-mmproj-gguf")
+    # A folder and a dash are different names.
+    settings.SURYA_GGUF_MODEL_FILE = "q4-surya-2.5.gguf"
+    assert ".gguf-q4-surya-2-5-gguf." in service_version()
+
+
+def test_a_local_gguf_with_the_default_name_is_not_the_default_weights(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = fake_surya(monkeypatch)
+    settings.SURYA_GGUF_LOCAL_MODEL_PATH = "/models/finetune/surya-2.5.gguf"
+    settings.SURYA_GGUF_LOCAL_MMPROJ_PATH = "/models/finetune/surya-2.5-mmproj.gguf"
+    assert service_version().endswith(".llamacpp.gguflocal-finetune.mmprojlocal-finetune")
+    settings.SURYA_GGUF_LOCAL_MODEL_PATH = "C:\\models\\other\\surya-2.5.gguf"
+    assert ".gguflocal-other." in service_version()
+    settings.SURYA_GGUF_LOCAL_MODEL_PATH = "surya-2.5.gguf"  # no folder to name
+    assert service_version().endswith(".llamacpp.gguflocal.mmprojlocal-finetune")
+
+
+def test_a_setting_that_surya_no_longer_has_drops_only_its_own_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = fake_surya(monkeypatch)
+    settings.SURYA_GGUF_MODEL_FILE = "surya-2.5-q4.gguf"
+    settings.SURYA_GGUF_REPO = "someone/else"
+    del settings.SURYA_GGUF_MMPROJ_FILE  # a release that renamed it
+    assert service_version().endswith(".llamacpp.ggufrepo-someone--else.gguf-surya-2-5-q4-gguf")
+    del settings.SURYA_GGUF_REPO
+    assert service_version().endswith(".llamacpp.gguf-surya-2-5-q4-gguf")
+
+
+def test_the_model_name_handles_either_separator(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = fake_surya(monkeypatch)
+    settings.SURYA_MODEL_CHECKPOINT = "C:\\models\\my-finetune\\"
+    assert ".my-finetune." in service_version()
 
 
 def test_version_names_the_mlx_checkpoint(monkeypatch: pytest.MonkeyPatch) -> None:

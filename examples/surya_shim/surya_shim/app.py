@@ -83,14 +83,15 @@ def _model_name() -> str | None:
     try:
         from surya.settings import settings
 
-        return str(settings.SURYA_MODEL_CHECKPOINT).rstrip("/").rsplit("/", 1)[-1] or None
+        return _leaf(str(settings.SURYA_MODEL_CHECKPOINT)) or None
     except Exception:
         return None
 
 
 def _suffix(value: str) -> str:
-    """``value`` with every character outside ``[A-Za-z0-9_-]`` replaced by ``-``."""
-    return re.sub(r"[^A-Za-z0-9_-]", "-", value)
+    """``value`` with every character outside ``[A-Za-z0-9_-]`` replaced by ``-``, except that a ``/``
+    becomes ``--`` so a repo id or a file in a folder (``a/b``) does not read the same as ``a-b``."""
+    return re.sub(r"[^A-Za-z0-9_-]", "-", value.replace("/", "--"))
 
 
 def _backend() -> str | None:
@@ -118,28 +119,53 @@ def _leaf(path: str) -> str:
     return path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
 
 
+def _parent(path: str) -> str:
+    """The name of the folder that holds ``path`` (empty for a bare file name)."""
+    parts = path.replace("\\", "/").rstrip("/").split("/")
+    return parts[-2] if len(parts) > 1 else ""
+
+
+def _setting(settings: Any, name: str) -> str | None:
+    """One setting as text, or ``None`` if it is unset or this Surya release no longer has it. Each
+    setting is read on its own, so one that goes missing drops only its own suffix."""
+    value = getattr(settings, name, None)
+    return str(value) if value else None
+
+
 def _llamacpp_weights() -> list[str]:
     """Suffixes for the llama.cpp weights when they are not the default ones, in the order repo,
     model file, projector file. Read from ``surya/inference/backends/llamacpp.py``: Surya uses
     ``SURYA_GGUF_LOCAL_MODEL_PATH`` and ``SURYA_GGUF_LOCAL_MMPROJ_PATH`` only together, and then
-    fetches nothing, so the repo counts only when the pair is not set. The model file and the
-    projector are each named by their local path (base name) or by their setting."""
+    fetches nothing, so the repo counts only when the pair is not set.
+
+    Without the pair, a file is named by its setting (the whole value: it is a file name inside the
+    Hugging Face repo and may include a folder). With the pair, it is named by the base name of its
+    path; a local file that has the default name is still not the default weights (it can be a
+    fine-tune saved under that name), so it gets ``gguflocal`` or ``mmprojlocal`` and the name of
+    its folder."""
     try:
         from surya.settings import settings
-
-        local = bool(settings.SURYA_GGUF_LOCAL_MODEL_PATH and settings.SURYA_GGUF_LOCAL_MMPROJ_PATH)
-        repo = None if local else str(settings.SURYA_GGUF_REPO)
-        model = _leaf(str(settings.SURYA_GGUF_LOCAL_MODEL_PATH if local else settings.SURYA_GGUF_MODEL_FILE))
-        mmproj = _leaf(str(settings.SURYA_GGUF_LOCAL_MMPROJ_PATH if local else settings.SURYA_GGUF_MMPROJ_FILE))
     except Exception:
         return []
-    out = []
-    if repo and repo != DEFAULT_GGUF_REPO:
+    local_model = _setting(settings, "SURYA_GGUF_LOCAL_MODEL_PATH")
+    local_mmproj = _setting(settings, "SURYA_GGUF_LOCAL_MMPROJ_PATH")
+    local = bool(local_model and local_mmproj)
+    out: list[str] = []
+    if not local and (repo := _setting(settings, "SURYA_GGUF_REPO")) and repo != DEFAULT_GGUF_REPO:
         out.append(f"ggufrepo-{_suffix(repo)}")
-    if model and model != DEFAULT_GGUF_FILE:
-        out.append(f"gguf-{_suffix(model)}")
-    if mmproj and mmproj != DEFAULT_MMPROJ_FILE:
-        out.append(f"mmproj-{_suffix(mmproj)}")
+    for tag, local_path, setting, default in (
+        ("gguf", local_model, "SURYA_GGUF_MODEL_FILE", DEFAULT_GGUF_FILE),
+        ("mmproj", local_mmproj, "SURYA_GGUF_MMPROJ_FILE", DEFAULT_MMPROJ_FILE),
+    ):
+        if local and local_path:
+            name = _leaf(local_path)
+            if name != default:
+                out.append(f"{tag}-{_suffix(name)}")
+            else:
+                folder = _parent(local_path)
+                out.append(f"{tag}local-{_suffix(folder)}" if folder else f"{tag}local")
+        elif (name := _setting(settings, setting)) and name != default:
+            out.append(f"{tag}-{_suffix(name)}")
     return out
 
 
