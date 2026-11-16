@@ -145,13 +145,24 @@ class RecognitionSettings:
         arguments: dict[str, Any] = {"pipeline_version": self.pipeline_version}
         if self.backend not in BACKENDS:
             raise wrong("vl_rec_backend", f"{self.backend!r} is not one of {', '.join(BACKENDS)}")
-        if self.backend != "native":
+        if self.max_concurrency and (not self.max_concurrency.isdigit() or int(self.max_concurrency) < 1):
+            raise wrong("vl_rec_max_concurrency", f"{self.max_concurrency!r} is not a positive integer")
+        if self.backend == "native":
+            # Only a server backend reads these; the native backend would ignore them silently while
+            # the version still named them.
+            for argument, value in (
+                ("vl_rec_server_url", self.server_url),
+                ("vl_rec_api_model_name", self.api_model),
+                ("vl_rec_api_key", self.api_key),
+                ("vl_rec_max_concurrency", self.max_concurrency),
+            ):
+                if value:
+                    raise wrong(argument, "only applies to a server backend, and the backend is 'native'")
+        else:
             if not self.server_url:
                 raise wrong("vl_rec_server_url", f"must be set for the {self.backend!r} backend")
             arguments["vl_rec_backend"] = self.backend
             arguments["vl_rec_server_url"] = self.server_url
-        elif self.server_url:
-            raise wrong("vl_rec_backend", "the server URL is set but the backend is 'native'")
         if self.model:
             arguments["vl_rec_model_name"] = self.model
         if self.api_model:
@@ -159,8 +170,6 @@ class RecognitionSettings:
         if self.api_key:
             arguments["vl_rec_api_key"] = self.api_key
         if self.max_concurrency:
-            if not self.max_concurrency.isdigit() or int(self.max_concurrency) < 1:
-                raise wrong("vl_rec_max_concurrency", f"{self.max_concurrency!r} is not a positive integer")
             arguments["vl_rec_max_concurrency"] = int(self.max_concurrency)
         return arguments
 
@@ -227,6 +236,11 @@ def reduce_page(result: Any, position: int) -> dict[str, Any]:
         "height": result["height"],
         "blocks": blocks,
     }
+
+
+# How PaddleX words a failure in its recognition worker thread (paddleocr_vl/pipeline.py, ``predict``:
+# ``RuntimeError(f"Exception from the '{name}' worker: {error}")``; the layout worker is ``'cv'``).
+VLM_WORKER_FAILURE = "Exception from the 'vlm' worker"
 
 
 def server_reachable(url: str, timeout: float = 3.0) -> bool:
@@ -297,16 +311,25 @@ class PaddleVLEngine:
         with temp_upload(content, filename) as path:
             try:
                 results = list(pipeline.predict(str(path), **{**engine_predict, **flags}))
-            except (TypeError, ValueError, AssertionError) as exc:
-                raise ShimError(400, "invalid_options", f"PaddleOCR-VL predict: {exc}") from exc
             except Exception as exc:
-                if self.settings.backend != "native" and not server_reachable(self.settings.server_url):
-                    raise ShimError(
-                        503,
-                        "engine_unavailable",
-                        "cannot reach the recognition server: check that it is running and that "
-                        f"{SERVICE_SETTING_ARGUMENTS['vl_rec_server_url']} points at it",
-                    ) from exc
+                if self.settings.backend != "native":
+                    if not server_reachable(self.settings.server_url):
+                        raise ShimError(
+                            503,
+                            "engine_unavailable",
+                            "cannot reach the recognition server: check that it is running and that "
+                            f"{SERVICE_SETTING_ARGUMENTS['vl_rec_server_url']} points at it",
+                        ) from exc
+                    if str(exc).startswith(VLM_WORKER_FAILURE):
+                        # The server is up but the recognition step failed (an error status, a timeout,
+                        # an overloaded server): worth retrying, unlike a file the engine cannot read.
+                        raise ShimError(503, "engine_unavailable", f"the recognition server failed: {exc}") from exc
+                if engine_predict and isinstance(exc, TypeError | ValueError | AssertionError):
+                    # Raised by ``predict`` itself, before PaddleX's worker threads start (a bad
+                    # ``prompt_label``, an argument of the wrong type). Once they run, PaddleX re-raises
+                    # their errors as a ``RuntimeError`` that keeps only the message, so a bad value
+                    # that fails inside a worker is a 422 (see the README).
+                    raise ShimError(400, "invalid_options", f"PaddleOCR-VL predict: {exc}") from exc
                 raise
         heading_levels, merge_tables = options.get("heading_levels", True), options.get("merge_tables", True)
         if results and (heading_levels or merge_tables):

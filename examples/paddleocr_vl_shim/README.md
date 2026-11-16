@@ -60,8 +60,9 @@ The recognition model runs in one of two ways, chosen by the service settings be
 ### Service settings
 
 Environment variables, read at start-up. They are deployment choices, not options, so a pipeline author
-cannot set them (and `engine` refuses their arguments). A wrong value is `503 engine_unavailable` at the
-first parse, naming the variable.
+cannot set them (and `engine` refuses their arguments). A wrong value (an unknown backend or pipeline
+version, a server backend with no URL, a server setting with the `native` backend) stops the service from
+starting, naming the variable, so `/info` never reports a version for a service that cannot parse.
 
 | Variable | Effect | In version |
 |---|---|---|
@@ -69,16 +70,30 @@ first parse, naming the variable.
 | `PADDLEOCR_VL_SHIM_REC_BACKEND` | `vl_rec_backend`: `native` (default) or a server backend | yes, `.backend-<name>` unless `native` |
 | `PADDLEOCR_VL_SHIM_REC_SERVER_URL` | `vl_rec_server_url`: required for a server backend, refused with `native` | no |
 | `PADDLEOCR_VL_SHIM_REC_MODEL` | `vl_rec_model_name`, for example `PaddleOCR-VL-1.6-0.9B` | yes, `.model-<name>` |
-| `PADDLEOCR_VL_SHIM_REC_API_MODEL` | `vl_rec_api_model_name`: the name the server knows the model by | yes, `.apimodel-<name>` |
-| `PADDLEOCR_VL_SHIM_REC_API_KEY` | `vl_rec_api_key` for the server | no |
-| `PADDLEOCR_VL_SHIM_REC_MAX_CONCURRENCY` | `vl_rec_max_concurrency`: requests in flight to the server | no |
+| `PADDLEOCR_VL_SHIM_REC_API_MODEL` | `vl_rec_api_model_name`: the name the server knows the model by; server backends only | yes, `.apimodel-<name>` |
+| `PADDLEOCR_VL_SHIM_REC_API_KEY` | `vl_rec_api_key` for the server; server backends only | no |
+| `PADDLEOCR_VL_SHIM_REC_MAX_CONCURRENCY` | `vl_rec_max_concurrency`: requests in flight to the server; server backends only | no |
 | `PADDLEOCR_VL_SHIM_API_KEY` | the shim's own bearer token, see Authentication | no |
 
-The URL and the key never appear in `/info`, the version or an error message.
+The URL, its host and port, and the key never appear in `/info`, the version or an error message (the
+service replaces them with `[redacted]` if an engine error repeats them).
 
-If the server cannot be reached the shim answers `503 engine_unavailable` naming
-`PADDLEOCR_VL_SHIM_REC_SERVER_URL` (it checks the connection after a failed parse, because PaddleX
-re-raises the worker's error as a plain `RuntimeError`).
+### Errors
+
+| Situation | Answer |
+|---|---|
+| Unknown or mistyped option, a refused `engine` key | `400 invalid_options`, naming it |
+| `predict` rejects an `engine` argument itself (a bad `prompt_label`, an argument of the wrong type) | `400 invalid_options` with the engine's message |
+| The recognition server cannot be reached | `503 engine_unavailable` naming `PADDLEOCR_VL_SHIM_REC_SERVER_URL` (the shim opens a TCP connection to it after a failed parse, because PaddleX hides the cause) |
+| The server is up but the recognition step fails (an error status, a timeout, an overloaded server) | `503 engine_unavailable`, so RAGCentre retries it |
+| A model cannot be loaded or the pipeline cannot start | `503 engine_unavailable` |
+| Anything else, including a bad file | `422 conversion_failed` |
+
+PaddleX runs the layout and recognition steps in worker threads and re-raises their errors as
+`RuntimeError("Exception from the '<name>' worker: <message>")`, keeping only the message. So a bad sampling
+value such as `temperature: "hot"` is a `422`, not a `400`: it fails inside a worker, where the shim cannot tell
+it from a bad file. On a server backend the `'vlm'` worker also runs the layout preparation, so a bug there is
+retried as a `503` too. Neither case has been exercised against the real engine.
 
 Device, thread-count and other PaddleOCR runtime arguments (`device`, `cpu_threads`, ...) are not exposed.
 

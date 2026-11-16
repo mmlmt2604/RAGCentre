@@ -26,10 +26,12 @@ the server's URL, key and concurrency.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from pydantic import Field
@@ -107,8 +109,24 @@ def service_version(settings: RecognitionSettings | None = None) -> str:
     return version_
 
 
+def _private_values(settings: RecognitionSettings) -> list[str]:
+    """What an error message must not repeat: the server's URL, its host and port, and the key. Longest
+    first, so the URL goes before the host it contains. (A very short key is still replaced wherever it
+    appears: a garbled message is better than a leaked key.)"""
+    values = {settings.server_url, settings.api_key}
+    with contextlib.suppress(ValueError):  # a URL that does not parse has no host to hide
+        values.add(urlsplit(settings.server_url).netloc)
+    return sorted((value for value in values if value), key=len, reverse=True)
+
+
 def create_app(engine: Engine | None = None, settings: RecognitionSettings | None = None) -> FastAPI:
     settings = settings or (engine.settings if isinstance(engine, PaddleVLEngine) else RecognitionSettings.from_env())
+    try:
+        # A wrong service setting would otherwise show up as a version in ``/info`` that pins a service
+        # which answers every parse with 503; refuse to start instead.
+        settings.constructor_arguments()
+    except ShimError as exc:
+        raise RuntimeError(f"invalid service settings: {exc.message}") from None
     real = None if engine is not None else PaddleVLEngine(settings)
     run = engine or real
 
@@ -124,9 +142,8 @@ def create_app(engine: Engine | None = None, settings: RecognitionSettings | Non
         except Exception as exc:
             # Backend exceptions can echo credentials and URLs, including validation errors.
             message = str(exc)
-            for private in (settings.server_url, settings.api_key):
-                if private:
-                    message = message.replace(private, "[redacted]")
+            for private in _private_values(settings):
+                message = message.replace(private, "[redacted]")
             if isinstance(exc, ShimError):
                 raise ShimError(exc.status, exc.code, message) from None
             raise ShimError(422, "conversion_failed", f"{filename}: {type(exc).__name__}: {message}") from None

@@ -432,7 +432,10 @@ def test_settings_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> 
         (RecognitionSettings(pipeline_version="v9"), "PADDLEOCR_VL_SHIM_PIPELINE_VERSION"),
         (RecognitionSettings(backend="cloud"), "PADDLEOCR_VL_SHIM_REC_BACKEND"),
         (RecognitionSettings(backend="vllm-server"), "PADDLEOCR_VL_SHIM_REC_SERVER_URL"),
-        (RecognitionSettings(server_url="http://x/v1"), "PADDLEOCR_VL_SHIM_REC_BACKEND"),
+        (RecognitionSettings(server_url="http://x/v1"), "PADDLEOCR_VL_SHIM_REC_SERVER_URL"),
+        (RecognitionSettings(api_model="m"), "PADDLEOCR_VL_SHIM_REC_API_MODEL"),
+        (RecognitionSettings(api_key="k"), "PADDLEOCR_VL_SHIM_REC_API_KEY"),
+        (RecognitionSettings(max_concurrency="3"), "PADDLEOCR_VL_SHIM_REC_MAX_CONCURRENCY"),
         (RecognitionSettings(max_concurrency="0"), "PADDLEOCR_VL_SHIM_REC_MAX_CONCURRENCY"),
         (RecognitionSettings(max_concurrency="many"), "PADDLEOCR_VL_SHIM_REC_MAX_CONCURRENCY"),
     ],
@@ -679,10 +682,11 @@ def test_an_unreachable_server_is_503_and_names_the_setting_not_the_url(
     message = resp.json()["error"]["message"]
     assert "PADDLEOCR_VL_SHIM_REC_SERVER_URL" in message and "internal-host" not in message
     assert probed == ["http://internal-host:9/v1"]
-    # a failure with the server up is an ordinary one, and the native backend has no server to probe
+    # a failure that is not the recognition worker's, with the server up, is an ordinary one
     monkeypatch.setattr(engine_module, "server_reachable", lambda url: True)
+    failing_predict(monkeypatch, RuntimeError("bad page"))
     resp = post(TestClient(create_app(PaddleVLEngine(settings))))
-    assert resp.status_code == 422 and "Connection error" in resp.json()["error"]["message"]
+    assert resp.status_code == 422 and "bad page" in resp.json()["error"]["message"]
     monkeypatch.setattr(engine_module, "server_reachable", lambda url: pytest.fail("native has no server"))
     assert post(TestClient(create_app(PaddleVLEngine(RecognitionSettings())))).status_code == 422
 
@@ -832,7 +836,9 @@ def test_merged_table_preserves_all_page_locations(
 
 
 def test_backend_errors_redact_service_settings() -> None:
-    settings = RecognitionSettings(server_url="http://private.invalid/v1", api_key="private-secret")
+    settings = RecognitionSettings(
+        backend="vllm-server", server_url="http://private.invalid:8118/v1", api_key="private-secret"
+    )
 
     def fail(*args: Any) -> Any:
         raise ShimError(503, "engine_unavailable", f"{settings.server_url}: rejected {settings.api_key}")
@@ -841,6 +847,13 @@ def test_backend_errors_redact_service_settings() -> None:
     assert response.status_code == 503
     assert settings.server_url not in response.text and settings.api_key not in response.text
     assert "[redacted]" in response.text
+    # the bare host and port, as a connection error would echo it, goes too
+    leaky = TestClient(
+        create_app(
+            lambda *a: (_ for _ in ()).throw(RuntimeError("failed to connect to private.invalid:8118")), settings
+        )
+    )
+    assert "private.invalid" not in post(leaky).text
 
 
 def test_service_settings_are_refused_in_nested_extra_args() -> None:
@@ -857,6 +870,76 @@ def test_engine_validation_errors_are_400(fake_paddleocr: type[FakePipeline], mo
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_options"
     assert "invalid temperature" in response.text
+
+
+def test_a_service_setting_that_is_wrong_stops_the_service_from_starting() -> None:
+    for settings in (
+        RecognitionSettings(pipeline_version="v9"),
+        RecognitionSettings(backend="vllm-server"),  # no URL
+        RecognitionSettings(api_key="k"),  # native has no server
+    ):
+        with pytest.raises(RuntimeError, match="invalid service settings: PADDLEOCR_VL_SHIM_"):
+            create_app(fake_engine([]), settings)
+    create_app(fake_engine([]), RecognitionSettings())  # the defaults are fine
+
+
+def test_native_ignores_nothing_it_is_given() -> None:
+    assert RecognitionSettings(model="PaddleOCR-VL-1.6-0.9B").constructor_arguments()["vl_rec_model_name"]
+
+
+# What PaddleX raises through a worker thread: the original class is lost, only the message is kept.
+def worker_failure(name: str, message: str = "Connection error.") -> RuntimeError:
+    return RuntimeError(f"Exception from the '{name}' worker: {message}")
+
+
+def failing_predict(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
+    def fail(self: FakePipeline, path: str, **kwargs: Any) -> Any:
+        raise error
+
+    monkeypatch.setattr(FakePipeline, "predict", fail)
+
+
+SERVER = RecognitionSettings(backend="llama-cpp-server", server_url="http://127.0.0.1:8080/v1")
+
+
+def test_a_failing_recognition_server_that_is_up_is_503_so_it_is_retried(
+    fake_paddleocr: type[FakePipeline], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(engine_module, "server_reachable", lambda url: True)
+    failing_predict(monkeypatch, worker_failure("vlm", "Error code: 503 - overloaded"))
+    resp = post(TestClient(create_app(PaddleVLEngine(SERVER))))
+    assert resp.status_code == 503 and resp.json()["error"]["code"] == "engine_unavailable"
+    assert "recognition server failed" in resp.json()["error"]["message"] and "overloaded" in resp.text
+    assert "127.0.0.1" not in resp.text  # redacted like every message
+
+
+def test_a_layout_worker_failure_is_not_blamed_on_the_server(
+    fake_paddleocr: type[FakePipeline], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(engine_module, "server_reachable", lambda url: True)
+    failing_predict(monkeypatch, worker_failure("cv", "cannot decode the page"))
+    resp = post(TestClient(create_app(PaddleVLEngine(SERVER))))
+    assert resp.status_code == 422 and "cannot decode the page" in resp.text
+
+
+def test_a_native_worker_failure_is_a_422(fake_paddleocr: type[FakePipeline], monkeypatch: pytest.MonkeyPatch) -> None:
+    failing_predict(monkeypatch, worker_failure("vlm", "out of memory"))
+    assert post(TestClient(create_app(PaddleVLEngine(RecognitionSettings())))).status_code == 422
+
+
+def test_only_errors_raised_by_predict_itself_for_engine_arguments_are_400(
+    fake_paddleocr: type[FakePipeline], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = TestClient(create_app(PaddleVLEngine(RecognitionSettings())))
+    failing_predict(monkeypatch, AssertionError("'prompt_label' must be one of ['ocr', ...]"))
+    given = post(client, options={"layout_detection": False, "engine": {"prompt_label": "nope"}})
+    assert given.status_code == 400 and given.json()["error"]["code"] == "invalid_options"
+    # the same exception with no ``engine`` arguments is not the caller's options: a file the engine
+    # cannot read, say, so it is not reported as an options problem
+    assert post(client).status_code == 422
+    # and a bad value that fails inside a worker arrives as a RuntimeError: a 422, not a 400
+    failing_predict(monkeypatch, worker_failure("vlm", "temperature must be a number"))
+    assert post(client, options={"engine": {"temperature": "hot"}}).status_code == 422
 
 
 def test_argument_sets_do_not_overlap() -> None:
