@@ -92,6 +92,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         api_key_env="PADDLEOCR_SHIM_API_KEY",
         parse=parse,
         serialise=True,  # PaddlePaddle pipelines are not safe to call concurrently
+        jobs=True,  # a scanned PDF can take longer than one request may last
     )
 
 

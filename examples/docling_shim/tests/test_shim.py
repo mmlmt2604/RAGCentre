@@ -19,8 +19,9 @@ from docling_core.types.doc import (
     TableData,
 )
 from fastapi.testclient import TestClient
+from shimkit import PROTOCOL
 
-from docling_shim.app import PROTOCOL, create_app
+from docling_shim.app import create_app
 from docling_shim.convert import to_ir
 
 GOLDEN = Path(__file__).parent / "golden" / "sample_ir.json"
@@ -157,3 +158,19 @@ def test_heading_hierarchy_option(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
                 data={"options": json.dumps({"heading_hierarchy": False})})  # fmt: skip
     assert calls[0][2]["heading_hierarchy"] is False
+
+
+def test_async_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    monkeypatch.delenv("DOCLING_SHIM_API_KEY", raising=False)
+    client = TestClient(create_app(fake_converter([])))
+    assert client.get("/info").json()["capabilities"]["async"] is True
+    resp = client.post("/parse?mode=async", files={"file": ("m.pdf", b"%PDF", "application/pdf")})
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+    for _ in range(100):
+        if client.get(f"/jobs/{job_id}").json()["status"] == "succeeded":
+            break
+        time.sleep(0.02)
+    assert client.get(f"/jobs/{job_id}/result").json()["blocks"][0]["text"] == "Pump Manual"

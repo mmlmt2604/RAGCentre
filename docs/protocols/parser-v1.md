@@ -29,7 +29,7 @@ RAGCentre's provider type for this protocol is `parser/http`.
   different versions must not be mixed in one index.
 - `mime_types` (optional) is informational. Which files reach the service is decided by the
   pipeline's parse routes.
-- `capabilities` (optional) is informational in version 1.
+- `capabilities` (optional). `async: true` turns on the job endpoints below. `page_images` is informational.
 
 RAGCentre calls `/info` without credentials when the provider is created, and again (with
 credentials, cached for five minutes) before parsing. If the reported version differs from the
@@ -45,8 +45,43 @@ A `multipart/form-data` request:
 | `file` | The document, with its filename and MIME type |
 | `options` | A JSON object, as a string: the parse route's `options` (may be `{}`) |
 
-The response is `200` with a Document IR. The call is synchronous; RAGCentre's default timeout
-for parser providers is 600 seconds (`timeout_seconds`).
+The response is `200` with a Document IR. By default the call is synchronous; RAGCentre's default
+timeout for parser providers is 600 seconds (`timeout_seconds`). A service that needs longer
+offers async jobs (below).
+
+### Async jobs (protocol 1.1, optional)
+
+OCR of a large scan can take minutes per page, longer than any sensible request timeout. A service
+that can run a parse in the background says so in `/info`:
+
+```json
+{"capabilities": {"page_images": true, "async": true}}
+```
+
+RAGCentre then submits every document as a job and polls it. A sync-only service needs none of
+this and keeps working unchanged, and RAGCentre never sends `mode=async` to it.
+
+| Request | Response |
+|---|---|
+| `POST /parse?mode=async` (same body as above; `Prefer: respond-async` is equivalent) | `202 {"job_id": "…", "poll_after_seconds": 2}` |
+| `GET /jobs/{job_id}` | `200 {"status": "running"}`, `{"status": "succeeded"}` or `{"status": "failed", "error": {"http_status": 422, "code": "…", "message": "…"}}`. `404` when the job is unknown or expired. |
+| `GET /jobs/{job_id}/result` | The Document IR (`200`) when it succeeded. For a failed job, the same status and `{"error": …}` body the synchronous call would have returned. `409` while it is running. |
+| `DELETE /jobs/{job_id}` | `204`. Optional, best effort; RAGCentre calls it after reading a result. |
+
+- `job_id` is an opaque string. The `/jobs/…` requests carry the same credentials as `/parse`.
+- RAGCentre waits `poll_after_seconds` (clamped to 0.5–30 s) before the first status request, then
+  backs off by 1.5× up to 30 s. It gives up after the provider's `job_timeout_seconds` (default
+  21600, six hours) and retries the document later, resuming the same job. `timeout_seconds`
+  then limits each request, not the whole parse.
+- `failed.error.http_status` is the status a sync call would have used: `4xx` is permanent for the
+  document, `5xx` and `429` are retried with a fresh job.
+- RAGCentre stores the `job_id` while the job runs, so after a restart it resumes polling. If the
+  service answers `404` for a stored job (it restarted or expired the result), RAGCentre submits the
+  document again once.
+- A service should keep finished jobs for at least an hour, and may run jobs concurrently or one at a
+  time. Options are validated when the job runs, not at submit time: bad options end the job in
+  `failed` with `http_status: 400`.
+- A service that ignores `?mode=async` and answers `200` with the IR is also accepted.
 
 ## Document IR (schema 1.x)
 
@@ -117,7 +152,8 @@ kind: parser
 type: http
 config:
   base_url: http://127.0.0.1:8701   # required
-  timeout_seconds: 600              # default 600
+  timeout_seconds: 600              # default 600; per request
+  job_timeout_seconds: 21600        # async services only: the whole parse, default 6 hours
   max_concurrency: 4                # parallel requests, default 4
   revision: ""                      # change to force a new fingerprint
   on_version_drift: fail            # or warn

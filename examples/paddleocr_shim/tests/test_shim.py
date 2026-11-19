@@ -224,7 +224,7 @@ def test_service_endpoints() -> None:
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "paddleocr-shim"
     assert info["version"].startswith("0.1.0+paddleocr.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/bmp", "image/tiff", "image/webp"]
-    assert info["capabilities"] == {"page_images": False}
+    assert info["capabilities"] == {"page_images": False, "async": True}
 
     resp = post(client, options={"tables": False, "heading_levels": True})
     assert resp.status_code == 200

@@ -253,7 +253,7 @@ def test_service_endpoints() -> None:
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "mineru-shim"
     assert info["version"].startswith("0.1.0+mineru.")
     assert "application/pdf" in info["mime_types"] and "text/html" in info["mime_types"]
-    assert info["mime_types"] == MIME_TYPES and info["capabilities"] == {"page_images": False}
+    assert info["mime_types"] == MIME_TYPES and info["capabilities"] == {"page_images": False, "async": True}
 
     resp = post(client, options={"tier": "basic", "ocr": True, "image_analysis": True})
     assert resp.status_code == 200

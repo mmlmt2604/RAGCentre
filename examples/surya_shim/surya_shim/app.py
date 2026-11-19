@@ -96,6 +96,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         api_key_env="SURYA_SHIM_API_KEY",
         parse=parse,
         serialise=False,  # a client of the inference server, which does its own batching
+        jobs=True,  # a scanned PDF can take longer than one request may last
         shutdown=getattr(run, "close", None),
     )
 

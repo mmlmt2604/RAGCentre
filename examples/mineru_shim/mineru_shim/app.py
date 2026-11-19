@@ -117,6 +117,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         api_key_env="MINERU_SHIM_API_KEY",
         parse=parse,
         serialise=True,  # MinerU runs local models and may start an inference server
+        jobs=True,  # a scanned PDF can take longer than one request may last
     )
 
 

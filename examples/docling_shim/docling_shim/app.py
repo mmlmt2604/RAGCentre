@@ -121,6 +121,7 @@ def create_app(converter: Converter | None = None) -> FastAPI:
         capabilities={"page_images": True},
         api_key_env="DOCLING_SHIM_API_KEY",
         parse=parse,
+        jobs=True,  # a scanned PDF can take longer than one request may last
     )
 
 

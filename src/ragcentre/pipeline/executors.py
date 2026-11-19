@@ -57,6 +57,32 @@ def _parse_route(node: dict[str, Any], mime: str) -> dict[str, Any] | None:
     return None
 
 
+class _ParseJob:
+    """Remembers the async job of one parse in ``parse_jobs`` (keyed by the parse cache key), so a
+    worker that restarts, or a retry after a timeout, resumes polling instead of submitting again."""
+
+    def __init__(self, ctx: AppContext, cache_key: str, provider_id: str) -> None:
+        self.ctx, self.cache_key, self.provider_id = ctx, cache_key, provider_id
+
+    def get(self) -> str | None:
+        row = self.ctx.db.one(
+            "SELECT job_id FROM parse_jobs WHERE cache_key = ? AND provider_id = ?", (self.cache_key, self.provider_id)
+        )
+        return None if row is None else str(row["job_id"])
+
+    def save(self, job_id: str) -> None:
+        with self.ctx.db.write() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO parse_jobs (cache_key, provider_id, job_id, created_at) "
+                "VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                (self.cache_key, self.provider_id, job_id),
+            )
+
+    def clear(self) -> None:
+        with self.ctx.db.write() as conn:
+            conn.execute("DELETE FROM parse_jobs WHERE cache_key = ?", (self.cache_key,))
+
+
 def execute_parse(ctx: AppContext, claim: Any) -> dict[str, Any]:
     started = time.perf_counter()
     doc = _doc(ctx, claim.document_id)
@@ -86,7 +112,16 @@ def execute_parse(ctx: AppContext, claim: Any) -> dict[str, Any]:
                 f"{provider.name} now reports version {info.version}; it was pinned at {pinned} when created.",
                 provider=provider.name,
             )
-    raw = parser.parse(content, str(doc["filename"]), str(doc["mime_type"]), route["options"])
+    if provider.type == "http":
+        raw = parser.parse(
+            content,
+            str(doc["filename"]),
+            str(doc["mime_type"]),
+            route["options"],
+            job=_ParseJob(ctx, cache_key, provider_id),
+        )
+    else:
+        raw = parser.parse(content, str(doc["filename"]), str(doc["mime_type"]), route["options"])
     try:
         ir = normalise_ir(raw)
     except IRError as exc:

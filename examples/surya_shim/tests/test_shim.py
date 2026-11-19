@@ -257,7 +257,7 @@ def test_service_endpoints() -> None:
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "surya-shim"
     assert info["version"].startswith("0.1.0+surya.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/tiff", "image/bmp", "image/webp"]
-    assert info["capabilities"] == {"page_images": True}
+    assert info["capabilities"] == {"page_images": True, "async": True}
 
     resp = post(client, options={"include_page_images": True, "dpi": 150, "ocr_figures": True})
     assert resp.status_code == 200
