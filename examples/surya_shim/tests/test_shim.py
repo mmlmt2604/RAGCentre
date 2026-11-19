@@ -263,10 +263,14 @@ def test_service_endpoints() -> None:
     assert resp.status_code == 200
     ir = resp.json()
     assert ir["blocks"][0]["text"] == "Pump Manual" and ir["pages"][0]["image"]["mime"] == "image/png"
-    assert calls[0] == (b"%PDF", "m.pdf", {"include_page_images": True, "ocr_figures": True, "dpi": 150})
+    assert calls[0] == (
+        b"%PDF",
+        "m.pdf",
+        {"include_page_images": True, "ocr_figures": True, "dpi": 150, "page_range": None},
+    )
     plain = post(client)
     assert plain.status_code == 200 and "image" not in plain.json()["pages"][0]
-    assert calls[1][2] == {"include_page_images": False, "ocr_figures": False, "dpi": 192}
+    assert calls[1][2] == {"include_page_images": False, "ocr_figures": False, "dpi": 192, "page_range": None}
 
     bad = post(client, options="[1]")
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
@@ -358,6 +362,9 @@ class Env:
         self.load_calls: list[tuple[str, Path, Any, bytes]] = []
         self.fail_manager: Exception | None = None
         self.fail_predict: Exception | None = None
+        self.pdf_pages = 2
+        self.page_ranges: list[list[int] | None] = []
+        self.documents_closed = 0
 
 
 @pytest.fixture
@@ -383,9 +390,21 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Env:
                 raise state.fail_predict
             return [prediction() for _ in images]
 
-    def load_pdf(path: Path, dpi: int) -> tuple[list[Any], list[str]]:
+    class FakeDocument:
+        def __len__(self) -> int:
+            return state.pdf_pages
+
+        def close(self) -> None:
+            state.documents_closed += 1
+
+    def open_pdf(path: Path) -> FakeDocument:
+        return FakeDocument()
+
+    def load_pdf(path: Path, page_range: list[int] | None = None, dpi: int = 96) -> tuple[list[Any], list[str]]:
         state.load_calls.append(("pdf", path, dpi, path.read_bytes()))
-        return [FakeImage((1632, 2112)), FakeImage((1632, 2112))], ["a", "a"]
+        state.page_ranges.append(page_range)
+        pages = page_range if page_range is not None else list(range(state.pdf_pages))
+        return [FakeImage((1632, 2112)) for _ in pages], ["a" for _ in pages]
 
     def load_image(path: Path) -> tuple[list[Any], list[str]]:
         state.load_calls.append(("image", path, None, path.read_bytes()))
@@ -398,12 +417,13 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Env:
     loader = types.ModuleType("surya.input.load")
     loader.load_pdf = load_pdf  # type: ignore[attr-defined]
     loader.load_image = load_image  # type: ignore[attr-defined]
+    loader.open_pdf = open_pdf  # type: ignore[attr-defined]
     for module in (surya, surya_input, loader):
         monkeypatch.setitem(sys.modules, module.__name__, module)
     return state
 
 
-OPTIONS = {"include_page_images": False, "ocr_figures": False, "dpi": 192}
+OPTIONS = {"include_page_images": False, "ocr_figures": False, "dpi": 192, "page_range": None}
 
 
 def test_reduce_page_and_encode_png() -> None:
@@ -420,6 +440,7 @@ def test_reduce_page_and_encode_png() -> None:
                 "reading_order": 0,
                 "skipped": False,
                 "error": False,
+                "confidence": None,
             }
         ],
         "image": {"mime": "image/png", "data_b64": base64.b64encode(PNG_BYTES).decode()},
@@ -541,3 +562,48 @@ def test_options_are_published_and_typos_are_rejected() -> None:
     bad = post(client, options={"definitely_not_an_option": True})
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
     assert "definitely_not_an_option" in bad.json()["error"]["message"] and calls == []
+
+
+# --- page ranges and confidence --------------------------------------------------------------------
+
+
+def test_page_range_renders_only_those_pages_and_keeps_their_numbers(env: Env) -> None:
+    env.pdf_pages = 10
+    pages = SuryaEngine()(b"%PDF", "m.pdf", {**OPTIONS, "page_range": [3, 5]})
+    assert env.page_ranges == [[2, 3, 4]]  # Surya's page_range is 0-based
+    assert [p["page"] for p in pages] == [3, 4, 5]
+    assert len(env.predict_calls[0][0]) == 3 and env.documents_closed == 1
+
+
+def test_page_range_past_the_end_is_clamped_and_empty_is_a_400(env: Env) -> None:
+    env.pdf_pages = 4
+    assert [p["page"] for p in SuryaEngine()(b"%PDF", "m.pdf", {**OPTIONS, "page_range": [3, 99]})] == [3, 4]
+    with pytest.raises(ShimError) as err:
+        SuryaEngine()(b"%PDF", "m.pdf", {**OPTIONS, "page_range": [5, 9]})
+    assert err.value.status == 400 and "after the last page (4)" in err.value.message
+
+
+def test_page_range_is_for_pdfs_only(env: Env) -> None:
+    with pytest.raises(ShimError) as err:
+        SuryaEngine()(b"png", "a.png", {**OPTIONS, "page_range": [1, 1]})
+    assert err.value.status == 400 and "PDF" in err.value.message
+
+
+def test_without_a_page_range_all_pages_load_in_one_call(env: Env) -> None:
+    SuryaEngine()(b"%PDF", "m.pdf", OPTIONS)
+    assert env.page_ranges == [None] and env.documents_closed == 0
+
+
+def test_confidence_becomes_block_metadata() -> None:
+    page = {
+        "page": 1, "width": 100, "height": 100, "image": None,
+        "blocks": [
+            {"label": "Text", "html": "<p>a</p>", "bbox": [0, 0, 1, 1], "reading_order": 0, "confidence": 0.987654},
+            {"label": "Text", "html": "<p>b</p>", "bbox": [0, 0, 1, 1], "reading_order": 1, "confidence": None},
+            {"label": "Form", "html": "<p>c</p>", "bbox": [0, 0, 1, 1], "reading_order": 2, "confidence": 0.5},
+        ],
+    }  # fmt: skip
+    blocks = to_ir([page])["blocks"]
+    assert blocks[0]["metadata"] == {"confidence": 0.9877}
+    assert "metadata" not in blocks[1]
+    assert blocks[2]["metadata"] == {"original_type": "Form", "confidence": 0.5}

@@ -237,6 +237,12 @@ def test_service_endpoints() -> None:
         "seals": False,
         "orientation": False,
         "unwarp": False,
+        "textline_orientation": None,  # unset: the engine's own default
+        "region_detection": None,
+        "pipeline": "structure_v3",
+        "lang": None,
+        "text_det_limit_side_len": None,
+        "list_heuristic": False,
     }
     assert calls[0] == (b"%PDF", "m.pdf", {**defaults, "tables": False, "heading_levels": True})
     assert post(client).status_code == 200
@@ -599,3 +605,171 @@ def test_options_are_published_and_typos_are_rejected() -> None:
     bad = post(client, options={"definitely_not_an_option": True})
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
     assert "definitely_not_an_option" in bad.json()["error"]["message"] and calls == []
+
+
+# --- more engine options, PaddleOCR-VL and the list heuristic ---------------------------------------
+
+
+def test_unset_flags_are_not_passed_and_set_ones_are(fake_paddleocr: type[FakePipeline]) -> None:
+    PaddleEngine()(b"x", "a.pdf", {**OPTIONS, "textline_orientation": None, "region_detection": None})
+    assert "use_textline_orientation" not in fake_paddleocr.instances[0].kwargs
+    PaddleEngine()(b"x", "a.pdf", {**OPTIONS, "textline_orientation": True, "region_detection": False})
+    assert fake_paddleocr.instances[1].kwargs["use_textline_orientation"] is True
+    assert fake_paddleocr.instances[1].kwargs["use_region_detection"] is False
+    assert fake_paddleocr.instances[1].predict_calls[0][1]["use_region_detection"] is False
+
+
+def test_lang_and_detection_limit_per_request(fake_paddleocr: type[FakePipeline]) -> None:
+    engine = PaddleEngine(lang="en")
+    engine(b"x", "a.pdf", OPTIONS)
+    engine(b"x", "b.pdf", {**OPTIONS, "lang": "japan"})
+    engine(b"x", "c.pdf", {**OPTIONS, "text_det_limit_side_len": 1920})
+    engine(b"x", "d.pdf", {**OPTIONS, "lang": "japan"})  # the same combination: reused
+    langs = [p.kwargs.get("lang") for p in fake_paddleocr.instances]
+    assert langs == ["en", "japan", "en"] and len(fake_paddleocr.instances) == 3
+    limited = fake_paddleocr.instances[2]
+    assert limited.kwargs["text_det_limit_side_len"] == 1920
+    assert limited.predict_calls[0][1]["text_det_limit_side_len"] == 1920
+    assert "text_det_limit_side_len" not in fake_paddleocr.instances[0].kwargs
+
+
+class FakeVlBlock:
+    def __init__(self, label: str, content: str, bbox: list[int], title_level: int | None = None) -> None:
+        self.label, self.content, self.bbox = label, content, bbox
+        if title_level is not None:
+            self.title_level = title_level
+
+
+class FakeVl:
+    instances: ClassVar[list[FakeVl]] = []
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+        self.predict_kwargs: list[dict[str, Any]] = []
+        self.restructure_kwargs: list[dict[str, Any]] = []
+        FakeVl.instances.append(self)
+
+    def predict(self, path: str, **kwargs: Any) -> list[Any]:
+        self.predict_kwargs.append(kwargs)
+        return ["raw-page-1", "raw-page-2"]
+
+    def restructure_pages(self, results: list[Any], **kwargs: Any) -> list[Any]:
+        assert results == ["raw-page-1", "raw-page-2"]
+        self.restructure_kwargs.append(kwargs)
+        page_one = {
+            "page_index": 0, "width": [1224], "height": [1584],
+            "parsing_res_list": [
+                FakeVlBlock("doc_title", "Pump Manual", [1, 2, 3, 4], 0),
+                FakeVlBlock("paragraph_title", "Installation", [1, 2, 3, 4], 1),
+                FakeVlBlock("text", "Mount the pump.", [1, 2, 3, 4]),
+                FakeVlBlock("vision_footnote", "Photo: ACME", [1, 2, 3, 4]),
+            ],
+        }  # fmt: skip
+        page_two = {
+            "page_index": None, "width": 1224, "height": 1584,
+            "parsing_res_list": [FakeVlBlock("paragraph_title", "Specifications", [5, 6, 7, 8], 2)],
+        }  # fmt: skip
+        return [page_one, page_two]
+
+
+@pytest.fixture
+def fake_vl(monkeypatch: pytest.MonkeyPatch) -> type[FakeVl]:
+    FakeVl.instances = []
+    module = types.ModuleType("paddleocr")
+    module.PaddleOCRVL = FakeVl  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "paddleocr", module)
+    for name in ("VERSION", "BACKEND", "SERVER_URL", "API_MODEL", "API_KEY"):
+        monkeypatch.delenv(f"PADDLEOCR_VL_{name}", raising=False)
+    return FakeVl
+
+
+VL = {**OPTIONS, "pipeline": "vl"}
+
+
+def test_vl_pipeline_reads_levels_and_pages(fake_vl: type[FakeVl]) -> None:
+    pages = PaddleEngine()(b"%PDF", "m.pdf", {**VL, "tables": False, "orientation": True})
+    (vl,) = fake_vl.instances
+    # VL has no table or formula switches; the others go to the constructor and to predict.
+    assert vl.kwargs == {"use_chart_recognition": False, "use_seal_recognition": False,
+                         "use_doc_orientation_classify": True, "use_doc_unwarping": False}  # fmt: skip
+    assert vl.predict_kwargs == [vl.kwargs]
+    assert vl.restructure_kwargs == [{"merge_tables": True, "relevel_titles": True}]
+    assert [p["page"] for p in pages] == [1, 2] and pages[0]["width"] == 1224
+    assert [(b["label"], b["title_level"], b["order"]) for b in pages[0]["blocks"]][:2] == [
+        ("doc_title", 0, 1),
+        ("paragraph_title", 1, 2),
+    ]
+    ir = to_ir(pages, source_name="m.pdf")
+    assert [(b["type"], b.get("level")) for b in ir["blocks"] if b["type"] == "heading"] == [
+        ("heading", 1),
+        ("heading", 2),
+        ("heading", 3),
+    ]
+    assert [b["type"] for b in ir["blocks"]][-2:] == ["footnote", "heading"]
+
+
+def test_vl_settings_come_from_the_environment(fake_vl: type[FakeVl], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PADDLEOCR_VL_BACKEND", "vllm-server")
+    monkeypatch.setenv("PADDLEOCR_VL_SERVER_URL", "http://vllm:8118/v1")
+    monkeypatch.setenv("PADDLEOCR_VL_VERSION", "v1.5")
+    PaddleEngine()(b"x", "a.pdf", VL)
+    assert fake_vl.instances[0].kwargs["vl_rec_backend"] == "vllm-server"
+    assert fake_vl.instances[0].kwargs["vl_rec_server_url"] == "http://vllm:8118/v1"
+    assert fake_vl.instances[0].kwargs["pipeline_version"] == "v1.5"
+    assert service_version().endswith(".vl-v1.5.vl-vllm-server")  # the VL model and backend are part of the version
+
+
+def test_vl_pipelines_are_cached_and_start_failures_are_503(
+    fake_vl: type[FakeVl], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = PaddleEngine()
+    engine(b"x", "a.pdf", VL)
+    engine(b"x", "b.pdf", {**VL, "tables": False})  # tables is not a VL flag: same pipeline
+    assert len(fake_vl.instances) == 1
+    engine(b"x", "c.pdf", {**VL, "charts": True})
+    assert len(fake_vl.instances) == 2
+    monkeypatch.setitem(sys.modules, "paddleocr", None)
+    with pytest.raises(ShimError) as err:
+        PaddleEngine()(b"x", "a.pdf", VL)
+    assert err.value.status == 503 and "PaddleOCR-VL" in err.value.message
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("\u2022 first\n\u2022 second", [("list_item", "first"), ("list_item", "second")]),
+        ("- a\n- b", [("list_item", "a"), ("list_item", "b")]),
+        (
+            "1. one\n2) two\n(3) three\na) four",
+            [("list_item", t) for t in ("1. one", "2) two", "(3) three", "a) four")],
+        ),
+        ("Just a sentence.", [("paragraph", "Just a sentence.")]),
+        ("A. Introduction", [("paragraph", "A. Introduction")]),  # capitals are not list markers
+        ("1.5 million units", [("paragraph", "1.5 million units")]),
+        ("- one\nplain line", [("paragraph", "- one\nplain line")]),  # all lines or none
+        ("-5 degrees", [("paragraph", "-5 degrees")]),
+    ],
+)
+def test_list_heuristic(text: str, expected: list[tuple[str, str]]) -> None:
+    pages = [{"page": 1, "width": 10, "height": 10, "blocks": [block("text", text, [0, 0, 1, 1])]}]
+    plain = to_ir(pages)["blocks"]
+    assert [(b["type"], b["text"]) for b in plain] == [("paragraph", text)]  # off by default
+    guessed = to_ir(pages, list_heuristic=True)["blocks"]
+    assert [(b["type"], b["text"]) for b in guessed] == expected
+    assert all(b["page"] == 1 and b["bbox"] == [0.0, 0.0, 1.0, 1.0] for b in guessed)
+
+
+def test_remote_sends_the_extra_options() -> None:
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=serving_response(sample()[:1]))
+
+    resp = post(remote_client(handler), options={"textline_orientation": True, "text_det_limit_side_len": 2000})
+    assert resp.status_code == 200
+    sent = json.loads(seen[0].content)
+    assert sent["useTextlineOrientation"] is True and sent["textDetLimitSideLen"] == 2000
+    assert "useRegionDetection" not in sent  # unset: the server's default

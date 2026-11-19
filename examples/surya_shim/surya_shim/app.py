@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, boolean, file_extension, integer, parse_options
+from shimkit import ShimError, boolean, file_extension, integer, page_range, parse_options
 from shimkit import create_app as create_shim_app
 
 from surya_shim.convert import to_ir
@@ -40,6 +40,10 @@ OPTIONS = [
     boolean("include_page_images", False, "Return each rendered page as a base64 PNG in pages[].image"),
     boolean("ocr_figures", False, "Also read text inside pictures, figures and diagrams"),
     integer("dpi", DEFAULT_DPI, minimum=72, maximum=400, description="Render resolution for PDF pages"),
+    page_range(
+        "page_range",
+        "Only read these PDF pages: [first, last], 1-based and inclusive. Page numbers stay the original's",
+    ),
 ]
 MIME_TYPES = [
     "application/pdf",

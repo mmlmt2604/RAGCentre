@@ -82,6 +82,9 @@ The parse route's `options` are passed to the service:
 | `include_page_images` | `false` | Return each rendered page as a base64 PNG in `pages[].image`. Its pixels are the unit of the boxes |
 | `ocr_figures` | `false` | Also read text inside pictures, figures and diagrams (otherwise they are left empty) |
 | `dpi` | `192` | Render resolution for PDF pages, an integer from 72 to 400 |
+| `page_range` | all pages | PDFs only: `[first, last]`, 1-based and inclusive; a `last` past the end is clamped. Blocks keep the original page numbers |
+
+Each block also carries Surya's recognition `confidence` (0 to 1) as `metadata.confidence`.
 
 The shim does not serialise parses: it is a client of the inference server. The provider file sets
 `max_concurrency: 2`. Only the first frame of a multi-page TIFF is read.

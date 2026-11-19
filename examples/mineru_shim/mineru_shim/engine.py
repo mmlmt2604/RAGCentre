@@ -99,13 +99,14 @@ class MineruEngine:
                     parser = mineru.MinerUApiParser(
                         api_url=self.api_url, api_key=self.api_key, tier=options["tier"], ocr_mode=options["ocr_mode"]
                     )
-                    result = parser.parse(path)
+                    result = parser.parse(path, page_range=options.get("page_range", ""))
                 else:
                     result = mineru.parse(
                         path,
                         tier=options["tier"],
                         ocr_mode=options["ocr_mode"],
                         image_analysis=options["image_analysis"],
+                        page_range=options.get("page_range", ""),
                     )
                 content_list = render_content_list(result.middle_json)
             except Exception as exc:

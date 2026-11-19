@@ -66,6 +66,7 @@ The parse route's `options` are passed to the service:
 | `tier` | `standard` | `flash`, `basic`, `standard` or `advanced`. Only PDFs and images support every tier; Office, HTML, CSV and EPUB files are always parsed with `flash`, whatever you ask for |
 | `ocr` | `"auto"` | `true` forces OCR, `false` reads the text layer only, `"auto"` lets MinerU decide |
 | `image_analysis` | `false` | Describe pictures with a vision model. MinerU's own default is on; it is off here so that a default run does not need a VLM for every picture |
+| `page_range` | all pages | PDFs only. MinerU's page grammar: `"1-5,8"`, `"3-r1"` (`r1` is the last page), `"all"`. Pages keep their numbers in the original document (this follows MinerU's documentation; it has not been checked against a live parse) |
 
 The shim serialises parses (one at a time) and the provider file sets `max_concurrency: 1`.
 

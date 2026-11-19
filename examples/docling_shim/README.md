@@ -61,6 +61,19 @@ The parse route's `options` are passed to the service:
 | `ocr` | `true` | Run OCR on scanned pages and images in PDFs |
 | `include_page_images` | `false` | Render each page and return it as a base64 PNG in `pages[].image` |
 | `heading_hierarchy` | `true` | Rank section headers by PDF bookmarks, numbering (`1`, `1.1`) and font style. Docling's own default leaves every header at one level, which flattens RAGCentre's heading paths and the `structure` chunker. PDF only |
+| `ocr_engine` | `auto` | `auto`, `easyocr`, `tesseract` (needs the `tesseract` program), `rapidocr` or `ocrmac` (macOS) |
+| `ocr_lang` | engine's | OCR languages in the engine's codes: `["en", "de"]` for EasyOCR, `["eng", "deu"]` for Tesseract |
+| `force_full_page_ocr` | `false` | OCR every page as an image, not only the regions that have no text layer |
+| `table_mode` | `accurate` | `accurate` or `fast` (TableFormer) |
+| `code_enrichment` | `false` | Detect code languages and read code blocks with a code model (slow) |
+| `formula_enrichment` | `false` | Read formulas as LaTeX (slow) |
+| `picture_classification` | `false` | Classify each picture; the class is kept as the block's `metadata.classification` |
+| `picture_description` | `false` | Describe each picture with a small local vision model (slow); the text follows the caption |
+| `page_range` | all | `[first, last]`, 1-based and inclusive |
+| `max_pages` | all | Convert at most this many pages, counted from `page_range`'s first page |
+
+Not offered: Docling's VLM pipeline (GraniteDocling), whose model choices change between Docling releases.
+Docling's remote picture-description service is configured on the server, not per request.
 
 Options must be booleans: `"false"` (a string) is rejected with `400 invalid_options`.
 

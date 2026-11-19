@@ -23,12 +23,13 @@ running the models here; ``image_analysis`` is then the server's setting. ``MINE
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, any_of, boolean, choice, file_extension, parse_options
+from shimkit import ShimError, any_of, boolean, choice, file_extension, parse_options, string
 from shimkit import create_app as create_shim_app
 
 from mineru_shim.convert import PageSizes, to_ir
@@ -92,7 +93,17 @@ OPTIONS = [
     ),
     any_of("ocr", [True, False, "auto"], "auto", 'true forces OCR, false reads the text layer, "auto" decides'),
     boolean("image_analysis", False, "Describe pictures with a vision model (needs a VLM for every picture)"),
+    string(
+        "page_range",
+        None,
+        'PDF pages to parse, 1-based: "1-5,8", "3-r1" (r1 is the last page) or "all". PDFs only',
+    ),
 ]
+# MinerU's page-range grammar (docvortex/document/page_range.py): pages and inclusive ranges, with
+# rN counting from the end. MinerU reports anything else itself; this only catches obvious typos.
+_PAGE_RANGE = re.compile(
+    r"\s*(all|(r?[1-9][0-9]*)(\s*-\s*r?[1-9][0-9]*)?(\s*,\s*(r?[1-9][0-9]*)(\s*-\s*r?[1-9][0-9]*)?)*)\s*"
+)
 _OCR_MODES = {True: "ocr", False: "txt", "auto": "auto"}
 
 
@@ -103,10 +114,16 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
         extension = file_extension(filename)
         values = parse_options(OPTIONS, options)
+        pages = values["page_range"]
+        if pages is not None and not _PAGE_RANGE.fullmatch(pages):
+            raise ShimError(400, "invalid_options", 'option \'page_range\' must look like "1-5,8", "3-r1" or "all"')
+        if pages is not None and extension != "pdf":
+            raise ShimError(400, "invalid_options", "option 'page_range' only applies to PDF files")
         opts = {
             "tier": values["tier"] if extension in TIERED_EXTENSIONS else "flash",
             "ocr_mode": _OCR_MODES[values["ocr"]],
             "image_analysis": values["image_analysis"],
+            "page_range": (pages or "").strip(),
         }
         if extension not in SUPPORTED_EXTENSIONS:
             raise ShimError(

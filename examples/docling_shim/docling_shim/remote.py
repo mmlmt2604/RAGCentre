@@ -18,21 +18,39 @@ import httpx
 from docling_core.types.doc import DoclingDocument
 from shimkit import ShimError
 
-# shim option -> docling-serve form field. Booleans are sent as "true" / "false".
+# shim option -> docling-serve form field (names from docling.datamodel.service.options). Booleans
+# are sent as "true" / "false"; a list becomes a repeated field.
 FORM_FIELDS = {
     "ocr": "do_ocr",
     "include_page_images": "include_page_images",
     "heading_hierarchy": "do_pdf_heading_hierarchy",
+    "ocr_engine": "ocr_engine",
+    "ocr_lang": "ocr_lang",
+    "force_full_page_ocr": "force_ocr",
+    "table_mode": "table_mode",
+    "code_enrichment": "do_code_enrichment",
+    "formula_enrichment": "do_formula_enrichment",
+    "picture_classification": "do_picture_classification",
+    "picture_description": "do_picture_description",
 }
 
 
 def form_fields(options: dict[str, Any]) -> dict[str, Any]:
-    """The docling-serve form fields for the shim's validated ``options``."""
+    """The docling-serve form fields for the shim's validated ``options``. Unset options are left
+    to the server's defaults. ``max_pages`` becomes the end of a ``page_range`` (docling-serve has
+    no page limit of its own)."""
     fields: dict[str, Any] = {"to_formats": "json", "image_export_mode": "placeholder"}
     for name, field in FORM_FIELDS.items():
-        if name in options:
-            value = options[name]
-            fields[field] = str(value).lower() if isinstance(value, bool) else value
+        value = options.get(name)
+        if value is None or value == []:
+            continue
+        fields[field] = str(value).lower() if isinstance(value, bool) else value
+    first, last = options.get("page_range") or (None, None)
+    if options.get("max_pages") is not None:
+        first = first or 1
+        last = min(last, first + options["max_pages"] - 1) if last else first + options["max_pages"] - 1
+    if first is not None and last is not None:
+        fields["page_range"] = [str(first), str(last)]
     return fields
 
 

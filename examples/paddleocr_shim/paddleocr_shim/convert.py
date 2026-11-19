@@ -29,7 +29,7 @@ Label                                      IR block
 ``table_title``, ``chart_title``,          ``caption``
 ``figure_title``,
 ``figure_table_chart_title``
-``footnote``                               ``footnote``
+``footnote``, ``vision_footnote``          ``footnote``
 ``header``                                 ``page_header``
 ``footer``, ``number``                     ``page_footer``
 ``header_image``, ``footer_image``,        dropped
@@ -43,6 +43,7 @@ Boxes and page sizes are the engine's pixels (top-left origin) and are passed th
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from shimkit import build_ir, html_to_text, table_to_markdown
@@ -52,6 +53,10 @@ _PARAGRAPHS = {"text", "abstract", "content", "reference"}
 _FIGURES = {"image", "figure", "chart", "flowchart", "seal"}
 _CAPTIONS = {"table_title", "chart_title", "figure_title", "figure_table_chart_title"}
 _FOOTERS = {"footer", "number"}
+_FOOTNOTES = {"footnote", "vision_footnote"}  # vision_footnote: PaddleOCR-VL's note under a picture or table
+# PaddleOCR has no list label: a line that starts with a bullet or a number is, with this guess, an item.
+_BULLET = re.compile(r"^[\u2022\u00b7\u25cf\u25aa\u25e6\u2023*\-\u2013\u2014]\s+(?=\S)")
+_NUMBERED = re.compile(r"^(?:\d{1,3}[.)]|\([0-9]{1,3}\)|[a-z][.)])\s+(?=\S)")
 _DROPPED = {"header_image", "footer_image", "formula_number"}
 
 
@@ -92,7 +97,7 @@ def _block(raw: dict[str, Any]) -> dict[str, Any] | None:
         block = {"type": "figure", "text": content}
     elif label in _CAPTIONS:
         block = {"type": "caption", "text": content}
-    elif label == "footnote":
+    elif label in _FOOTNOTES:
         block = {"type": "footnote", "text": content}
     elif label == "header":
         block = {"type": "page_header", "text": content}
@@ -103,8 +108,21 @@ def _block(raw: dict[str, Any]) -> dict[str, Any] | None:
     return block
 
 
-def to_ir(pages: list[dict[str, Any]], *, source_name: str | None = None) -> dict[str, Any]:
-    """Convert reduced PP-StructureV3 page results to a Document IR ``dict``."""
+def _list_items(block: dict[str, Any]) -> list[dict[str, Any]]:
+    """With ``list_heuristic``: a paragraph whose every line starts with a bullet or a number becomes
+    one ``list_item`` per line (a bullet glyph is dropped, a number kept). Anything else is unchanged."""
+    if block["type"] != "paragraph":
+        return [block]
+    lines = [line.strip() for line in block["text"].splitlines() if line.strip()]
+    if not lines or not all(_BULLET.match(line) or _NUMBERED.match(line) for line in lines):
+        return [block]
+    return [{"type": "list_item", "text": _BULLET.sub("", line)} for line in lines]
+
+
+def to_ir(
+    pages: list[dict[str, Any]], *, source_name: str | None = None, list_heuristic: bool = False
+) -> dict[str, Any]:
+    """Convert reduced PP-StructureV3 or PaddleOCR-VL page results to a Document IR ``dict``."""
     blocks: list[dict[str, Any]] = []
     ir_pages: list[dict[str, Any]] = []
     for page in sorted(pages, key=lambda p: int(p["page"])):
@@ -114,8 +132,9 @@ def to_ir(pages: list[dict[str, Any]], *, source_name: str | None = None) -> dic
             block = _block(raw)
             if block is None:
                 continue
-            block["page"] = number
-            if raw.get("bbox") is not None:
-                block["bbox"] = [float(v) for v in raw["bbox"]]
-            blocks.append(block)
+            for part in _list_items(block) if list_heuristic else [block]:
+                part["page"] = number
+                if raw.get("bbox") is not None:
+                    part["bbox"] = [float(v) for v in raw["bbox"]]
+                blocks.append(part)
     return build_ir(blocks, ir_pages, source_name=source_name)

@@ -120,7 +120,9 @@ def test_service_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
                        data={"options": json.dumps({"ocr": False})})  # fmt: skip
     assert resp.status_code == 200 and resp.json()["blocks"][0]["text"] == "Pump Manual"
-    assert calls == [(b"%PDF", "m.pdf", {"ocr": False, "include_page_images": False, "heading_hierarchy": True})]
+    assert len(calls) == 1 and calls[0][:2] == (b"%PDF", "m.pdf")
+    assert calls[0][2]["ocr"] is False and calls[0][2]["heading_hierarchy"] is True
+    assert calls[0][2]["table_mode"] == "accurate" and calls[0][2]["page_range"] is None  # defaults filled in
     bad = client.post("/parse", files={"file": ("m.pdf", b"x", "application/pdf")}, data={"options": "[1]"})
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
     unsupported = client.post("/parse", files={"file": ("m.xyz", b"x", "application/octet-stream")})
@@ -272,3 +274,140 @@ def test_remote_mode_is_chosen_by_environment(monkeypatch: pytest.MonkeyPatch) -
     converter = DoclingServeConverter.from_env()
     assert converter is not None and converter.url == "http://serve:5001"
     assert converter.client.headers["x-api-key"] == "k"
+
+
+# --- engine options -------------------------------------------------------------------------------
+
+
+def all_options(**changes: Any) -> dict[str, Any]:
+    from shimkit import parse_options
+
+    from docling_shim.app import OPTIONS
+
+    return parse_options(OPTIONS, changes)
+
+
+def pipeline_of(converter: Any) -> Any:
+    from docling.datamodel.base_models import InputFormat
+
+    return converter.format_to_options[InputFormat.PDF].pipeline_options
+
+
+def test_options_reach_the_pipeline() -> None:
+    from docling.datamodel import pipeline_options as po
+
+    from docling_shim.app import DoclingConverter
+
+    converter = DoclingConverter()
+    pipeline = pipeline_of(
+        converter._converter(
+            all_options(
+                ocr_engine="tesseract",
+                ocr_lang=["eng", "deu"],
+                force_full_page_ocr=True,
+                table_mode="fast",
+                code_enrichment=True,
+                formula_enrichment=True,
+                picture_classification=True,
+                picture_description=True,
+                heading_hierarchy=False,
+                include_page_images=True,
+            )
+        )
+    )
+    assert isinstance(pipeline.ocr_options, po.TesseractCliOcrOptions)
+    assert pipeline.ocr_options.lang == ["eng", "deu"] and pipeline.ocr_options.mode == po.OcrMode.FULL_PAGE
+    assert pipeline.table_structure_options.mode == po.TableFormerMode.FAST
+    assert pipeline.do_code_enrichment and pipeline.do_formula_enrichment
+    assert pipeline.do_picture_classification and pipeline.do_picture_description
+    assert not pipeline.heading_hierarchy_options.enabled and pipeline.generate_page_images
+    default = pipeline_of(converter._converter(all_options()))
+    assert isinstance(default.ocr_options, po.OcrAutoOptions) and default.ocr_options.mode == po.OcrMode.DEFAULT
+    assert default.table_structure_options.mode == po.TableFormerMode.ACCURATE
+    assert default.heading_hierarchy_options.enabled and not default.do_code_enrichment
+
+
+@pytest.mark.parametrize(
+    ("engine", "class_name"),
+    [
+        ("auto", "OcrAutoOptions"),
+        ("easyocr", "EasyOcrOptions"),
+        ("rapidocr", "RapidOcrOptions"),
+        ("ocrmac", "OcrMacOptions"),
+    ],
+)
+def test_every_ocr_engine_builds(engine: str, class_name: str) -> None:
+    from docling_shim.app import DoclingConverter
+
+    pipeline = pipeline_of(DoclingConverter()._converter(all_options(ocr_engine=engine)))
+    assert type(pipeline.ocr_options).__name__ == class_name
+
+
+def test_converters_are_cached_per_pipeline_options_but_not_per_page_window() -> None:
+    from docling_shim.app import DoclingConverter
+
+    converter = DoclingConverter()
+    first = converter._converter(all_options())
+    assert converter._converter(all_options(page_range=[2, 3], max_pages=1)) is first
+    assert converter._converter(all_options(ocr_lang=["en"])) is not first
+    assert converter._converter(all_options(ocr_lang=["en"])) is converter._converter(all_options(ocr_lang=["en"]))
+    assert len(converter._converters) == 2
+
+
+@pytest.mark.parametrize(
+    ("changes", "expected"),
+    [
+        ({}, {}),
+        ({"page_range": [2, 4]}, {"page_range": (2, 4)}),
+        ({"max_pages": 3}, {"page_range": (1, 3)}),
+        ({"page_range": [5, 50], "max_pages": 10}, {"page_range": (5, 14)}),
+        ({"page_range": [5, 8], "max_pages": 10}, {"page_range": (5, 8)}),
+    ],
+)
+def test_page_window(changes: dict[str, Any], expected: dict[str, Any]) -> None:
+    from docling_shim.app import _page_arguments
+
+    assert _page_arguments(all_options(**changes)) == expected
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [{"ocr_engine": "paddle"}, {"table_mode": "slow"}, {"page_range": [3, 1]}, {"max_pages": 0}, {"ocr_lang": "en"}],
+)
+def test_bad_engine_options_are_a_400(bad: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DOCLING_SHIM_API_KEY", raising=False)
+    client = TestClient(create_app(fake_converter([])))
+    resp = client.post(
+        "/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")}, data={"options": json.dumps(bad)}
+    )
+    assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options"
+
+
+def test_remote_form_fields() -> None:
+    from docling_shim.remote import form_fields
+
+    assert form_fields(all_options()) == {
+        "to_formats": "json", "image_export_mode": "placeholder", "do_ocr": "true", "include_page_images": "false",
+        "do_pdf_heading_hierarchy": "true", "ocr_engine": "auto", "force_ocr": "false", "table_mode": "accurate",
+        "do_code_enrichment": "false", "do_formula_enrichment": "false", "do_picture_classification": "false",
+        "do_picture_description": "false",
+    }  # fmt: skip
+    got = form_fields(all_options(ocr_lang=["en", "de"], page_range=[2, 9], max_pages=3, table_mode="fast"))
+    assert got["ocr_lang"] == ["en", "de"] and got["page_range"] == ["2", "4"] and got["table_mode"] == "fast"
+    assert form_fields(all_options(max_pages=5))["page_range"] == ["1", "5"]
+
+
+def test_remote_sends_a_repeated_field_for_lists(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=serve_response())
+
+    client = remote_client(handler, monkeypatch)
+    client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
+                data={"options": json.dumps({"ocr_lang": ["en", "de"], "page_range": [2, 4]})})  # fmt: skip
+    body = seen[0].content.decode("latin-1")
+    assert body.count('name="ocr_lang"') == 2 and body.count('name="page_range"') == 2

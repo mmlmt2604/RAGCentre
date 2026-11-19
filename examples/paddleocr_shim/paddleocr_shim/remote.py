@@ -39,8 +39,11 @@ REQUEST_FIELDS = {
     "seals": "useSealRecognition",
     "orientation": "useDocOrientationClassify",
     "unwarp": "useDocUnwarping",
+    "textline_orientation": "useTextlineOrientation",
+    "region_detection": "useRegionDetection",
+    "text_det_limit_side_len": "textDetLimitSideLen",
 }
-assert set(REQUEST_FIELDS) == set(OPTION_ARGUMENTS)  # one source of truth for the option names
+assert set(OPTION_ARGUMENTS) <= set(REQUEST_FIELDS)  # one source of truth for the option names
 
 
 def reduce_pruned(pruned: dict[str, Any], position: int) -> dict[str, Any]:
@@ -87,7 +90,7 @@ class PaddleServingEngine:
     def __call__(self, content: bytes, filename: str, options: dict[str, bool]) -> list[dict[str, Any]]:
         is_pdf = filename.lower().endswith(".pdf")
         body: dict[str, Any] = {"file": base64.b64encode(content).decode("ascii"), "fileType": 0 if is_pdf else 1}
-        body.update({field: options[name] for name, field in REQUEST_FIELDS.items() if name in options})
+        body.update({field: options[name] for name, field in REQUEST_FIELDS.items() if options.get(name) is not None})
         try:
             resp = self.client.post(f"{self.url}{ENDPOINT}", json=body)
         except httpx.TimeoutException as exc:

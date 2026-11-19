@@ -145,3 +145,15 @@ def test_a_service_without_declarations_is_unchanged(monkeypatch: pytest.MonkeyP
     http = client()
     assert "options_schema" not in http.get("/info").json()
     assert post(http, {"anything": 1}).status_code == 200
+
+
+def test_a_boolean_can_be_unset_and_an_integer_can_default_to_none() -> None:
+    specs = [boolean("maybe", None, "Engine default"), integer("limit", None, minimum=1, maximum=9)]
+    assert parse_options(specs, {}) == {"maybe": None, "limit": None}
+    assert parse_options(specs, {"maybe": True, "limit": 5}) == {"maybe": True, "limit": 5}
+    assert parse_options(specs, {"maybe": None, "limit": None}) == {"maybe": None, "limit": None}
+    with pytest.raises(ShimError):
+        parse_options(specs, {"maybe": "yes"})
+    with pytest.raises(ShimError):
+        parse_options(specs, {"limit": 10})
+    assert "default" not in options_schema(specs)["properties"]["maybe"]

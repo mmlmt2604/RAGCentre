@@ -65,7 +65,8 @@ def _schema(base: dict[str, Any], default: Any, description: str) -> dict[str, A
     return out
 
 
-def boolean(key: str, default: bool, description: str = "") -> Option:
+def boolean(key: str, default: bool | None, description: str = "") -> Option:
+    """A true/false option; ``default=None`` means "not set": the engine's own default applies."""
     return Option(key, _schema({"type": "boolean"}, default, description), default)
 
 
@@ -73,7 +74,8 @@ def choice(key: str, choices: Sequence[str], default: str, description: str = ""
     return Option(key, _schema({"type": "string", "enum": list(choices)}, default, description), default)
 
 
-def integer(key: str, default: int, *, minimum: int, maximum: int, description: str = "") -> Option:
+def integer(key: str, default: int | None, *, minimum: int, maximum: int, description: str = "") -> Option:
+    """An integer in ``[minimum, maximum]``; ``default=None`` means "not set"."""
     base = {"type": "integer", "minimum": minimum, "maximum": maximum}
     return Option(key, _schema(base, default, description), default)
 

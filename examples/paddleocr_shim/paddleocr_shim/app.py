@@ -33,11 +33,11 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, boolean, file_extension, parse_options
+from shimkit import ShimError, boolean, choice, file_extension, integer, parse_options, string
 from shimkit import create_app as create_shim_app
 
 from paddleocr_shim.convert import to_ir
-from paddleocr_shim.engine import SUPPORTED_EXTENSIONS, PaddleEngine
+from paddleocr_shim.engine import SUPPORTED_EXTENSIONS, PaddleEngine, _vl_settings
 from paddleocr_shim.remote import PaddleServingEngine
 
 SHIM_VERSION = "0.1.0"
@@ -57,8 +57,37 @@ OPTIONS = [
     boolean("seals", False, "Seal recognition"),
     boolean("orientation", False, "Document orientation classification"),
     boolean("unwarp", False, "Document unwarping"),
+    boolean("textline_orientation", None, "Correct upside-down or rotated text lines (the engine's default if unset)"),
+    boolean("region_detection", None, "Detect layout regions before reading order (the engine's default if unset)"),
     boolean(
-        "heading_levels", False, "Rank section titles with PaddleX's heading-level assignment (default: all level 2)"
+        "heading_levels",
+        False,
+        "Rank section titles with PaddleX's heading-level assignment (default: all level 2). "
+        "PaddleOCR-VL always does this",
+    ),
+    choice(
+        "pipeline",
+        ["structure_v3", "vl"],
+        "structure_v3",
+        "structure_v3 is PP-StructureV3; vl is PaddleOCR-VL, a vision-language model that also reads tables, "
+        "formulas and heading levels (set PADDLEOCR_VL_BACKEND and PADDLEOCR_VL_SERVER_URL to use a server you run)",
+    ),
+    string(
+        "lang",
+        None,
+        "Language of the text models, e.g. en, ch, japan, korean (PP-StructureV3 only; default: PADDLEOCR_SHIM_LANG)",
+    ),
+    integer(
+        "text_det_limit_side_len",
+        None,
+        minimum=32,
+        maximum=8000,
+        description="Longest-side limit, in pixels, for text detection input (PP-StructureV3 only): raise it for dense pages",
+    ),
+    boolean(
+        "list_heuristic",
+        False,
+        "Treat paragraphs that start with a bullet or a number as list items (PaddleOCR has no list label)",
     ),
 ]
 
@@ -80,6 +109,8 @@ def service_version(lang: str | None = None, remote: bool = False) -> str:
     if remote:
         return f"{SHIM_VERSION}+paddlex-serving.remote"
     suffix = f".lang-{lang}" if lang else ""
+    vl = _vl_settings()  # the PaddleOCR-VL model and backend decide VL output
+    suffix += "".join(f".vl-{vl[k]}" for k in ("pipeline_version", "vl_rec_backend") if k in vl)
     return f"{SHIM_VERSION}+paddleocr.{_paddleocr_version()}{suffix}"
 
 
@@ -94,7 +125,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         opts = parse_options(OPTIONS, options)
         if file_extension(filename) not in SUPPORTED_EXTENSIONS:
             raise ShimError(415, "unsupported_media_type", f"{filename}: PaddleOCR reads PDF and image files only")
-        return to_ir(run(content, filename, opts), source_name=filename)
+        return to_ir(run(content, filename, opts), source_name=filename, list_heuristic=opts["list_heuristic"])
 
     return create_shim_app(
         name=NAME,

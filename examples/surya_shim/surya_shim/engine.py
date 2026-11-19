@@ -49,6 +49,7 @@ def reduce_page(prediction: Any, number: int, image: Any, *, with_image: bool) -
                 "reading_order": block.reading_order,
                 "skipped": block.skipped,
                 "error": block.error,
+                "confidence": getattr(block, "confidence", None),
             }
             for block in prediction.blocks
         ],
@@ -93,9 +94,26 @@ class SuryaEngine:
         predictor = self._get_predictor()
         from surya.input.load import load_image, load_pdf
 
+        numbers: list[int] | None = None  # the original 1-based number of each rendered page
         with temp_upload(content, filename) as path:
             if file_extension(filename) == "pdf":
-                images, _ = load_pdf(path, dpi=options["dpi"])
+                if options.get("page_range"):
+                    from surya.input.load import open_pdf
+
+                    document = open_pdf(path)
+                    try:
+                        total = len(document)
+                    finally:
+                        document.close()
+                    first, last = options["page_range"]
+                    numbers = list(range(first, min(last, total) + 1))
+                    if not numbers:
+                        raise ShimError(400, "invalid_options", f"page_range starts after the last page ({total})")
+                    images, _ = load_pdf(path, page_range=[n - 1 for n in numbers], dpi=options["dpi"])
+                else:
+                    images, _ = load_pdf(path, dpi=options["dpi"])
+            elif options.get("page_range"):
+                raise ShimError(400, "invalid_options", "option 'page_range' only applies to PDF files")
             else:
                 images, _ = load_image(path)
         try:
@@ -106,7 +124,8 @@ class SuryaEngine:
                     503, "engine_unavailable", f"Surya inference server: {type(exc).__name__}: {exc}"
                 ) from exc
             raise
+        numbers = numbers or list(range(1, len(images) + 1))
         return [
             reduce_page(prediction, number, image, with_image=options["include_page_images"])
-            for number, (prediction, image) in enumerate(zip(predictions, images, strict=True), start=1)
+            for number, prediction, image in zip(numbers, predictions, images, strict=True)
         ]
