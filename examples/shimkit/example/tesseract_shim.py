@@ -1,13 +1,14 @@
 """A complete ragcentre.parser/v1 service for Tesseract, in about forty lines.
 
-    pip install ./examples/shimkit pytesseract pillow uvicorn      (and the tesseract program)
-    uvicorn tesseract_shim:app --port 8710
+pip install ./examples/shimkit pytesseract pillow uvicorn      (and the tesseract program)
+uvicorn tesseract_shim:app --port 8710
 """
 
 import io
 
 import pytesseract
 from PIL import Image
+
 from shimkit import ShimError, build_ir, create_app, file_extension, parse_options, string
 
 OPTIONS = [string("lang", "eng", "Tesseract language codes, for example eng or eng+deu")]

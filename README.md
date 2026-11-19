@@ -94,7 +94,12 @@ Run `ragcentre COMMAND --help` for details.
   [`examples/docling_shim/`](examples/docling_shim/) is a complete parser service built on Docling;
   [`mineru_shim/`](examples/mineru_shim/), [`paddleocr_shim/`](examples/paddleocr_shim/) and
   [`surya_shim/`](examples/surya_shim/) do the same for MinerU, PaddleOCR and Surya, on a small
-  shared package, [`shimkit/`](examples/shimkit/).
+  shared package, [`shimkit/`](examples/shimkit/). Each can run its engine in-process or call a server
+  you already run (docling-serve, a MinerU API server, PaddleX serving, a Surya inference server), takes
+  typed options, and parses long documents as background jobs.
+  [`docs/protocols/parser-shim-guide.md`](docs/protocols/parser-shim-guide.md) shows how to plug in
+  another engine, and `ragcentre parser check <url>` tells you whether a service is usable and which
+  RAGCentre features its output feeds.
 - [`docs/protocols/chunker-v1.md`](docs/protocols/chunker-v1.md): custom chunking.
 - [`docs/protocols/embedder-v1.md`](docs/protocols/embedder-v1.md): OpenAI-compatible embeddings.
 - [`docs/protocols/reranker-v1.md`](docs/protocols/reranker-v1.md): Cohere/Jina-style reranking.

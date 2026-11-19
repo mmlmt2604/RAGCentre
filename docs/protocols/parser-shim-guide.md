@@ -19,6 +19,7 @@ import io
 
 import pytesseract
 from PIL import Image
+
 from shimkit import ShimError, build_ir, create_app, file_extension, parse_options, string
 
 OPTIONS = [string("lang", "eng", "Tesseract language codes, for example eng or eng+deu")]
