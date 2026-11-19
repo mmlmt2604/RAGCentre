@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, bool_option, choice_option, file_extension
+from shimkit import ShimError, any_of, boolean, choice, file_extension, parse_options
 from shimkit import create_app as create_shim_app
 
 from mineru_shim.convert import PageSizes, to_ir
@@ -83,15 +83,17 @@ def service_version(remote: bool = False) -> str:
     return f"{SHIM_VERSION}+mineru.{_mineru_version()}" + (".remote" if remote else "")
 
 
-def _ocr_mode(options: dict[str, Any]) -> str:
-    value = options.get("ocr", "auto")
-    if value is True:
-        return "ocr"
-    if value is False:
-        return "txt"
-    if value == "auto":
-        return "auto"
-    raise ShimError(400, "invalid_options", "option 'ocr' must be true, false or \"auto\"")
+OPTIONS = [
+    choice(
+        "tier",
+        TIERS,
+        "standard",
+        "Parsing tier. Only PDFs and images support every tier; other formats always use flash",
+    ),
+    any_of("ocr", [True, False, "auto"], "auto", 'true forces OCR, false reads the text layer, "auto" decides'),
+    boolean("image_analysis", False, "Describe pictures with a vision model (needs a VLM for every picture)"),
+]
+_OCR_MODES = {True: "ocr", False: "txt", "auto": "auto"}
 
 
 def create_app(engine: Engine | None = None) -> FastAPI:
@@ -100,11 +102,11 @@ def create_app(engine: Engine | None = None) -> FastAPI:
 
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
         extension = file_extension(filename)
-        tier = choice_option(options, "tier", TIERS, "standard")
+        values = parse_options(OPTIONS, options)
         opts = {
-            "tier": tier if extension in TIERED_EXTENSIONS else "flash",
-            "ocr_mode": _ocr_mode(options),
-            "image_analysis": bool_option(options, "image_analysis", False),
+            "tier": values["tier"] if extension in TIERED_EXTENSIONS else "flash",
+            "ocr_mode": _OCR_MODES[values["ocr"]],
+            "image_analysis": values["image_analysis"],
         }
         if extension not in SUPPORTED_EXTENSIONS:
             raise ShimError(
@@ -118,6 +120,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         version=lambda: service_version(remote),
         mime_types=MIME_TYPES,
         capabilities={"page_images": False},
+        options=OPTIONS,
         api_key_env="MINERU_SHIM_API_KEY",
         parse=parse,
         serialise=not remote,  # MinerU runs local models and may start an inference server

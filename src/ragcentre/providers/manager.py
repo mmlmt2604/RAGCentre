@@ -171,6 +171,8 @@ class ProviderManager:
             info = self._capture_info(spec, provider_id, name, model)
             stored["service_name"] = info.name
             stored["service_version"] = info.version
+            if "options_schema" in spec.captured_fields and info.options_schema is not None:
+                stored["options_schema"] = info.options_schema
         if self.by_name(name) is not None:
             raise Conflict(f"A provider named {name!r} already exists.")
         now = now_iso()
@@ -203,6 +205,18 @@ class ProviderManager:
             if close is not None:
                 close()
         return info
+
+    def _store_options_schema(self, row: ProviderRow, schema: dict[str, Any] | None) -> None:
+        """Refresh the options schema captured from the service. It is not part of the fingerprint:
+        it only drives pipeline validation and the UI's option form."""
+        config = {k: v for k, v in row.config.items() if k != "options_schema"}
+        if schema is not None:
+            config["options_schema"] = schema
+        with self.db.write() as conn:
+            conn.execute(
+                "UPDATE providers SET config = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(config), now_iso(), row.id),
+            )
 
     def update(self, provider_id: str, patch: Mapping[str, Any]) -> ProviderRow:
         row = self.get(provider_id)
@@ -369,6 +383,8 @@ class ProviderManager:
                 info = cast(Any, inst).info(fresh=True)
                 result["service"] = {"name": info.name, "version": info.version, "mime_types": info.mime_types}
                 pinned = str(row.config.get("service_version", ""))
+                if "options_schema" in spec.captured_fields and info.options_schema != row.config.get("options_schema"):
+                    self._store_options_schema(row, info.options_schema)  # the service's options changed
                 if info.version != pinned:
                     result["version_drift"] = {"pinned": pinned, "current": info.version}
                     result["message"] = (

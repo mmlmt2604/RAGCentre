@@ -45,7 +45,10 @@ export interface ProviderTestResult {
   service: { name: string; version: string; mime_types: string[] } | null;  // parsers, chunkers
   dimensions: number | null;                 // embedders
   version_drift: { pinned: string; current: string } | null;
+  check?: ParserCheck | null;                     // only a deep test of a parser (`?deep=true`)
 }
+export interface ParserFinding { level: "error" | "warn" | "info"; check: string; message: string; lost: string | null }
+export interface ParserCheck { ok: boolean; blocks: number; pages: number; seconds: number; findings: ParserFinding[] }
 
 // ---------- Corpora ----------
 export interface MetadataSchema { fields: Record<string, { type: FieldType; default: Scalar }> }

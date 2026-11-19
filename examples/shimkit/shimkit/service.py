@@ -25,10 +25,13 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
+
+if TYPE_CHECKING:
+    from shimkit.options import Option
 
 PROTOCOL = "ragcentre.parser/v1"
 
@@ -198,6 +201,8 @@ def create_app(
     parse: ParseFunction,
     serialise: bool = False,
     shutdown: Callable[[], None] | None = None,
+    options: Sequence[Option] | None = None,
+    strict_options: bool = True,
     jobs: bool = False,
     job_workers: int = 2,
     job_ttl: float = JOB_TTL_SECONDS,
@@ -210,6 +215,11 @@ def create_app(
         ``Authorization: Bearer <value>``. ``shutdown`` runs when the server stops (to release an
         engine's child processes).
 
+    ``options`` declares the route options (see ``shimkit.options``): ``/info`` reports them as
+    ``options_schema``, and a request with an option that is not declared is a ``400
+    invalid_options`` unless ``strict_options`` is False. Your ``parse`` function receives the
+    options object as the client sent it; read it with ``shimkit.parse_options``.
+
     With ``jobs`` the service also speaks the async mode of the parser protocol: ``/info`` reports
     ``capabilities.async``, ``POST /parse?mode=async`` (or ``Prefer: respond-async``) answers
     ``202 {"job_id", "poll_after_seconds"}``, and ``GET /jobs/{id}``, ``GET /jobs/{id}/result`` and
@@ -217,10 +227,13 @@ def create_app(
     with ``serialise``) and are dropped ``job_ttl`` seconds after they finish. Without ``jobs`` the
     service is sync-only, as before.
     """
+    from shimkit.options import options_schema, parse_options  # not at the top: options imports this module
+
     api_key = os.environ.get(api_key_env) or None
     lock = threading.Lock() if serialise else None
     table = JobTable(1 if serialise else job_workers, job_ttl) if jobs else None
     advertised = {**capabilities, **({"async": True} if jobs else {})}
+    declared = list(options) if options is not None else None
 
     def run_parse(content: bytes, filename: str, opts: dict[str, Any]) -> dict[str, Any]:
         if lock is None:
@@ -250,13 +263,16 @@ def create_app(
 
     @app.get("/info")
     def info() -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "protocol": PROTOCOL,
             "name": name,
             "version": version(),
             "mime_types": list(mime_types),
             "capabilities": dict(advertised),
         }
+        if declared is not None:
+            body["options_schema"] = options_schema(declared)
+        return body
 
     @app.post("/parse", response_model=None)
     def parse_endpoint(
@@ -268,6 +284,8 @@ def create_app(
         )
         try:
             opts = _read_options(options)
+            if declared is not None and strict_options:
+                parse_options(declared, opts)  # rejects an unknown or invalid option before any work
             content = file.file.read()
             if wants_async and table is not None:
                 job = table.submit(lambda: run_parse(content, filename, opts))

@@ -89,6 +89,7 @@ class FakeServices:
         # status requests before it succeeds. ``job_failure`` makes jobs end in ``failed`` with
         # that ``{"http_status", "code", "message"}`` error.
         self.parser_async = False
+        self.parser_options_schema: dict[str, Any] | None = None  # published as /info options_schema
         self.job_running_polls = 0
         self.job_failure: dict[str, Any] | None = None
         self.jobs: dict[str, dict[str, Any]] = {}
@@ -161,9 +162,11 @@ class FakeServices:
     # ---- parser -------------------------------------------------------------------------------
 
     def _parser_info(self, request: httpx.Request) -> httpx.Response:
+        extra = {"options_schema": self.parser_options_schema} if self.parser_options_schema is not None else {}
         return httpx.Response(
             200,
             json={
+                **extra,
                 "protocol": "ragcentre.parser/v1",
                 "name": self.parser_name,
                 "version": self.parser_version,

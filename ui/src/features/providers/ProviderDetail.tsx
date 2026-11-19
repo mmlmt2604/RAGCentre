@@ -1,4 +1,4 @@
-import { ArrowLeft, CopyPlus, KeyRound, Lock, PlugZap, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeft, CopyPlus, FileSearch, KeyRound, Lock, PlugZap, Trash2, TriangleAlert } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../../api/client";
@@ -12,7 +12,7 @@ import {
   useSetSecret,
   useTestProvider,
 } from "../../api/hooks";
-import type { Provider, ProviderTestResult, ProviderType } from "../../api/types";
+import type { ParserCheck, Provider, ProviderTestResult, ProviderType } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
 import { ConfigFields, LockedSettings } from "../../components/ConfigForm";
 import { ConfirmDialog } from "../../components/Dialog";
@@ -105,6 +105,11 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
           <Button variant="primary" icon={PlugZap} loading={test.isPending} onClick={() => test.mutate()}>
             Test connection
           </Button>
+          {p.kind === "parser" && p.type === "http" ? (
+            <Button icon={FileSearch} loading={test.isPending} onClick={() => test.mutate(true)}>
+              Test with a sample document
+            </Button>
+          ) : null}
           <ButtonLink to={`/providers/new?from=${p.id}`} icon={CopyPlus}>
             New provider from this one
           </ButtonLink>
@@ -189,7 +194,34 @@ export function TestResultView({ result, error }: { result: ProviderTestResult |
           </div>
         ) : null}
       </dl>
+      {result.check ? <ParserCheckView check={result.check} /> : null}
     </section>
+  );
+}
+
+const LEVEL_LABEL = { error: "Problem", warn: "Warning", info: "OK" } as const;
+
+/** What a sample document showed about a parser, one line per finding. A warning names the
+ *  RAGCentre feature that the problem costs. */
+function ParserCheckView({ check }: { check: ParserCheck }) {
+  const shown = check.findings.filter((f) => f.level !== "info");
+  return (
+    <div className="prov-check">
+      <p className="prov-check__sum">
+        Parsed a sample document in <span className="num">{check.seconds.toFixed(1)} s</span>: <span className="num">{check.blocks}</span> blocks on{" "}
+        <span className="num">{check.pages}</span> pages. {shown.length ? `${shown.length} finding${shown.length === 1 ? "" : "s"}.` : "Nothing to fix."}
+      </p>
+      {shown.length ? (
+        <ul className="prov-check__list">
+          {shown.map((f, i) => (
+            <li key={i} className={`prov-check__item prov-check__item--${f.level}`}>
+              <strong>{LEVEL_LABEL[f.level]}</strong> <span className="mono">{f.check}</span> {f.message}
+              {f.lost ? <span className="muted"> Loses: {f.lost}.</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

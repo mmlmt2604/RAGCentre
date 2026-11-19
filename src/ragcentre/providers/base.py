@@ -56,6 +56,8 @@ class ServiceInfo:
     version: str
     mime_types: list[str] = field(default_factory=list)
     capabilities: dict[str, Any] = field(default_factory=dict)
+    # JSON Schema for a parse route's options, when the service publishes one (docs/protocols/parser-v1.md)
+    options_schema: dict[str, Any] | None = None
 
 
 # ---- provider interfaces ---------------------------------------------------------------------
@@ -275,6 +277,7 @@ class InfoMixin(HttpService):
             version=version,
             mime_types=[str(m) for m in mime_types] if isinstance(mime_types, list) else [],
             capabilities=caps if isinstance(caps, dict) else {},
+            options_schema=schema if isinstance(schema := body.get("options_schema"), dict) else None,
         )
         with self._info_lock:
             self._info = (time.monotonic(), info)

@@ -296,7 +296,8 @@ export function useDeleteSecret(id: string) {
 
 export function useTestProvider(id: string) {
   return useMutation({
-    mutationFn: () => request<ProviderTestResult>(`/providers/${id}/test`, { method: "POST" }),
+    // `deep` also parses a sample document and reports which RAGCentre features the output feeds.
+    mutationFn: (deep?: boolean) => request<ProviderTestResult>(`/providers/${id}/test`, { method: "POST", query: deep ? { deep: "true" } : undefined }),
   });
 }
 

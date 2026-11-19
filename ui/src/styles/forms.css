@@ -424,6 +424,25 @@
   gap: var(--space-5);
   font-size: var(--text-sm);
 }
+.prov-check {
+  margin-top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.prov-check__list {
+  margin: 0;
+  padding-left: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.prov-check__item--error strong {
+  color: var(--danger);
+}
+.prov-check__item--warn strong {
+  color: var(--warning, var(--text-2));
+}
 .prov-test__msg {
   color: var(--text);
   font-size: var(--text-xs);

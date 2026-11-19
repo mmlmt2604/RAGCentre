@@ -33,7 +33,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, bool_option, file_extension
+from shimkit import ShimError, boolean, file_extension, parse_options
 from shimkit import create_app as create_shim_app
 
 from paddleocr_shim.convert import to_ir
@@ -50,15 +50,17 @@ MIME_TYPES = [
     "image/tiff",
     "image/webp",
 ]
-DEFAULTS = {
-    "tables": True,
-    "formulas": True,
-    "charts": False,
-    "seals": False,
-    "orientation": False,
-    "unwarp": False,
-    "heading_levels": False,
-}
+OPTIONS = [
+    boolean("tables", True, "Table recognition"),
+    boolean("formulas", True, "Formula recognition"),
+    boolean("charts", False, "Chart recognition"),
+    boolean("seals", False, "Seal recognition"),
+    boolean("orientation", False, "Document orientation classification"),
+    boolean("unwarp", False, "Document unwarping"),
+    boolean(
+        "heading_levels", False, "Rank section titles with PaddleX's heading-level assignment (default: all level 2)"
+    ),
+]
 
 # (content, filename, options) -> reduced pages (see convert.py)
 Engine = Callable[[bytes, str, dict[str, bool]], list[dict[str, Any]]]
@@ -89,7 +91,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     run = engine or remote or PaddleEngine(lang=lang)
 
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
-        opts = {name: bool_option(options, name, default) for name, default in DEFAULTS.items()}
+        opts = parse_options(OPTIONS, options)
         if file_extension(filename) not in SUPPORTED_EXTENSIONS:
             raise ShimError(415, "unsupported_media_type", f"{filename}: PaddleOCR reads PDF and image files only")
         return to_ir(run(content, filename, opts), source_name=filename)
@@ -99,6 +101,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         version=lambda: service_version(lang, remote is not None),
         mime_types=MIME_TYPES,
         capabilities={"page_images": False},
+        options=OPTIONS,
         api_key_env="PADDLEOCR_SHIM_API_KEY",
         parse=parse,
         serialise=remote is None,  # PaddlePaddle pipelines are not safe to call concurrently

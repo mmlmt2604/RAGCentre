@@ -559,7 +559,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Test Provider */
+        /**
+         * Test Provider
+         * @description Check that a provider works. With ``deep=true`` a parser service also parses a sample
+         *     document and reports which RAGCentre features its output feeds.
+         */
         post: operations["test_provider_v1_providers__provider_id__test_post"];
         delete?: never;
         options?: never;
@@ -1305,6 +1309,37 @@ export interface components {
              */
             type: "parse";
         };
+        /**
+         * ParserCheck
+         * @description The result of a deep parser test (``?deep=true``): what the service returned for a sample
+         *     document, and which RAGCentre features its output feeds.
+         */
+        ParserCheck: {
+            /** Blocks */
+            blocks: number;
+            /** Findings */
+            findings: components["schemas"]["ParserFinding"][];
+            /** Ok */
+            ok: boolean;
+            /** Pages */
+            pages: number;
+            /** Seconds */
+            seconds: number;
+        };
+        /** ParserFinding */
+        ParserFinding: {
+            /** Check */
+            check: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "error" | "warn" | "info";
+            /** Lost */
+            lost: string | null;
+            /** Message */
+            message: string;
+        };
         /** Pipeline */
         Pipeline: {
             /** Archived */
@@ -1506,6 +1541,7 @@ export interface components {
         };
         /** ProviderTestResult */
         ProviderTestResult: {
+            check: components["schemas"]["ParserCheck"] | null;
             /** Dimensions */
             dimensions: number | null;
             /** Latency Ms */
@@ -3224,7 +3260,9 @@ export interface operations {
     };
     test_provider_v1_providers__provider_id__test_post: {
         parameters: {
-            query?: never;
+            query?: {
+                deep?: boolean;
+            };
             header?: never;
             path: {
                 provider_id: string;

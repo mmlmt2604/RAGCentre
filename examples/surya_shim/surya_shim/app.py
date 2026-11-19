@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, bool_option, file_extension, int_option
+from shimkit import ShimError, boolean, file_extension, integer, parse_options
 from shimkit import create_app as create_shim_app
 
 from surya_shim.convert import to_ir
@@ -36,6 +36,11 @@ from surya_shim.engine import DEFAULT_DPI, SUPPORTED_EXTENSIONS, SuryaEngine
 
 SHIM_VERSION = "0.1.0"
 NAME = "surya-shim"
+OPTIONS = [
+    boolean("include_page_images", False, "Return each rendered page as a base64 PNG in pages[].image"),
+    boolean("ocr_figures", False, "Also read text inside pictures, figures and diagrams"),
+    integer("dpi", DEFAULT_DPI, minimum=72, maximum=400, description="Render resolution for PDF pages"),
+]
 MIME_TYPES = [
     "application/pdf",
     "image/png",
@@ -78,11 +83,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     run = engine or SuryaEngine()
 
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
-        opts = {
-            "include_page_images": bool_option(options, "include_page_images", False),
-            "ocr_figures": bool_option(options, "ocr_figures", False),
-            "dpi": int_option(options, "dpi", DEFAULT_DPI, minimum=72, maximum=400),
-        }
+        opts = parse_options(OPTIONS, options)
         if file_extension(filename) not in SUPPORTED_EXTENSIONS:
             raise ShimError(415, "unsupported_media_type", f"{filename}: Surya reads PDF and image files only")
         pages = run(content, filename, opts)
@@ -93,6 +94,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         version=service_version,
         mime_types=MIME_TYPES,
         capabilities={"page_images": True},
+        options=OPTIONS,
         api_key_env="SURYA_SHIM_API_KEY",
         parse=parse,
         serialise=False,  # a client of the inference server, which does its own batching

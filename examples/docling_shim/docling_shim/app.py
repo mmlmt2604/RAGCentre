@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from fastapi import FastAPI
-from shimkit import ShimError, bool_option
+from shimkit import ShimError, boolean, parse_options
 from shimkit import create_app as create_shim_app
 
 from docling_shim.convert import to_ir
@@ -50,7 +50,16 @@ MIME_TYPES = [
     "image/bmp",
     "image/webp",
 ]
-DEFAULTS = {"ocr": True, "include_page_images": False, "heading_hierarchy": True}
+OPTIONS = [
+    boolean("ocr", True, "Run OCR on scanned pages and images in PDFs"),
+    boolean("include_page_images", False, "Render each page and return it as a base64 PNG in pages[].image"),
+    boolean(
+        "heading_hierarchy",
+        True,
+        "Rank section headers by PDF bookmarks, numbering and font style (PDF only); "
+        "without it Docling puts every header at one level",
+    ),
+]
 
 # (content, filename, options) -> DoclingDocument. ``options`` holds the validated booleans in
 # ``DEFAULTS``.
@@ -112,7 +121,7 @@ def create_app(converter: Converter | None = None) -> FastAPI:
     convert = converter or remote or DoclingConverter()
 
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
-        opts = {name: bool_option(options, name, default) for name, default in DEFAULTS.items()}
+        opts = parse_options(OPTIONS, options)
         try:
             doc = convert(content, filename, opts)
         except Exception as exc:  # docling.exceptions.ConversionError and friends
@@ -126,6 +135,7 @@ def create_app(converter: Converter | None = None) -> FastAPI:
         version=lambda: service_version(remote),
         mime_types=MIME_TYPES,
         capabilities={"page_images": True},
+        options=OPTIONS,
         api_key_env="DOCLING_SHIM_API_KEY",
         parse=parse,
         jobs=True,  # a scanned PDF can take longer than one request may last

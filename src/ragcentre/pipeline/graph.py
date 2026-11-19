@@ -26,6 +26,7 @@ from ragcentre.models.pipeline import (
     PipelineConfig,
 )
 from ragcentre.providers.manager import ProviderRow
+from ragcentre.providers.parsers.options import validate_route_options
 from ragcentre.providers.registry import get_type
 
 NODE_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
@@ -260,6 +261,11 @@ class _Resolver:
                     rows.append(self.provider(node.id, route.provider, "parser", f"nodes[{i}].routes[{j}].provider"))
                     if not _json_ok(route.options):
                         self.problem(node.id, f"nodes[{i}].routes[{j}].options", "Options must be plain JSON.")
+                    elif rows[-1] is not None:
+                        # Typos and wrong types are caught here instead of when the document is parsed.
+                        schema = rows[-1].config.get("options_schema")
+                        for key, message in validate_route_options(schema, route.options):
+                            self.problem(node.id, f"nodes[{i}].routes[{j}].options.{key}", message)
                 entry["routes"] = rows
             elif isinstance(node, ChunkNode):
                 strategy = get_strategy(node.strategy)

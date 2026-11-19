@@ -588,3 +588,14 @@ def test_remote_is_chosen_by_environment(monkeypatch: pytest.MonkeyPatch) -> Non
     engine = PaddleServingEngine.from_env()
     assert engine is not None and engine.url == "http://paddlex:8080"
     assert engine.client.headers["authorization"] == "Bearer k"
+
+
+def test_options_are_published_and_typos_are_rejected() -> None:
+    calls: list[tuple[Any, ...]] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    schema = client.get("/info").json()["options_schema"]
+    assert schema["type"] == "object" and schema["additionalProperties"] is False and schema["properties"]
+    assert all("description" in spec for spec in schema["properties"].values())
+    bad = post(client, options={"definitely_not_an_option": True})
+    assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
+    assert "definitely_not_an_option" in bad.json()["error"]["message"] and calls == []

@@ -519,3 +519,14 @@ def test_remote_is_chosen_by_environment(monkeypatch: pytest.MonkeyPatch, fake_m
     assert client.get("/info").json()["version"].endswith(".remote")
     assert post(client).status_code == 200
     assert fake_mineru.api_inits[0]["api_key"] == "k"
+
+
+def test_options_are_published_and_typos_are_rejected() -> None:
+    calls: list[tuple[Any, ...]] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    schema = client.get("/info").json()["options_schema"]
+    assert schema["type"] == "object" and schema["additionalProperties"] is False and schema["properties"]
+    assert all("description" in spec for spec in schema["properties"].values())
+    bad = post(client, options={"definitely_not_an_option": True})
+    assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
+    assert "definitely_not_an_option" in bad.json()["error"]["message"] and calls == []
