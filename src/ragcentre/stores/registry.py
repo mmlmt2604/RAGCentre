@@ -25,6 +25,7 @@ BUILTIN = {
     "qdrant": "ragcentre.stores.qdrant:STORE_TYPE",
     "pgvector": "ragcentre.stores.pgvector:STORE_TYPE",
     "chroma": "ragcentre.stores.chroma:STORE_TYPE",
+    "http": "ragcentre.stores.http:STORE_TYPE",
 }
 
 StoreFactory = Callable[[BaseModel, dict[str, str], Path], "VectorStore"]
