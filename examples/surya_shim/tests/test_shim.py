@@ -255,7 +255,7 @@ def test_service_endpoints() -> None:
     client = TestClient(create_app(fake_engine(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "surya-shim"
-    assert info["version"].startswith("0.1.0+surya.")
+    assert info["version"].startswith("0.2.0+surya.")
     assert info["mime_types"] == ["application/pdf", "image/png", "image/jpeg", "image/tiff", "image/bmp", "image/webp"]
     assert info["capabilities"] == {"page_images": True, "async": True}
 
@@ -307,9 +307,9 @@ def test_version_includes_the_package_and_the_model(monkeypatch: pytest.MonkeyPa
     settings.settings = types.SimpleNamespace(SURYA_MODEL_CHECKPOINT="datalab-to/surya-ocr-2.5")  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "surya.settings", settings)
     monkeypatch.setattr(app_module, "version", lambda name: "0.24.0")
-    assert service_version() == "0.1.0+surya.0.24.0.surya-ocr-2.5"
+    assert service_version() == "0.2.0+surya.0.24.0.surya-ocr-2.5"
     settings.settings.SURYA_MODEL_CHECKPOINT = "/models/my-finetune/"
-    assert service_version() == "0.1.0+surya.0.24.0.my-finetune"
+    assert service_version() == "0.2.0+surya.0.24.0.my-finetune"
 
 
 def test_version_without_surya(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -317,7 +317,7 @@ def test_version_without_surya(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         app_module, "version", lambda name: (_ for _ in ()).throw(app_module.PackageNotFoundError(name))
     )
-    assert service_version() == "0.1.0+surya.unknown"
+    assert service_version() == "0.2.0+surya.unknown"
 
 
 def test_api_key(monkeypatch: pytest.MonkeyPatch) -> None:

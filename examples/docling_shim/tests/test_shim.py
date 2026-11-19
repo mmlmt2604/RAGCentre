@@ -115,7 +115,7 @@ def test_service_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(create_app(fake_converter(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == PROTOCOL and info["name"] == "docling-shim"
-    assert info["version"].startswith("0.2.0+docling.")
+    assert info["version"].startswith("0.3.0+docling.")
     assert "application/pdf" in info["mime_types"]
     resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
                        data={"options": json.dumps({"ocr": False})})  # fmt: skip
@@ -222,14 +222,14 @@ def test_remote_matches_the_in_process_golden(monkeypatch: pytest.MonkeyPatch) -
     for expected in ('name="files"', 'name="to_formats"\r\n\r\njson', 'name="do_ocr"\r\n\r\nfalse',
                      'name="do_pdf_heading_hierarchy"\r\n\r\ntrue'):  # fmt: skip
         assert expected in body, expected
-    assert client.get("/info").json()["version"] == "0.2.0+docling-serve.2.150.1"
+    assert client.get("/info").json()["version"] == "0.3.0+docling-serve.2.150.1"
 
 
 def test_remote_version_without_a_version_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
 
     client = remote_client(lambda request: httpx.Response(404), monkeypatch)
-    assert client.get("/info").json()["version"] == "0.2.0+docling-serve.remote"
+    assert client.get("/info").json()["version"] == "0.3.0+docling-serve.remote"
 
 
 @pytest.mark.parametrize(
@@ -411,3 +411,88 @@ def test_remote_sends_a_repeated_field_for_lists(monkeypatch: pytest.MonkeyPatch
                 data={"options": json.dumps({"ocr_lang": ["en", "de"], "page_range": [2, 4]})})  # fmt: skip
     body = seen[0].content.decode("latin-1")
     assert body.count('name="ocr_lang"') == 2 and body.count('name="page_range"') == 2
+
+
+# --- richer mapping: pictures, code and items that run over a page break ---------------------------
+
+
+def rich_sample() -> DoclingDocument:
+    from docling_core.types.doc import CodeLanguageLabel
+    from docling_core.types.doc.document import (
+        DescriptionMetaField,
+        PictureClassificationMetaField,
+        PictureClassificationPrediction,
+        PictureMeta,
+    )
+
+    doc = DoclingDocument(name="rich")
+    doc.add_page(page_no=1, size=Size(width=600, height=800))
+    doc.add_page(page_no=2, size=Size(width=600, height=800))
+    caption = doc.add_text(DocItemLabel.CAPTION, "Figure 2: throughput", prov=prov(1, 50, 300, 300, 280))
+    picture = doc.add_picture(caption=caption, prov=prov(1, 50, 500, 300, 320))
+    picture.meta = PictureMeta(
+        description=DescriptionMetaField(text="A bar chart of litres per minute.", created_by="test"),
+        classification=PictureClassificationMetaField(
+            predictions=[
+                PictureClassificationPrediction(class_name="photograph", confidence=0.2, created_by="test"),
+                PictureClassificationPrediction(class_name="bar_chart", confidence=0.9, created_by="test"),
+            ]
+        ),
+    )
+    bare = doc.add_picture(prov=prov(1, 50, 250, 300, 150))  # no caption, no description
+    bare.meta = PictureMeta(description=DescriptionMetaField(text="A company logo.", created_by="test"))
+    doc.add_code("print('hi')", code_language=CodeLanguageLabel.PYTHON, prov=prov(1, 50, 100, 300, 80))
+    doc.add_code("echo hi", prov=prov(1, 50, 70, 300, 60))  # language unknown
+    cells = [
+        TableCell(text="Flow", start_row_offset_idx=0, end_row_offset_idx=1, start_col_offset_idx=0,
+                  end_col_offset_idx=1, column_header=True),
+        TableCell(text="40 l/min", start_row_offset_idx=1, end_row_offset_idx=2, start_col_offset_idx=0,
+                  end_col_offset_idx=1),
+    ]  # fmt: skip
+    table = doc.add_table(data=TableData(num_rows=2, num_cols=1, table_cells=cells), prov=prov(1, 50, 50, 300, 10))
+    table.prov.append(prov(2, 50, 760, 300, 700))  # the table continues on page 2
+    return doc
+
+
+def test_picture_description_class_code_language_and_page_span() -> None:
+    blocks = {b["text"][:12]: b for b in to_ir(rich_sample())["blocks"]}
+    figure = blocks["Figure 2: th"]
+    assert figure["type"] == "figure" and figure["text"] == "Figure 2: throughput\n\nA bar chart of litres per minute."
+    assert figure["metadata"] == {"classification": "bar_chart"}  # the most confident class
+    assert blocks["A company lo"]["text"] == "A company logo." and "metadata" not in blocks["A company lo"]
+    assert blocks["print('hi')"]["metadata"] == {"language": "Python"}
+    assert "metadata" not in blocks["echo hi"]
+    table = next(b for b in to_ir(rich_sample())["blocks"] if b["type"] == "table")
+    assert table["page"] == 1 and table["metadata"] == {"page_end": 2}
+    single = next(b for b in to_ir(sample())["blocks"] if b["type"] == "table")
+    assert "metadata" not in single  # one page: no page_end
+
+
+def test_legacy_picture_annotations_are_still_read() -> None:
+    from docling_core.types.doc.document import (
+        PictureClassificationClass,
+        PictureClassificationData,
+        PictureDescriptionData,
+    )
+
+    doc = rich_sample()
+    old = doc.add_picture(prov=prov(2, 50, 600, 300, 500))
+    old.annotations = [
+        PictureDescriptionData(text="An old-style description.", provenance="x"),
+        PictureClassificationData(
+            provenance="x", predicted_classes=[PictureClassificationClass(class_name="logo", confidence=0.8)]
+        ),
+    ]
+    figure = next(b for b in to_ir(doc)["blocks"] if b["text"] == "An old-style description.")
+    assert figure["metadata"] == {"classification": "logo"}
+
+
+def test_remote_document_keeps_the_new_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    body = {"document": {"filename": "r.pdf", "json_content": rich_sample().model_dump(mode="json", by_alias=True)},
+            "status": "success", "errors": []}  # fmt: skip
+    client = remote_client(lambda request: httpx.Response(200, json=body), monkeypatch)
+    ir = client.post("/parse", files={"file": ("r.pdf", b"%PDF", "application/pdf")}).json()
+    assert ir == to_ir(rich_sample()) | {"metadata": ir["metadata"]}
+    assert any(b.get("metadata", {}).get("page_end") == 2 for b in ir["blocks"])

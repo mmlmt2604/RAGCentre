@@ -136,6 +136,17 @@ def blocks_in(spans: Sequence[tuple[Span, str]], start: int, end: int) -> list[s
     return [bid for span, bid in spans if span.start < end and span.end > start]
 
 
+def _block_pages(block: Block) -> list[int]:
+    """The pages a block covers: its ``page``, and ``metadata.page_end`` when the parser says it
+    runs on (a table split over a page break). A malformed ``page_end`` is ignored."""
+    if block.page is None:
+        return []
+    end = block.metadata.get("page_end")
+    if isinstance(end, int) and not isinstance(end, bool) and end > block.page:
+        return [block.page, end]
+    return [block.page]
+
+
 def finalize(doc: DocumentIR, drafts: Sequence[ChunkDraft]) -> list[Chunk]:
     """Drop empty chunks, assign ordinals and fill pages and heading path from the blocks."""
     by_id = {str(b.id): b for b in doc.blocks}
@@ -145,7 +156,7 @@ def finalize(doc: DocumentIR, drafts: Sequence[ChunkDraft]) -> list[Chunk]:
         if not text:
             continue
         blocks = [by_id[b] for b in draft.block_ids if b in by_id]
-        pages = [b.page for b in blocks if b.page is not None]
+        pages = [page for b in blocks for page in _block_pages(b)]
         context = draft.context.strip() if draft.context else None
         out.append(
             Chunk(

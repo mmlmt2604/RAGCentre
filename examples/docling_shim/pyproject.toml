@@ -1,6 +1,6 @@
 [project]
 name = "docling-shim"
-version = "0.2.0"
+version = "0.3.0"
 description = "Example ragcentre.parser/v1 service that parses documents with Docling."
 requires-python = ">=3.11"
 dependencies = [

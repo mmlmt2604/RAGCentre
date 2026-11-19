@@ -34,7 +34,7 @@ from shimkit import create_app as create_shim_app
 from surya_shim.convert import to_ir
 from surya_shim.engine import DEFAULT_DPI, SUPPORTED_EXTENSIONS, SuryaEngine
 
-SHIM_VERSION = "0.1.0"
+SHIM_VERSION = "0.2.0"
 NAME = "surya-shim"
 OPTIONS = [
     boolean("include_page_images", False, "Return each rendered page as a base64 PNG in pages[].image"),

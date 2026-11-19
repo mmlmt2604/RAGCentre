@@ -234,3 +234,50 @@ def test_async_end_to_end(ctx: AppContext, client: TestClient, fakes: FakeServic
     assert status(ctx, pid).status == "ready"
     assert fakes.count("parser", "/parse") == 1
     assert ctx.db.scalar("SELECT COUNT(*) FROM parse_jobs") == 0
+
+
+# --- blocks that run over a page break (C3) -------------------------------------------------------
+
+
+def _two_page_table_ir(*, tail: bool = True) -> Any:
+    from ragcentre.models.ir import normalise_ir
+
+    return normalise_ir(
+        {
+            "schema_version": "1.0",
+            "pages": [{"page": 1, "width": 600, "height": 800}, {"page": 2, "width": 600, "height": 800}],
+            "blocks": [
+                {"type": "heading", "level": 1, "text": "Specs", "page": 1},
+                {"type": "table", "text": "| a | b |\n|---|---|\n| 1 | 2 |", "page": 1, "metadata": {"page_end": 2}},
+                *([{"type": "paragraph", "text": "After the table.", "page": 2}] if tail else []),
+            ],
+        }
+    )
+
+
+def _table_chunk(strategy: str, doc: Any) -> Any:
+    from ragcentre.chunking import run_strategy
+
+    chunks = run_strategy(strategy, doc, {"max_chars": 4000, "overlap_chars": 0} if strategy != "page" else {})
+    return next(c for c in chunks if "| a | b |" in c.text)
+
+
+@pytest.mark.parametrize("strategy", ["structure", "recursive", "fixed", "page"])
+def test_a_table_over_a_page_break_reports_both_pages(strategy: str) -> None:
+    chunk = _table_chunk(strategy, _two_page_table_ir(tail=False))
+    assert chunk.page_start == 1 and chunk.page_end == 2
+
+
+@pytest.mark.parametrize("bad", [1, 0, "2", True, None, [2], 2.5])
+def test_a_malformed_page_end_is_ignored(bad: Any) -> None:
+    doc = _two_page_table_ir(tail=False)  # nothing after the table that could put the chunk on page 2
+    doc.blocks[1].metadata["page_end"] = bad
+    chunk = _table_chunk("structure", doc)
+    assert (chunk.page_start, chunk.page_end) == (1, 1)  # never an error
+
+
+def test_chunks_without_page_end_are_unchanged() -> None:
+    doc = _two_page_table_ir(tail=False)
+    del doc.blocks[1].metadata["page_end"]
+    chunk = _table_chunk("structure", doc)
+    assert (chunk.page_start, chunk.page_end) == (1, 1)

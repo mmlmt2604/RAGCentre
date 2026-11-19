@@ -102,8 +102,8 @@ uv run ragcentre provider set-secret surya api_key --env SURYA_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.1.0+surya.<surya-ocr version>.<model>`, for example
-`0.1.0+surya.0.24.0.surya-ocr-2.5` (the model is the last segment of `SURYA_MODEL_CHECKPOINT`).
+`/info` reports `0.2.0+surya.<surya-ocr version>.<model>`, for example
+`0.2.0+surya.0.24.0.surya-ocr-2.5` (the model is the last segment of `SURYA_MODEL_CHECKPOINT`).
 RAGCentre records that version when the provider is created and refuses to parse with a service
 reporting a different one (unless the provider's `on_version_drift` is `warn`). Upgrading Surya or
 changing the model therefore means creating a new provider and a new pipeline.

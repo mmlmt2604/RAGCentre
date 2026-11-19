@@ -108,7 +108,7 @@ uv run ragcentre provider set-secret docling api_key --env DOCLING_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.2.0+docling.<docling version>`. RAGCentre records that version when the
+`/info` reports `0.3.0+docling.<docling version>`. RAGCentre records that version when the
 provider is created and refuses to parse with a service reporting a different one (unless the
 provider's `on_version_drift` is `warn`). Upgrading Docling therefore means creating a new
 provider and a new pipeline, so parses from two Docling versions are never mixed in one index.

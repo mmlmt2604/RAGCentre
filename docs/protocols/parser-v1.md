@@ -117,6 +117,21 @@ this and keeps working unchanged, and RAGCentre never sends `mode=async` to it.
 | `blocks[].html` | Optional, for tables. |
 | `blocks[].metadata` | Optional free-form object. |
 
+### Block metadata RAGCentre reads
+
+`blocks[].metadata` is free-form, and RAGCentre keeps all of it. These keys have a meaning:
+
+| Key | Type | Used for |
+|---|---|---|
+| `page_end` | integer | The last page a block touches, when it runs over a page break (a table split across pages). `page` is the first. A chunk's `page_end` is the largest of its blocks' `page` and `page_end`. Ignored unless it is greater than `page` |
+| `original_type` | string | Set by RAGCentre when it turns an unknown block `type` into `paragraph`; a parser can also set it to say what a `paragraph` was |
+| `language` | string | The programming language of a `code` block, or the language of a text block |
+| `classification` | string | What a `figure` shows (`bar_chart`, `logo`...) |
+| `confidence` | number 0 to 1 | The recogniser's confidence in the block |
+
+Only `page_end` changes what RAGCentre does today; the others are shown in the UI and passed to
+custom chunking services.
+
 RAGCentre computes each block's `heading_path` (the enclosing headings) after validation: a
 heading of level N closes every open heading of level N or deeper. The built-in chunkers drop
 `page_header` and `page_footer` blocks; a custom chunker service receives them.
