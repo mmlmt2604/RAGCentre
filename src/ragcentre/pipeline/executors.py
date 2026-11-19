@@ -91,7 +91,9 @@ def execute_parse(ctx: AppContext, claim: Any) -> dict[str, Any]:
         ir = normalise_ir(raw)
     except IRError as exc:
         raise invalid_response(provider.name, str(exc)) from None
-    blob = ctx.blobs.put_json_gz(ir.model_dump(mode="json"))
+    # Nothing reads page images after parsing (the UI strips them, chunk providers never see them),
+    # and they can be megabytes per page, so the cache blob does not keep them.
+    blob = ctx.blobs.put_json_gz(ir.without_page_images())
     with ctx.db.write() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO parse_cache (cache_key, blob_sha256, created_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",

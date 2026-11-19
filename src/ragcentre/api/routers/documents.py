@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
@@ -21,6 +22,17 @@ from ragcentre.pipeline.planner import on_document_created, on_document_deleted,
 from ragcentre.timeutil import now_iso
 
 router = APIRouter(tags=["documents"])
+
+
+def _mime_type(file: UploadFile) -> str:
+    """The upload's MIME type. Clients such as ``curl -F file=@x.pdf`` send none, or the generic
+    ``application/octet-stream``; guess from the filename (as the CLI does) so the file still
+    matches a pipeline's ``application/pdf`` route."""
+    declared = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if declared and declared != "application/octet-stream":
+        return file.content_type or declared
+    guessed = mimetypes.guess_type(file.filename or "")[0]
+    return guessed or declared or "application/octet-stream"
 
 
 def _get(ctx: AppContext, document_id: str) -> dict[str, Any]:
@@ -149,7 +161,7 @@ def upload(
                 (
                     sha,
                     file.filename,
-                    file.content_type or "application/octet-stream",
+                    _mime_type(file),
                     len(content),
                     now,
                     existing["id"],
@@ -168,7 +180,7 @@ def upload(
                 corpus_id,
                 external_id,
                 file.filename,
-                file.content_type or "application/octet-stream",
+                _mime_type(file),
                 len(content),
                 sha,
                 json.dumps(meta),
@@ -293,7 +305,7 @@ def replace_content(document_id: str, file: UploadFile = File(...), ctx: AppCont
                 (
                     sha,
                     file.filename or "document",
-                    file.content_type or "application/octet-stream",
+                    _mime_type(file),
                     len(content),
                     document_id,
                 ),

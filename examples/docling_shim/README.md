@@ -60,10 +60,14 @@ The parse route's `options` are passed to the service:
 |---|---|---|
 | `ocr` | `true` | Run OCR on scanned pages and images in PDFs |
 | `include_page_images` | `false` | Render each page and return it as a base64 PNG in `pages[].image` |
+| `heading_hierarchy` | `true` | Rank section headers by PDF bookmarks, numbering (`1`, `1.1`) and font style. Docling's own default leaves every header at one level, which flattens RAGCentre's heading paths and the `structure` chunker. PDF only |
+
+Options must be booleans: `"false"` (a string) is rejected with `400 invalid_options`.
 
 ## Authentication
 
-Set `DOCLING_SHIM_API_KEY` to require `Authorization: Bearer <key>`, and give RAGCentre the same
+Set `DOCLING_SHIM_API_KEY` to require `Authorization: Bearer <key>` on every request except
+`GET /info` (RAGCentre reads `/info` without credentials when it creates the provider), and give RAGCentre the same
 value as the provider's `api_key` secret:
 
 ```sh
@@ -72,7 +76,7 @@ uv run ragcentre provider set-secret docling api_key --env DOCLING_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.1.0+docling.<docling version>`. RAGCentre records that version when the
+`/info` reports `0.2.0+docling.<docling version>`. RAGCentre records that version when the
 provider is created and refuses to parse with a service reporting a different one (unless the
 provider's `on_version_drift` is `warn`). Upgrading Docling therefore means creating a new
 provider and a new pipeline, so parses from two Docling versions are never mixed in one index.

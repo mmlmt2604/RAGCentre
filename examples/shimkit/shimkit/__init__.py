@@ -1,7 +1,4 @@
-"""Shared pieces for the example ``ragcentre.parser/v1`` shims (MinerU, PaddleOCR, Surya).
-
-``docling_shim`` is deliberately self-contained and does not use this package.
-"""
+"""Shared pieces for the example ``ragcentre.parser/v1`` shims (Docling, MinerU, PaddleOCR, Surya)."""
 
 from shimkit.html import first_heading_level, html_to_text, split_list_items, table_to_markdown
 from shimkit.ir import IR_VERSION, build_ir

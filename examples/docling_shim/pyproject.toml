@@ -1,12 +1,13 @@
 [project]
 name = "docling-shim"
-version = "0.1.0"
+version = "0.2.0"
 description = "Example ragcentre.parser/v1 service that parses documents with Docling."
 requires-python = ">=3.11"
 dependencies = [
     "docling>=2.40",
     "fastapi>=0.115",
     "python-multipart>=0.0.20",
+    "shimkit",
     "uvicorn>=0.34",
 ]
 
@@ -22,6 +23,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["docling_shim"]
+
+[tool.uv.sources]
+shimkit = { path = "../shimkit", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

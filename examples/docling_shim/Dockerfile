@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# The Docling parser shim. Build with `examples/` as the context:
+# The Docling parser shim. Build with `examples/` as the context (it needs ../shimkit):
 #   docker build -f examples/docling_shim/Dockerfile examples
 # or, from the repository root, `docker compose --profile docling up --build`.
 FROM python:3.13-slim
@@ -11,10 +11,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ARG TORCH_BACKEND=cpu
 
 WORKDIR /src
-COPY docling_shim/pyproject.toml ./
-COPY docling_shim/docling_shim ./docling_shim
+COPY shimkit ./shimkit
+COPY docling_shim/pyproject.toml ./docling_shim/
+COPY docling_shim/docling_shim ./docling_shim/docling_shim
 RUN uv venv /opt/venv \
- && VIRTUAL_ENV=/opt/venv uv pip install --no-cache --torch-backend "$TORCH_BACKEND" . \
+ && VIRTUAL_ENV=/opt/venv uv pip install --no-cache --no-sources --torch-backend "$TORCH_BACKEND" ./shimkit ./docling_shim \
  && /opt/venv/bin/python -c "import docling.document_converter, docling_shim.app"
 
 # Docling downloads its layout and OCR models into ~/.cache on first use; mount a volume there.

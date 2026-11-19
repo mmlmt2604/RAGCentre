@@ -95,8 +95,8 @@ def test_matches_golden() -> None:
 
 
 def fake_converter(calls: list[tuple[Any, ...]]) -> Any:
-    def convert(content: bytes, filename: str, ocr: bool, images: bool) -> DoclingDocument:
-        calls.append((content, filename, ocr, images))
+    def convert(content: bytes, filename: str, options: dict[str, bool]) -> DoclingDocument:
+        calls.append((content, filename, options))
         if filename.endswith(".xyz"):
             raise RuntimeError(
                 "Conversion failed for: m.xyz with status: skipped. Errors: File format not allowed: m.xyz"
@@ -114,12 +114,12 @@ def test_service_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(create_app(fake_converter(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == PROTOCOL and info["name"] == "docling-shim"
-    assert info["version"].startswith("0.1.0+docling.")
+    assert info["version"].startswith("0.2.0+docling.")
     assert "application/pdf" in info["mime_types"]
     resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
                        data={"options": json.dumps({"ocr": False})})  # fmt: skip
     assert resp.status_code == 200 and resp.json()["blocks"][0]["text"] == "Pump Manual"
-    assert calls == [(b"%PDF", "m.pdf", False, False)]
+    assert calls == [(b"%PDF", "m.pdf", {"ocr": False, "include_page_images": False, "heading_hierarchy": True})]
     bad = client.post("/parse", files={"file": ("m.pdf", b"x", "application/pdf")}, data={"options": "[1]"})
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
     unsupported = client.post("/parse", files={"file": ("m.xyz", b"x", "application/octet-stream")})
@@ -131,5 +131,29 @@ def test_service_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCLING_SHIM_API_KEY", "s3cret")
     client = TestClient(create_app(fake_converter([])))
-    assert client.get("/info").status_code == 401
-    assert client.get("/info", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+    # RAGCentre reads /info without credentials when it creates the provider.
+    assert client.get("/info").status_code == 200
+    files = {"file": ("m.pdf", b"%PDF", "application/pdf")}
+    assert client.post("/parse", files=files).status_code == 401
+    assert client.post("/parse", files=files, headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert client.post("/parse", files=files, headers={"Authorization": "Bearer s3cret"}).status_code == 200
+
+
+@pytest.mark.parametrize("value", ["false", 0, None, "yes"])
+def test_options_are_validated(monkeypatch: pytest.MonkeyPatch, value: Any) -> None:
+    monkeypatch.delenv("DOCLING_SHIM_API_KEY", raising=False)
+    calls: list[tuple[Any, ...]] = []
+    client = TestClient(create_app(fake_converter(calls)))
+    resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
+                       data={"options": json.dumps({"ocr": value})})  # fmt: skip
+    assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options"
+    assert calls == []
+
+
+def test_heading_hierarchy_option(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DOCLING_SHIM_API_KEY", raising=False)
+    calls: list[tuple[Any, ...]] = []
+    client = TestClient(create_app(fake_converter(calls)))
+    client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
+                data={"options": json.dumps({"heading_hierarchy": False})})  # fmt: skip
+    assert calls[0][2]["heading_hierarchy"] is False
