@@ -284,14 +284,16 @@ def test_local_catalog_concurrent_across_separate_handles(tmp_path: Path) -> Non
     start = threading.Barrier(6)
 
     def work() -> None:
-        cat = LocalCatalog(tmp_path, "pinecone", "k")
+        cat: LocalCatalog | None = None
         try:
-            start.wait()
+            cat = LocalCatalog(tmp_path, "pinecone", "k")
+            start.wait(timeout=30)
             entries.append(cat.ensure(SPEC, {"q": 1}).to_json())
         except BaseException as exc:  # pragma: no cover - reported below
             errors.append(exc)
         finally:
-            cat.close()
+            if cat is not None:
+                cat.close()
 
     threads = [threading.Thread(target=work) for _ in range(6)]
     for t in threads:
