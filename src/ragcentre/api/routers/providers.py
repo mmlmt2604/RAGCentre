@@ -99,7 +99,7 @@ def delete_provider(provider_id: str, ctx: AppContext = Depends(get_ctx)) -> Res
     return Response(status_code=204)
 
 
-@router.post("/providers/{provider_id}/test", response_model=api.ProviderTestResult)
+@router.post("/providers/{provider_id}/test", response_model=api.ProviderTestResult, response_model_exclude_unset=True)
 def test_provider(provider_id: str, deep: bool = False, ctx: AppContext = Depends(get_ctx)) -> api.ProviderTestResult:
     """Check that a provider works. With ``deep=true`` a parser service also parses a sample
     document and reports which RAGCentre features its output feeds."""

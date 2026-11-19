@@ -360,7 +360,6 @@ class ProviderManager:
             "service": None,
             "dimensions": None,
             "version_drift": None,
-            "check": None,
         }
         start = time.perf_counter()
         try:
@@ -392,7 +391,7 @@ class ProviderManager:
                 from ragcentre.providers.parsers.check import check_parser
 
                 report = check_parser(cast(Any, inst).client, cast(Any, inst).base_url)
-                result["check"] = report.as_dict()
+                result["check"] = report.as_dict()  # only a deep test has this key
                 result["ok"] = bool(result["ok"] and report.ok)
                 if not report.ok and result["message"] is None:
                     errors = [f.message for f in report.findings if f.level == "error"]

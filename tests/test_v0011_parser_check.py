@@ -261,7 +261,7 @@ def test_deep_provider_test(ctx: AppContext, client: TestClient, fakes: FakeServ
     ctx.providers.create("docling", "parser", "http", {"base_url": PARSER_URL})
     provider_id = ctx.providers.by_name("docling").id
     shallow = client.post(f"/v1/providers/{provider_id}/test").json()
-    assert shallow["ok"] is True and shallow["check"] is None
+    assert shallow["ok"] is True and "check" not in shallow  # the shallow response is unchanged
     deep = client.post(f"/v1/providers/{provider_id}/test", params={"deep": "true"}).json()
     assert deep["ok"] is True and deep["check"]["ok"] is True and deep["check"]["blocks"] > 0
     assert fakes.count("parser", "/parse") >= 1
