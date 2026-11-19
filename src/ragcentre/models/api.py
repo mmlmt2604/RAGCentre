@@ -142,6 +142,27 @@ class ParserCheck(ResponseModel):
     findings: list[ParserFinding]
 
 
+class StoreFinding(ResponseModel):
+    level: Literal["error", "warn", "info"]
+    check: str
+    message: str
+    ms: float
+    lost: str | None
+
+
+class StoreCheck(ResponseModel):
+    """The result of a deep vector-store test (``?deep=true``): a contract-lite run against a
+    temporary collection, one finding per capability, always cleaned up afterwards."""
+
+    ok: bool
+    store_type: str
+    collection: str
+    records: int
+    metrics: list[str]
+    seconds: float
+    findings: list[StoreFinding]
+
+
 class ProviderTestResult(ResponseModel):
     ok: bool
     latency_ms: float
@@ -149,7 +170,7 @@ class ProviderTestResult(ResponseModel):
     service: ServiceDescription | None
     dimensions: int | None
     version_drift: VersionDrift | None
-    check: ParserCheck | None = None
+    check: ParserCheck | StoreCheck | None = None
 
 
 # ---------- Corpora ----------

@@ -12,7 +12,7 @@ import {
   useSetSecret,
   useTestProvider,
 } from "../../api/hooks";
-import type { ParserCheck, Provider, ProviderTestResult, ProviderType } from "../../api/types";
+import type { ParserCheck, Provider, ProviderTestResult, ProviderType, StoreCheck } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
 import { ConfigFields, LockedSettings } from "../../components/ConfigForm";
 import { ConfirmDialog } from "../../components/Dialog";
@@ -110,6 +110,11 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
               Test with a sample document
             </Button>
           ) : null}
+          {p.kind === "vector_store" ? (
+            <Button icon={FileSearch} loading={test.isPending} onClick={() => test.mutate(true)}>
+              Test with live data
+            </Button>
+          ) : null}
           <ButtonLink to={`/providers/new?from=${p.id}`} icon={CopyPlus}>
             New provider from this one
           </ButtonLink>
@@ -194,10 +199,12 @@ export function TestResultView({ result, error }: { result: ProviderTestResult |
           </div>
         ) : null}
       </dl>
-      {result.check ? <ParserCheckView check={result.check} /> : null}
+      {result.check ? (isStoreCheck(result.check) ? <StoreCheckView check={result.check} /> : <ParserCheckView check={result.check} />) : null}
     </section>
   );
 }
+
+const isStoreCheck = (c: ParserCheck | StoreCheck): c is StoreCheck => "store_type" in c;
 
 const LEVEL_LABEL = { error: "Problem", warn: "Warning", info: "OK" } as const;
 
@@ -216,6 +223,32 @@ function ParserCheckView({ check }: { check: ParserCheck }) {
           {shown.map((f, i) => (
             <li key={i} className={`prov-check__item prov-check__item--${f.level}`}>
               <strong>{LEVEL_LABEL[f.level]}</strong> <span className="mono">{f.check}</span> {f.message}
+              {f.lost ? <span className="muted"> Loses: {f.lost}.</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** What live data showed about a vector store, one line per finding. Each finding names the
+ *  capability it proves, with its timing; a warning names the RAGCentre feature it costs. */
+function StoreCheckView({ check }: { check: StoreCheck }) {
+  const shown = check.findings.filter((f) => f.level !== "info");
+  return (
+    <div className="prov-check">
+      <p className="prov-check__sum">
+        Wrote <span className="num">{check.records}</span> records to <span className="mono">{check.collection}</span> and checked{" "}
+        <span className="num">{check.metrics.length}</span> metric{check.metrics.length === 1 ? "" : "s"} in{" "}
+        <span className="num">{check.seconds.toFixed(1)} s</span>. {shown.length ? `${shown.length} finding${shown.length === 1 ? "" : "s"}.` : "Nothing to fix."}
+      </p>
+      {shown.length ? (
+        <ul className="prov-check__list">
+          {shown.map((f, i) => (
+            <li key={i} className={`prov-check__item prov-check__item--${f.level}`}>
+              <strong>{LEVEL_LABEL[f.level]}</strong> <span className="mono">{f.check}</span> {f.message}{" "}
+              <span className="muted num">({f.ms.toFixed(0)} ms)</span>
               {f.lost ? <span className="muted"> Loses: {f.lost}.</span> : null}
             </li>
           ))}

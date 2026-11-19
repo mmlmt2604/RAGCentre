@@ -412,6 +412,16 @@ class ProviderManager:
                 if not report.ok and result["message"] is None:
                     errors = [f.message for f in report.findings if f.level == "error"]
                     result["message"] = redact("; ".join(errors))[:500]
+            elif deep and row.kind == "vector_store":
+                # Write, query, filter and delete against a temporary collection, not just healthcheck.
+                from ragcentre.stores.check import check_store
+
+                store_report = check_store(cast("VectorStore", inst), store_type=row.type)
+                result["check"] = store_report.as_dict()  # only a deep test has this key
+                result["ok"] = bool(result["ok"] and store_report.ok)
+                if not store_report.ok and result["message"] is None:
+                    errors = [f.message for f in store_report.findings if f.level == "error"]
+                    result["message"] = redact("; ".join(errors))[:500]
         except ExecutionError as exc:
             result["message"] = redact(exc.message)
         except Exception as exc:
