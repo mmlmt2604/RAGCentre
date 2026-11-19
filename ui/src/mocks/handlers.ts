@@ -97,7 +97,10 @@ export const handlers = [
     ops.deleteProvider(ctx.state, p(ctx, "id"));
     return new HttpResponse(null, { status: 204 });
   })),
-  http.post("/v1/providers/:id/test", route((ctx) => HttpResponse.json(ops.testProvider(ctx.state, p(ctx, "id"))))),
+  http.post("/v1/providers/:id/test", route((ctx) => {
+    const deep = new URL(ctx.request.url).searchParams.get("deep") === "true";
+    return HttpResponse.json(ops.testProvider(ctx.state, p(ctx, "id"), deep));
+  })),
   http.put("/v1/providers/:id/secrets/:key", route(async (ctx) =>
     HttpResponse.json(ops.setSecret(ctx.state, p(ctx, "id"), p(ctx, "key"), await body(ctx))),
   )),

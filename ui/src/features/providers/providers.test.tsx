@@ -124,6 +124,23 @@ describe("providers (UI-1)", () => {
     expect(within(drift).getByText("2.14.0")).toBeInTheDocument();
   });
 
+  it("runs a deep test on a vector store and shows its findings", async () => {
+    const user = userEvent.setup();
+    const { uuidFrom } = await import("../../mocks/hash");
+    renderApp(`/providers/${uuidFrom("provider:local-sqlite")}`);
+    await user.click(await screen.findByRole("button", { name: "Test with live data" }));
+    expect(await screen.findByText("Connection works")).toBeInTheDocument();
+    expect(await screen.findByText(/Nothing to fix\./)).toBeInTheDocument();
+    expect(screen.getByText("rc_check_ab12cd34")).toBeInTheDocument();
+  });
+
+  it("offers no live-data test for providers that are not vector stores", async () => {
+    const { uuidFrom } = await import("../../mocks/hash");
+    renderApp(`/providers/${uuidFrom("provider:bge-m3")}`);
+    await screen.findByRole("button", { name: "Test connection" });
+    expect(screen.queryByRole("button", { name: "Test with live data" })).toBeNull();
+  });
+
   it("explains why an in-use provider cannot be deleted", async () => {
     const user = userEvent.setup();
     const { uuidFrom } = await import("../../mocks/hash");

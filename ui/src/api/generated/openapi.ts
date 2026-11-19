@@ -1541,7 +1541,8 @@ export interface components {
         };
         /** ProviderTestResult */
         ProviderTestResult: {
-            check: components["schemas"]["ParserCheck"] | null;
+            /** Check */
+            check: components["schemas"]["ParserCheck"] | components["schemas"]["StoreCheck"] | null;
             /** Dimensions */
             dimensions: number | null;
             /** Latency Ms */
@@ -1762,6 +1763,43 @@ export interface components {
             multi_vector: boolean;
             /** Native Hybrid */
             native_hybrid: boolean;
+        };
+        /**
+         * StoreCheck
+         * @description The result of a deep vector-store test (``?deep=true``): a contract-lite run against a
+         *     temporary collection, one finding per capability, always cleaned up afterwards.
+         */
+        StoreCheck: {
+            /** Collection */
+            collection: string;
+            /** Findings */
+            findings: components["schemas"]["StoreFinding"][];
+            /** Metrics */
+            metrics: string[];
+            /** Ok */
+            ok: boolean;
+            /** Records */
+            records: number;
+            /** Seconds */
+            seconds: number;
+            /** Store Type */
+            store_type: string;
+        };
+        /** StoreFinding */
+        StoreFinding: {
+            /** Check */
+            check: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "error" | "warn" | "info";
+            /** Lost */
+            lost: string | null;
+            /** Message */
+            message: string;
+            /** Ms */
+            ms: number;
         };
         /** ValidationError */
         ValidationError: {
