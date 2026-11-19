@@ -4,7 +4,9 @@ A parser service turns an uploaded file into a **Document IR**: an ordered list 
 with their structure, pages and positions. Write one to plug any parser or OCR system into
 RAGCentre. `examples/docling_shim/` is a complete example, and `examples/mineru_shim/`,
 `examples/paddleocr_shim/` and `examples/surya_shim/` are three more (MinerU, PaddleOCR and Surya),
-built on the shared helpers in `examples/shimkit/`.
+built on the shared helpers in `examples/shimkit/`. [`parser-shim-guide.md`](parser-shim-guide.md)
+walks through writing one, and `ragcentre parser check <url>` tells you whether yours is usable and
+which RAGCentre features its output feeds.
 
 RAGCentre's provider type for this protocol is `parser/http`.
 
@@ -18,7 +20,15 @@ RAGCentre's provider type for this protocol is `parser/http`.
   "name": "docling-shim",
   "version": "0.1.0+docling.2.150.0",
   "mime_types": ["application/pdf", "image/*"],
-  "capabilities": {"page_images": true}
+  "capabilities": {"page_images": true},
+  "options_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ocr": {"type": "boolean", "default": true, "description": "Run OCR on scanned pages"},
+      "dpi": {"type": "integer", "minimum": 72, "maximum": 400}
+    }
+  }
 }
 ```
 
@@ -30,6 +40,14 @@ RAGCentre's provider type for this protocol is `parser/http`.
 - `mime_types` (optional) is informational. Which files reach the service is decided by the
   pipeline's parse routes.
 - `capabilities` (optional). `async: true` turns on the job endpoints below. `page_images` is informational.
+- `options_schema` (optional): a JSON Schema for the `options` object that `/parse` accepts. RAGCentre
+  keeps a copy with the provider (refreshed by `provider test`), checks a pipeline's parse-route options
+  against it when the pipeline is saved, and builds the options form in the UI from it. It reads only
+  `properties` with `type` (`boolean`, `integer`, `number`, `string`, `array`), `enum`, `minimum`,
+  `maximum`, `items`, `minItems`, `maxItems`, `default` and `description`, plus
+  `additionalProperties: false` to make unknown options an error. Anything else is ignored, and a
+  service without a schema accepts any options. A service that publishes a schema should reject
+  options it does not list with `400 invalid_options`.
 
 RAGCentre calls `/info` without credentials when the provider is created, and again (with
 credentials, cached for five minutes) before parsing. If the reported version differs from the
