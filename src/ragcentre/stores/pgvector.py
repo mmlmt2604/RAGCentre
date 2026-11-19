@@ -351,7 +351,10 @@ class PgvectorStore:
                     f"collection {spec.name} exists with dim={meta.dim}, metric={meta.metric}; "
                     f"requested dim={spec.dim}, metric={spec.metric}"
                 )
-            if meta.vector_type != vector_type:
+            # "auto" adopts whatever the collection was built with (a collection created before
+            # vector_type was recorded and above 2000 dims is a plain `vector`); only an explicit
+            # choice that disagrees with the recorded type is a mismatch.
+            if self.vector_type != "auto" and meta.vector_type != vector_type:
                 raise CollectionMismatch(
                     f"collection {spec.name} uses vector type {meta.vector_type}; requested {vector_type}"
                 )

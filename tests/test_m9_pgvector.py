@@ -252,6 +252,40 @@ def test_existing_row_without_vector_type_reads_as_vector(dsn: str) -> None:
         _drop_schema(schema)
 
 
+def test_auto_adopts_legacy_vector_collection_above_2000_dims(dsn: str) -> None:
+    import psycopg
+    from psycopg import sql as psql
+
+    schema = _new_schema()
+    name, dim = "rc_legacy_0002", 2100
+    s = PgvectorStore(dsn, schema=schema, vector_type="vector")  # what older versions always built
+    try:
+        s.ensure_collection(CollectionSpec(name=name, dim=dim, metric="cosine"))
+    finally:
+        s.close()
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            psql.SQL(
+                "UPDATE {} SET vector_type = NULL, hnsw_m = NULL, hnsw_ef_construction = NULL WHERE name = %s"
+            ).format(psql.Identifier(schema, "_collections")),
+            (name,),
+        )
+    auto = PgvectorStore(dsn, schema=schema)  # default vector_type="auto" would pick halfvec for 2100 dims
+    try:
+        auto.ensure_collection(CollectionSpec(name=name, dim=dim, metric="cosine"))  # no mismatch
+        auto.upsert(name, [Record(str(uuid.uuid4()), [1.0] * dim, {})])
+        assert auto.query(name, [1.0] * dim, 1)[0].score == pytest.approx(1.0)
+    finally:
+        auto.close()
+    explicit = PgvectorStore(dsn, schema=schema, vector_type="halfvec")
+    try:
+        with pytest.raises(CollectionMismatch):
+            explicit.ensure_collection(CollectionSpec(name=name, dim=dim, metric="cosine"))
+    finally:
+        explicit.close()
+        _drop_schema(schema)
+
+
 def test_hnsw_index_options_applied(fresh: Any) -> None:
     import psycopg
 
