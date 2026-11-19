@@ -275,3 +275,87 @@ def test_deep_provider_test_reports_errors(ctx: AppContext, client: TestClient, 
     deep = client.post(f"/v1/providers/{ctx.providers.by_name('docling').id}/test", params={"deep": "true"}).json()
     assert deep["ok"] is False and "invalid" in deep["message"]
     assert deep["check"]["findings"][-1]["level"] == "error"
+
+
+# --- connection resets are retried on a fresh connection ------------------------------------------
+
+
+def test_send_retries_a_dropped_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ragcentre.providers.parsers import check as check_mod
+
+    monkeypatch.setattr(check_mod, "retry_sleep", lambda seconds: None)
+    calls: list[Any] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            raise httpx.ReadError("peer closed connection", request=request)
+        return httpx.Response(200, json={"ok": True})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    resp = check_mod._send(client, "GET", "http://check.test/info")
+    assert resp.status_code == 200 and resp.json() == {"ok": True}
+    assert len(calls) == 2
+    # the retry is a fresh connection: the client was closed in between
+    client.close()
+
+
+def test_send_does_not_retry_a_connection_error_forever(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ragcentre.providers.parsers import check as check_mod
+
+    monkeypatch.setattr(check_mod, "retry_sleep", lambda seconds: None)
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ReadError("peer closed connection", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(httpx.HTTPError):
+        check_mod._send(client, "POST", "http://check.test/parse")
+    assert calls == check_mod.REQUEST_RETRIES + 1  # one attempt plus the retries
+
+
+def test_send_does_not_retry_a_refused_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ragcentre.providers.parsers import check as check_mod
+
+    monkeypatch.setattr(check_mod, "retry_sleep", lambda seconds: None)
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ConnectError("refused", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(httpx.HTTPError):
+        check_mod._send(client, "GET", "http://check.test/info")
+    assert calls == 1  # "cannot reach" is reported, not retried
+
+
+def test_full_check_survives_a_reset_on_the_job_poll(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ragcentre.providers.parsers import check as check_mod
+
+    monkeypatch.setattr(check_mod, "retry_sleep", lambda seconds: None)
+    async_client = service(async_jobs=True)
+    original = async_client.send
+
+    calls = 0
+
+    def flaky(request: httpx.Request, *args: Any, **kwargs: Any) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if (
+            request.url.path.startswith("/jobs/")
+            and request.method == "GET"
+            and not request.url.path.endswith("/result")
+            and calls <= 1
+        ):
+            raise httpx.ReadError("peer closed connection", request=request)
+        return original(request, *args, **kwargs)
+
+    monkeypatch.setattr(async_client, "send", flaky)
+    report = check_parser(async_client, "http://testserver", sleep=lambda s: None)
+    assert report.ok, report.as_dict()
+    assert any("async" in f.message for f in report.findings)

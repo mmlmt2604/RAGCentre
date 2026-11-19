@@ -10,6 +10,7 @@ named RAGCentre feature will not) or ``info``. Warnings say what is lost.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import time
 from collections import Counter
@@ -25,6 +26,16 @@ from ragcentre.providers.parsers.sample import EXPECTED_HEADINGS, EXPECTED_ORDER
 PROTOCOL = "ragcentre.parser/v1"
 Level = Literal["error", "warn", "info"]
 Sleep = Callable[[float], None]
+
+# How many times one request is re-sent when a connection is dropped mid-flight (the server restarted,
+# or closed an idle keep-alive connection). The retry goes over a fresh connection: the client is
+# closed first, so the pooled connection is not reused. ``retry_sleep`` is patched in tests.
+REQUEST_RETRIES = 2
+RETRY_BACKOFF = 0.25
+
+
+def retry_sleep(seconds: float) -> None:
+    time.sleep(seconds)
 
 
 @dataclass
@@ -102,11 +113,59 @@ def check_parser(
 # --- /info ------------------------------------------------------------------------------------
 
 
-def _send(client: httpx.Client, method: str, url: str, *, auth: bool = True, **kwargs: Any) -> httpx.Response:
-    request = client.build_request(method, url, **kwargs)
-    if not auth:
-        request.headers.pop("authorization", None)
-    return client.send(request)
+def _retryable(exc: httpx.HTTPError) -> bool:
+    """A connection failure where resending on a fresh connection can only help."""
+    if isinstance(exc, (httpx.ReadError, httpx.RemoteProtocolError)):
+        return True
+    text = str(exc).lower()
+    return ("connection" in text and ("reset" in text or "closed" in text or "broken" in text)) or ("eof" in text)
+
+
+def _fresh_client(client: httpx.Client) -> httpx.Client:
+    """A new client with the same settings but an empty connection pool, so a retry dials afresh.
+
+    ``httpx.Client`` cannot be reused after ``close()``, so a closed pooled connection is replaced by
+    an ephemeral client instead. The caller's client stays open. ``base_url`` is dropped because the
+    checker always requests absolute URLs.
+    """
+    return httpx.Client(
+        headers=client.headers,
+        timeout=client.timeout,
+        transport=getattr(client, "_transport", None),  # httpx keeps the transport private
+    )
+
+
+def _send(
+    client: httpx.Client,
+    method: str,
+    url: str,
+    *,
+    auth: bool = True,
+    retries: int = REQUEST_RETRIES,
+    **kwargs: Any,
+) -> httpx.Response:
+    """Send one request, retrying a dropped connection on a fresh one.
+
+    The checker sends several requests in a row over one client (and one connection pool). A server
+    that stops an idle keep-alive connection after the first request makes the next request die with
+    a connection reset; the retry goes over a new client, so the connection is dialed again.
+    """
+    sender = client
+    attempt = 0
+    while True:
+        try:
+            request = sender.build_request(method, url, **kwargs)
+            if not auth:
+                request.headers.pop("authorization", None)
+            return sender.send(request)
+        except httpx.HTTPError as exc:
+            if attempt >= retries or not _retryable(exc):
+                raise
+            attempt += 1
+            # An idle connection was dropped: abandon the pool and dial again on a fresh client.
+            sender.close()
+            sender = _fresh_client(client)
+            retry_sleep(RETRY_BACKOFF * attempt)
 
 
 def _check_info(client: httpx.Client, report: CheckReport) -> dict[str, Any]:
@@ -245,7 +304,11 @@ def _wait_for_job(
     deadline = time.monotonic() + timeout
     while True:
         sleep(min(max(interval, 0.2), 30.0))
-        status = client.get(f"{report.base_url}/jobs/{job_id}")
+        try:
+            status = _send(client, "GET", f"{report.base_url}/jobs/{job_id}")
+        except httpx.HTTPError as exc:
+            report.add("error", "async", f"GET /jobs/{{id}} failed: {exc}")
+            raise _Failed from None
         if status.status_code != 200:
             report.add("error", "async", f"GET /jobs/{{id}} returned {status.status_code}: {_error_text(status)}")
             raise _Failed
@@ -255,9 +318,14 @@ def _wait_for_job(
             else None
         )
         if state == "succeeded":
-            result = client.get(f"{report.base_url}/jobs/{job_id}/result")
+            try:
+                result = _send(client, "GET", f"{report.base_url}/jobs/{job_id}/result")
+            except httpx.HTTPError as exc:
+                report.add("error", "async", f"GET /jobs/{{id}}/result failed: {exc}")
+                raise _Failed from None
             raw = _read_ir_response(report, result, "GET /jobs/{id}/result")
-            client.delete(f"{report.base_url}/jobs/{job_id}")  # optional in the protocol; ignore the answer
+            with contextlib.suppress(httpx.HTTPError):
+                _send(client, "DELETE", f"{report.base_url}/jobs/{job_id}")  # optional; ignore the answer
             return raw
         if state == "failed":
             report.add("error", "async", f"the job failed: {status.json().get('error')}")
