@@ -124,15 +124,11 @@ def _retryable(exc: httpx.HTTPError) -> bool:
 def _fresh_client(client: httpx.Client) -> httpx.Client:
     """A new client with the same settings but an empty connection pool, so a retry dials afresh.
 
-    ``httpx.Client`` cannot be reused after ``close()``, so a closed pooled connection is replaced by
-    an ephemeral client instead. The caller's client stays open. ``base_url`` is dropped because the
-    checker always requests absolute URLs.
+    The caller's client (and its transport) stay open. ``base_url`` is dropped because the checker
+    always requests absolute URLs. The retry client is deliberately not closed: closing it would
+    close the transport the caller is still using.
     """
-    return httpx.Client(
-        headers=client.headers,
-        timeout=client.timeout,
-        transport=getattr(client, "_transport", None),  # httpx keeps the transport private
-    )
+    return httpx.Client(headers=client.headers, timeout=client.timeout, transport=getattr(client, "_transport", None))
 
 
 def _send(
@@ -162,8 +158,8 @@ def _send(
             if attempt >= retries or not _retryable(exc):
                 raise
             attempt += 1
-            # An idle connection was dropped: abandon the pool and dial again on a fresh client.
-            sender.close()
+            # The idle connection was dropped: dial again on a fresh client. The old client is
+            # left alone (closing it would also close the transport the caller still uses).
             sender = _fresh_client(client)
             retry_sleep(RETRY_BACKOFF * attempt)
 
