@@ -268,7 +268,7 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
     if index_row is None:
         raise ExecutionError("index_missing", f"index for node {claim.node_fp} does not exist")
     store = ctx.providers.store(store_provider_id)
-    from ragcentre.stores.base import CollectionSpec
+    from ragcentre.stores.base import CollectionSpec, DimensionLimitExceeded
 
     physical = index_row["physical_name"]
     with document_lock(ctx.settings.data_dir, claim.document_id):
@@ -281,7 +281,10 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
             wanted = len(vectors[0])
             if dim is not None and wanted != dim:
                 raise ExecutionError("embedding_dimension_mismatch", f"Expected {dim} dimensions, received {wanted}")
-            store.ensure_collection(CollectionSpec(physical, wanted, metric, {"document_id": "str", **field_types}))
+            try:
+                store.ensure_collection(CollectionSpec(physical, wanted, metric, {"document_id": "str", **field_types}))
+            except DimensionLimitExceeded as exc:
+                raise ExecutionError("store_dimension_limit", str(exc)) from exc
             ctx.db.execute("UPDATE indexes SET dim = ? WHERE id = ? AND dim IS NULL", (wanted, index_row["id"]))
         previous = {
             r[0]

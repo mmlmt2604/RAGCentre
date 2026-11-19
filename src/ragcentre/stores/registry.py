@@ -37,8 +37,17 @@ class VectorStoreType:
     description: str
     config_model: builtins.type[BaseModel]
     secret_keys: tuple[str, ...]
-    capabilities: Capabilities
+    capabilities: Capabilities  # the type's best case, for listing; an instance may report less
     factory: StoreFactory
+    # Config fields that shape the index (quantization, HNSW parameters, vector type). They cannot
+    # change after the provider is created: changing one means a new store provider, so a new index.
+    # Connection fields (url, timeout, credentials) stay mutable.
+    immutable_fields: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        unknown = [f for f in self.immutable_fields if f not in self.config_model.model_fields]
+        if unknown:
+            raise ValueError(f"store type {self.type!r} lists immutable_fields not in its config model: {unknown}")
 
 
 def _load(target: str) -> VectorStoreType:

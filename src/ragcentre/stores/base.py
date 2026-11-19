@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from types import ModuleType
-from typing import ClassVar, Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from ragcentre.models.filters import FieldType, Filter
 
@@ -18,10 +18,24 @@ COLLECTION_RE = re.compile(r"^[a-z][a-z0-9_]{2,62}$")
 
 @dataclass(frozen=True)
 class Capabilities:
+    """What a store can do. A class-level value is the adapter's best case; an adapter may instead
+    set ``self.capabilities`` per instance from its configuration and what the server reports.
+
+    Every field after ``max_batch`` is optional, so adapters written against the older shape
+    (``metrics`` and ``max_batch`` only) keep working.
+    """
+
     metrics: frozenset[Metric]
     max_batch: int  # largest upsert batch the adapter accepts
     multi_vector: bool = False  # reserved; version 1 never uses it
     native_hybrid: bool = False  # reserved
+    max_dim: int | None = None  # largest vector dimension a collection may have; None = no known limit
+    # "eventual": a write may not be visible to queries at once (see ``settle`` in the contract suite)
+    consistency: Literal["immediate", "eventual"] = "immediate"
+    # False only where the store cannot guarantee k filtered matches come back when k exist
+    # (the core never post-filters; the UI warns on the provider).
+    filter_exact: bool = True
+    max_collections: int | None = None  # None = no known limit
 
 
 @dataclass(frozen=True)
@@ -65,9 +79,19 @@ class CollectionNotFound(StoreError):
     pass
 
 
+class DimensionLimitExceeded(StoreError):
+    """A collection needs more dimensions than the store supports (``Capabilities.max_dim``).
+
+    ``check_spec`` raises it. An adapter that discovers the limit from the server should raise it
+    too, so the ingestion error shows the real cause (``store_dimension_limit``).
+    """
+
+
 @runtime_checkable
 class VectorStore(Protocol):
-    capabilities: ClassVar[Capabilities]
+    # A read-only property accepts a class attribute (the old shape) and an instance attribute.
+    @property
+    def capabilities(self) -> Capabilities: ...
 
     def healthcheck(self) -> None: ...
     def ensure_collection(self, spec: CollectionSpec) -> None: ...
@@ -108,6 +132,12 @@ def check_spec(spec: CollectionSpec, capabilities: Capabilities) -> None:
         raise StoreError(f"metric {spec.metric!r} is not supported by this store")
     if spec.dim < 1:
         raise StoreError("dimension must be at least 1")
+    if capabilities.max_dim is not None and spec.dim > capabilities.max_dim:
+        raise DimensionLimitExceeded(
+            f"collection {spec.name} needs {spec.dim} dimensions; this store supports at most "
+            f"{capabilities.max_dim} (use an embedding model or its `dimensions` option to produce "
+            "shorter vectors, or choose a store with a higher limit)"
+        )
 
 
 def batches(records: Sequence[Record], size: int) -> Iterator[Sequence[Record]]:
