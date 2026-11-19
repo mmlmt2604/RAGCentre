@@ -14,7 +14,8 @@ Run it with::
 
     uvicorn docling_shim.app:app --port 8701
 
-Set ``DOCLING_SHIM_API_KEY`` to require ``Authorization: Bearer <key>`` on every request except
+Set ``DOCLING_SERVE_URL`` to use an existing docling-serve instead of running Docling here (see
+``remote.py``). Set ``DOCLING_SHIM_API_KEY`` to require ``Authorization: Bearer <key>`` on every request except
 ``GET /info`` (give RAGCentre the same value as the provider's ``api_key`` secret).
 """
 
@@ -31,6 +32,7 @@ from shimkit import ShimError, bool_option
 from shimkit import create_app as create_shim_app
 
 from docling_shim.convert import to_ir
+from docling_shim.remote import DoclingServeConverter
 
 SHIM_VERSION = "0.2.0"
 NAME = "docling-shim"
@@ -62,9 +64,11 @@ def _docling_version() -> str:
         return "unknown"
 
 
-def service_version() -> str:
+def service_version(remote: DoclingServeConverter | None = None) -> str:
     # RAGCentre pins this when the provider is created; a Docling upgrade changes parse output,
-    # so it is part of the version.
+    # so it is part of the version. With a remote docling-serve it is the server's Docling version.
+    if remote is not None:
+        return f"{SHIM_VERSION}+docling-serve.{remote.server_version()}"
     return f"{SHIM_VERSION}+docling.{_docling_version()}"
 
 
@@ -102,7 +106,10 @@ class DoclingConverter:
 
 
 def create_app(converter: Converter | None = None) -> FastAPI:
-    convert = converter or DoclingConverter()
+    remote = converter if isinstance(converter, DoclingServeConverter) else None
+    if converter is None:
+        remote = DoclingServeConverter.from_env()
+    convert = converter or remote or DoclingConverter()
 
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
         opts = {name: bool_option(options, name, default) for name, default in DEFAULTS.items()}
@@ -116,7 +123,7 @@ def create_app(converter: Converter | None = None) -> FastAPI:
 
     return create_shim_app(
         name=NAME,
-        version=service_version,
+        version=lambda: service_version(remote),
         mime_types=MIME_TYPES,
         capabilities={"page_images": True},
         api_key_env="DOCLING_SHIM_API_KEY",

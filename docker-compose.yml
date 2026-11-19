@@ -37,6 +37,10 @@ services:
       - docling-models:/home/shim/.cache
     environment:
       DOCLING_SHIM_API_KEY: ${DOCLING_SHIM_API_KEY:-}
+      # Use a docling-serve you already run instead of Docling in this container (see
+      # examples/docling_shim/README.md; build with `--build-arg ENGINE=remote` for a slim image).
+      DOCLING_SERVE_URL: ${DOCLING_SERVE_URL:-}
+      DOCLING_SERVE_API_KEY: ${DOCLING_SERVE_API_KEY:-}
     restart: unless-stopped
 
   mineru:
@@ -50,6 +54,9 @@ services:
       - mineru-models:/home/shim/.cache
     environment:
       MINERU_SHIM_API_KEY: ${MINERU_SHIM_API_KEY:-}
+      # Send parsing to a MinerU API server instead of running the models here.
+      MINERU_API_URL: ${MINERU_API_URL:-}
+      MINERU_API_KEY: ${MINERU_API_KEY:-}
     restart: unless-stopped
 
   paddleocr:
@@ -64,6 +71,9 @@ services:
     environment:
       PADDLEOCR_SHIM_API_KEY: ${PADDLEOCR_SHIM_API_KEY:-}
       PADDLEOCR_SHIM_LANG: ${PADDLEOCR_SHIM_LANG:-}
+      # Use a running `paddlex --serve` instead of PaddleOCR in this container.
+      PADDLEX_SERVING_URL: ${PADDLEX_SERVING_URL:-}
+      PADDLEX_SERVING_API_KEY: ${PADDLEX_SERVING_API_KEY:-}
     restart: unless-stopped
 
   surya:
@@ -77,6 +87,10 @@ services:
       - surya-models:/home/shim/.cache
     environment:
       SURYA_SHIM_API_KEY: ${SURYA_SHIM_API_KEY:-}
+      # Attach to an inference server you already run (llama-server or vLLM) instead of starting one.
+      SURYA_INFERENCE_BACKEND: ${SURYA_INFERENCE_BACKEND:-}
+      SURYA_INFERENCE_URL: ${SURYA_INFERENCE_URL:-}
+      SURYA_INFERENCE_API_KEY: ${SURYA_INFERENCE_API_KEY:-}
     restart: unless-stopped
 
 volumes:

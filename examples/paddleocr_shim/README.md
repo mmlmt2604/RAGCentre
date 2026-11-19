@@ -129,6 +129,36 @@ Header and footer images and formula numbers are dropped.
 
 PaddleOCR is Apache 2.0. Check the licence of each model it downloads before commercial use.
 
+## Using a PaddleX server you already run
+
+Set `PADDLEX_SERVING_URL` and the shim calls `POST /layout-parsing` on a running PaddleX serving
+instance (`paddlex --serve --pipeline PP-StructureV3 --port 8080`) instead of loading PaddleOCR. It
+then needs neither PaddleOCR nor PaddlePaddle:
+
+```sh
+uv sync                                  # without the `local` extra
+PADDLEX_SERVING_URL=http://localhost:8080 uv run uvicorn paddleocr_shim.app:app --port 8703
+docker build --build-arg ENGINE=remote -f examples/paddleocr_shim/Dockerfile examples   # slim image
+```
+
+(`uv sync --extra local` installs PaddleOCR for the in-process mode.) Things to know:
+
+- The server's pipeline was built with its own features. A request can switch a feature off (the
+  options above are sent as `useTableRecognition` and so on) but cannot switch on one the server
+  loaded without.
+- The server's JSON has no heading levels, so `heading_levels` has no effect and every section title
+  is level 2.
+- PaddleX serving reports no version, so `/info` says `<shim>+paddlex-serving.remote`. Set the
+  provider's `revision` whenever you change the server's pipeline or models, so RAGCentre does not
+  mix the outputs. `PADDLEX_SERVING_API_KEY` is sent as a bearer token for a reverse proxy in front
+  of it; `PADDLEX_SERVING_TIMEOUT` (seconds, default 3600) limits one document.
+
+## Long documents
+
+The service reports `capabilities.async`: RAGCentre submits each document as a background job and
+polls it, so a long scan does not hit the provider's `timeout_seconds` (see
+`docs/protocols/parser-v1.md`).
+
 ## Tests
 
 The conversion works on plain dicts and the engine tests use a stand-in for `paddleocr`, so the

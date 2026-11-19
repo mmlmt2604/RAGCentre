@@ -110,6 +110,21 @@ that MinerU is used if you provide an online service built on it, and a separate
 is required above 100 million monthly active users or USD 20 million monthly revenue. Check the
 current terms before you deploy it.
 
+## Using a MinerU API server you already run
+
+Set `MINERU_API_URL` (and `MINERU_API_KEY`) and the shim hands each file to that MinerU API server
+(`mineru-kit api-server`, or the hosted service) through `mineru.MinerUApiParser`, then renders the
+returned result with the same code as the in-process mode. The models run on the server, so
+`image_analysis` is the server's setting there. The `mineru` package is still needed as the client.
+`/info` reports `<shim>+mineru.<client version>.remote`; MinerU servers report no version, so set the
+provider's `revision` when you change the server.
+
+## Long documents
+
+The service reports `capabilities.async`: RAGCentre submits each document as a background job and
+polls it, so a long scan does not hit the provider's `timeout_seconds` (see
+`docs/protocols/parser-v1.md`).
+
 ## Tests
 
 The conversion works on plain dicts, so the tests need only `fastapi`, `httpx` and `pytest`, not

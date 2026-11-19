@@ -26,6 +26,11 @@ that Surya starts on the first parse:
 - **NVIDIA GPUs**: Surya uses `vllm` in Docker.
 - **A server you already run**: set `SURYA_INFERENCE_BACKEND` and `SURYA_INFERENCE_URL`.
 
+When you attach to a server, also set `SURYA_INFERENCE_API_KEY` if it requires one, and
+`SURYA_INFERENCE_PARALLEL` to the number of requests it can run at once. The service reports
+`capabilities.async`, so RAGCentre submits each document as a background job and polls it: CPU
+inference can take minutes per page, longer than the provider's `timeout_seconds`.
+
 Surya picks the backend itself (`SURYA_INFERENCE_BACKEND` overrides it). The shim stops the server
 it started when the service stops.
 

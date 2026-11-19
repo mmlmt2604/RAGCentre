@@ -361,6 +361,8 @@ class FakeMineru:
     def __init__(self) -> None:
         self.parse_calls: list[tuple[Path, dict[str, Any], bytes]] = []
         self.fail: Exception | None = None
+        self.api_inits: list[dict[str, Any]] = []
+        self.api_parse_calls: list[tuple[Path, bytes]] = []
 
 
 @pytest.fixture
@@ -373,8 +375,19 @@ def fake_mineru(monkeypatch: pytest.MonkeyPatch) -> FakeMineru:
             raise state.fail
         return types.SimpleNamespace(middle_json="MIDDLE")
 
+    class FakeApiParser:
+        def __init__(self, **kwargs: Any) -> None:
+            state.api_inits.append(kwargs)
+
+        def parse(self, path: Path, **kwargs: Any) -> Any:
+            state.api_parse_calls.append((path, path.read_bytes()))
+            if state.fail:
+                raise state.fail
+            return types.SimpleNamespace(middle_json="REMOTE-MIDDLE")
+
     mineru = types.ModuleType("mineru")
     mineru.parse = parse  # type: ignore[attr-defined]
+    mineru.MinerUApiParser = FakeApiParser  # type: ignore[attr-defined]
     render = types.ModuleType("mineru.render")
     content_list = types.ModuleType("mineru.render.content_list")
     content_list.render_content_list = lambda middle: [{"type": "text", "text": f"from {middle}", "page_idx": 0}]  # type: ignore[attr-defined]
@@ -474,3 +487,35 @@ def test_page_sizes_are_empty_for_other_formats_and_unreadable_files(fake_mineru
     assert page_sizes(tmp_path / "a.docx", "docx") == {}
     assert page_sizes(tmp_path / "a.html", "html") == {}
     assert page_sizes(tmp_path / "a.pdf", "pdf") == {}  # pypdfium2 is not importable here
+
+
+# --- remote mode: a MinerU API server -----------------------------------------------------------
+
+
+def test_remote_engine_uses_the_api_parser(fake_mineru: FakeMineru) -> None:
+    engine = MineruEngine(api_url="http://mineru:8000", api_key="k")
+    content_list, _ = engine(b"%PDF-data", "m.pdf", {**OPTIONS, "ocr_mode": "ocr", "tier": "advanced"})
+    assert fake_mineru.api_inits == [
+        {"api_url": "http://mineru:8000", "api_key": "k", "tier": "advanced", "ocr_mode": "ocr"}
+    ]
+    assert fake_mineru.api_parse_calls[0][1] == b"%PDF-data" and fake_mineru.parse_calls == []
+    assert content_list[0]["text"] == "from REMOTE-MIDDLE"  # the same renderer as in-process
+
+
+def test_remote_engine_errors_are_translated(fake_mineru: FakeMineru) -> None:
+    fake_mineru.fail = MineruError("rate_limit_exceeded", "rate_limit_error")
+    with pytest.raises(ShimError) as caught:
+        MineruEngine(api_url="http://mineru:8000")(b"x", "a.pdf", OPTIONS)
+    assert caught.value.status == 503
+
+
+def test_remote_is_chosen_by_environment(monkeypatch: pytest.MonkeyPatch, fake_mineru: FakeMineru) -> None:
+    monkeypatch.delenv("MINERU_API_URL", raising=False)
+    monkeypatch.delenv("MINERU_SHIM_API_KEY", raising=False)
+    assert not MineruEngine.from_env().remote
+    monkeypatch.setenv("MINERU_API_URL", "http://mineru:8000")
+    monkeypatch.setenv("MINERU_API_KEY", "k")
+    client = TestClient(create_app())
+    assert client.get("/info").json()["version"].endswith(".remote")
+    assert post(client).status_code == 200
+    assert fake_mineru.api_inits[0]["api_key"] == "k"

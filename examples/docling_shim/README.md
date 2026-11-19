@@ -64,6 +64,25 @@ The parse route's `options` are passed to the service:
 
 Options must be booleans: `"false"` (a string) is rejected with `400 invalid_options`.
 
+## Using a docling-serve you already run
+
+Set `DOCLING_SERVE_URL` (and `DOCLING_SERVE_API_KEY` when the server needs its `X-Api-Key`) and the
+shim sends each file to `POST /v1/convert/file` on that server instead of running Docling itself.
+The result is the same `DoclingDocument`, mapped by the same code, so the IR does not change. The
+shim then needs only `docling-core`, not PyTorch or the models:
+
+```sh
+uv sync                                  # without the `local` extra: no Docling, no PyTorch
+DOCLING_SERVE_URL=http://localhost:5001 uv run uvicorn docling_shim.app:app --port 8701
+docker build --build-arg ENGINE=remote -f examples/docling_shim/Dockerfile examples   # the slim image
+```
+
+(`uv sync --extra local` installs Docling for the in-process mode.) `/info` then reports
+`<shim>+docling-serve.<the server's Docling version>`, so upgrading the server is a new version, as
+it is in-process. The options `ocr`, `include_page_images` and `heading_hierarchy` are sent as
+`do_ocr`, `include_page_images` and `do_pdf_heading_hierarchy`. `DOCLING_SERVE_TIMEOUT` (seconds,
+default 3600) limits one conversion.
+
 ## Authentication
 
 Set `DOCLING_SHIM_API_KEY` to require `Authorization: Bearer <key>` on every request except
@@ -87,6 +106,13 @@ See the table at the top of `docling_shim/convert.py`. In short: the title and s
 become headings, tables become Markdown (with HTML alongside), pictures become `figure` blocks
 whose text is their caption, and every block carries its page number and a top-left-origin
 bounding box.
+
+## Long documents
+
+The service reports `capabilities.async`, so RAGCentre submits each document as a background job and
+polls it: a scanned PDF may take far longer than the provider's `timeout_seconds`, which then limits
+only each request (the whole wait is `job_timeout_seconds`, six hours by default). See
+`docs/protocols/parser-v1.md`.
 
 ## Tests
 

@@ -495,33 +495,38 @@ name = "docling-shim"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "docling" },
+    { name = "docling-core" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "python-multipart" },
     { name = "shimkit" },
     { name = "uvicorn" },
 ]
 
+[package.optional-dependencies]
+local = [
+    { name = "docling" },
+]
+
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "docling", specifier = ">=2.40" },
+    { name = "docling", marker = "extra == 'local'", specifier = ">=2.40" },
+    { name = "docling-core", specifier = ">=2.40" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "shimkit", editable = "../shimkit" },
     { name = "uvicorn", specifier = ">=0.34" },
 ]
+provides-extras = ["local"]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "pytest", specifier = ">=8" },
-]
+dev = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "docling-slim"

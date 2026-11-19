@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from shimkit import ShimError
 
-from paddleocr_shim.app import NAME, create_app, service_version
+from paddleocr_shim.app import NAME, SHIM_VERSION, create_app, service_version
 from paddleocr_shim.convert import to_ir
 from paddleocr_shim.engine import PaddleEngine, reduce_page
 
@@ -460,3 +460,131 @@ def test_heading_levels_failure_is_ignored(fake_paddleocr: type[FakePipeline]) -
     # PaddleX is not importable here, so the levelling raises ImportError; the parse still succeeds.
     pages = PaddleEngine()(b"x", "a.pdf", {**OPTIONS, "heading_levels": True})
     assert pages[0]["blocks"][0]["title_level"] is None
+
+
+# --- remote mode: a running PaddleX serving instance -----------------------------------------------
+
+
+def serving_response(pages: list[dict[str, Any]]) -> dict[str, Any]:
+    """What PaddleX basic serving's ``POST /layout-parsing`` returns (field names from
+    paddlex/inference/pipelines/layout_parsing/result_v2.py ``_to_json``). It has no ``title_level``."""
+    return {
+        "logId": "1",
+        "errorCode": 0,
+        "errorMsg": "Success",
+        "result": {
+            "layoutParsingResults": [
+                {
+                    "prunedResult": {
+                        "page_index": page["page"] - 1,
+                        "page_count": len(pages),
+                        "width": page["width"],
+                        "height": page["height"],
+                        "parsing_res_list": [
+                            {
+                                "block_label": b["label"],
+                                "block_content": b["content"],
+                                "block_bbox": b["bbox"],
+                                "block_id": i,
+                                "block_order": b["order"],
+                            }
+                            for i, b in enumerate(page["blocks"])
+                        ],
+                    },
+                    "markdown": {"text": "", "isStart": True, "isEnd": True},
+                }
+                for page in pages
+            ],
+            "dataInfo": {"width": 1200, "height": 1600, "type": "pdf"},
+        },
+    }
+
+
+def remote_client(handler: Any) -> TestClient:
+    import httpx
+
+    from paddleocr_shim.remote import PaddleServingEngine
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    return TestClient(create_app(PaddleServingEngine("http://paddlex:8080/", client=http)))
+
+
+def test_remote_gives_the_same_ir_as_the_in_process_engine() -> None:
+    import copy
+
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=serving_response(sample()))
+
+    resp = post(remote_client(handler), options={"tables": False, "charts": True})
+    assert resp.status_code == 200
+    flat = copy.deepcopy(sample())  # the server's JSON has no title_level
+    for page in flat:
+        for b in page["blocks"]:
+            b["title_level"] = None
+    assert resp.json() == to_ir(flat, source_name="m.pdf")
+    request = seen[0]
+    sent = json.loads(request.content)
+    assert request.url.path == "/layout-parsing" and sent["fileType"] == 0 and sent["useTableRecognition"] is False
+    assert sent["useChartRecognition"] is True and sent["useFormulaRecognition"] is True
+    import base64
+
+    assert base64.b64decode(sent["file"]) == b"%PDF"
+
+
+def test_remote_image_and_version() -> None:
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=serving_response(sample()[:1]))
+
+    client = remote_client(handler)
+    resp = client.post("/parse", files={"file": ("scan.png", b"png", "image/png")})
+    assert resp.status_code == 200 and json.loads(seen[0].content)["fileType"] == 1
+    assert client.get("/info").json()["version"] == f"{SHIM_VERSION}+paddlex-serving.remote"
+
+
+def test_remote_null_page_index_uses_the_position() -> None:
+    from paddleocr_shim.remote import reduce_pruned
+
+    page = reduce_pruned({"page_index": None, "width": 10, "height": 20, "parsing_res_list": []}, 3)
+    assert page == {"page": 3, "width": 10, "height": 20, "blocks": []}
+
+
+@pytest.mark.parametrize(("status", "expected"), [(422, 422), (400, 422), (401, 502), (500, 503), (503, 503)])
+def test_remote_errors_are_classified(status: int, expected: int) -> None:
+    import httpx
+
+    body = {"logId": "1", "errorCode": status, "errorMsg": "nope"}
+    resp = post(remote_client(lambda request: httpx.Response(status, json=body)))
+    assert resp.status_code == expected and "nope" in resp.json()["error"]["message"]
+
+
+def test_remote_unreachable_and_malformed() -> None:
+    import httpx
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    assert post(remote_client(refuse)).json()["error"]["code"] == "upstream_unreachable"
+    odd = post(remote_client(lambda request: httpx.Response(200, json={"result": {}})))
+    assert odd.status_code == 502 and odd.json()["error"]["code"] == "upstream_invalid"
+
+
+def test_remote_is_chosen_by_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from paddleocr_shim.remote import PaddleServingEngine
+
+    monkeypatch.delenv("PADDLEX_SERVING_URL", raising=False)
+    assert PaddleServingEngine.from_env() is None
+    monkeypatch.setenv("PADDLEX_SERVING_URL", "http://paddlex:8080/")
+    monkeypatch.setenv("PADDLEX_SERVING_API_KEY", "k")
+    engine = PaddleServingEngine.from_env()
+    assert engine is not None and engine.url == "http://paddlex:8080"
+    assert engine.client.headers["authorization"] == "Bearer k"

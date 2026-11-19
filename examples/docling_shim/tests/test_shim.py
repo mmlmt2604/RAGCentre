@@ -174,3 +174,101 @@ def test_async_parse(monkeypatch: pytest.MonkeyPatch) -> None:
             break
         time.sleep(0.02)
     assert client.get(f"/jobs/{job_id}/result").json()["blocks"][0]["text"] == "Pump Manual"
+
+
+# --- remote mode: an existing docling-serve ------------------------------------------------------
+
+
+def serve_response() -> dict[str, Any]:
+    """What docling-serve's ``POST /v1/convert/file`` returns for ``to_formats=json``."""
+    return {
+        "document": {"filename": "m.pdf", "json_content": sample().model_dump(mode="json", by_alias=True)},
+        "status": "success",
+        "errors": [],
+    }
+
+
+def remote_client(handler: Any, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    import httpx
+
+    from docling_shim.remote import DoclingServeConverter
+
+    monkeypatch.delenv("DOCLING_SHIM_API_KEY", raising=False)
+    http = httpx.Client(transport=httpx.MockTransport(handler), headers={"X-Api-Key": "serve-key"})
+    return TestClient(create_app(DoclingServeConverter("http://serve:5001/", client=http)))
+
+
+def test_remote_matches_the_in_process_golden(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/version":
+            return httpx.Response(200, json={"docling": "2.150.1", "docling-serve": "1.9.0"})
+        return httpx.Response(200, json=serve_response())
+
+    client = remote_client(handler, monkeypatch)
+    resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
+                       data={"options": json.dumps({"ocr": False, "heading_hierarchy": True})})  # fmt: skip
+    assert resp.status_code == 200
+    assert resp.json() == json.loads(GOLDEN.read_text(encoding="utf-8"))
+    request = seen[0]
+    assert request.url.path == "/v1/convert/file" and request.headers["x-api-key"] == "serve-key"
+    body = request.content.decode("latin-1")
+    for expected in ('name="files"', 'name="to_formats"\r\n\r\njson', 'name="do_ocr"\r\n\r\nfalse',
+                     'name="do_pdf_heading_hierarchy"\r\n\r\ntrue'):  # fmt: skip
+        assert expected in body, expected
+    assert client.get("/info").json()["version"] == "0.2.0+docling-serve.2.150.1"
+
+
+def test_remote_version_without_a_version_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    client = remote_client(lambda request: httpx.Response(404), monkeypatch)
+    assert client.get("/info").json()["version"] == "0.2.0+docling-serve.remote"
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [(415, 415), (422, 422), (401, 502), (500, 503), (429, 503)],
+)
+def test_remote_errors_are_classified(monkeypatch: pytest.MonkeyPatch, status: int, expected: int) -> None:
+    import httpx
+
+    client = remote_client(lambda request: httpx.Response(status, json={"detail": "nope"}), monkeypatch)
+    resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")})
+    assert resp.status_code == expected
+
+
+def test_remote_unreachable_is_retryable(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    client = remote_client(handler, monkeypatch)
+    resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")})
+    assert resp.status_code == 502 and resp.json()["error"]["code"] == "upstream_unreachable"
+
+
+def test_remote_failed_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    body = {"document": {"filename": "m.pdf"}, "status": "failure", "errors": [{"error_message": "bad pdf"}]}
+    client = remote_client(lambda request: httpx.Response(200, json=body), monkeypatch)
+    resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")})
+    assert resp.status_code == 422 and "bad pdf" in resp.json()["error"]["message"]
+
+
+def test_remote_mode_is_chosen_by_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from docling_shim.remote import DoclingServeConverter
+
+    monkeypatch.delenv("DOCLING_SERVE_URL", raising=False)
+    assert DoclingServeConverter.from_env() is None
+    monkeypatch.setenv("DOCLING_SERVE_URL", "http://serve:5001/")
+    monkeypatch.setenv("DOCLING_SERVE_API_KEY", "k")
+    converter = DoclingServeConverter.from_env()
+    assert converter is not None and converter.url == "http://serve:5001"
+    assert converter.client.headers["x-api-key"] == "k"

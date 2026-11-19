@@ -10,6 +10,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # The PaddlePaddle build. `paddlepaddle` is the CPU build; for an NVIDIA GPU see the README.
 ARG PADDLE_PACKAGE=paddlepaddle
 
+# `local` (default) runs PaddleOCR in this container. `remote` installs neither PaddleOCR nor
+# PaddlePaddle and needs PADDLEX_SERVING_URL pointing at `paddlex --serve`:
+#   docker build --build-arg ENGINE=remote -f examples/paddleocr_shim/Dockerfile examples
+ARG ENGINE=local
+
 # OpenCV's and PaddlePaddle's shared libraries.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libgomp1 \
@@ -20,8 +25,13 @@ COPY shimkit ./shimkit
 COPY paddleocr_shim/pyproject.toml ./paddleocr_shim/
 COPY paddleocr_shim/paddleocr_shim ./paddleocr_shim/paddleocr_shim
 RUN uv venv /opt/venv \
- && VIRTUAL_ENV=/opt/venv uv pip install --no-cache --no-sources ./shimkit ./paddleocr_shim "$PADDLE_PACKAGE" \
- && /opt/venv/bin/python -c "import paddle, paddleocr_shim.app"
+ && if [ "$ENGINE" = remote ]; then \
+      VIRTUAL_ENV=/opt/venv uv pip install --no-cache --no-sources ./shimkit ./paddleocr_shim \
+      && /opt/venv/bin/python -c "import paddleocr_shim.app"; \
+    else \
+      VIRTUAL_ENV=/opt/venv uv pip install --no-cache --no-sources ./shimkit "./paddleocr_shim[local]" "$PADDLE_PACKAGE" \
+      && /opt/venv/bin/python -c "import paddle, paddleocr_shim.app"; \
+    fi
 
 # PaddleX downloads its models (about 1.7 GB) into ~/.paddlex on first use; mount a volume there.
 RUN useradd --create-home --uid 1000 shim \

@@ -16,7 +16,8 @@ Run it with::
 
     uvicorn mineru_shim.app:app --port 8702
 
-Environment: ``MINERU_SHIM_API_KEY`` requires ``Authorization: Bearer <key>`` (except on
+Environment: ``MINERU_API_URL`` (and ``MINERU_API_KEY``) send parsing to a MinerU API server instead of
+running the models here; ``image_analysis`` is then the server's setting. ``MINERU_SHIM_API_KEY`` requires ``Authorization: Bearer <key>`` (except on
 ``GET /info``).
 """
 
@@ -75,9 +76,11 @@ def _mineru_version() -> str:
         return "unknown"
 
 
-def service_version() -> str:
-    # RAGCentre pins this when the provider is created; a MinerU upgrade changes parse output.
-    return f"{SHIM_VERSION}+mineru.{_mineru_version()}"
+def service_version(remote: bool = False) -> str:
+    # RAGCentre pins this when the provider is created; a MinerU upgrade changes parse output. With a
+    # MinerU API server the models live there and report no version: set the provider's ``revision``
+    # when the server changes.
+    return f"{SHIM_VERSION}+mineru.{_mineru_version()}" + (".remote" if remote else "")
 
 
 def _ocr_mode(options: dict[str, Any]) -> str:
@@ -92,7 +95,8 @@ def _ocr_mode(options: dict[str, Any]) -> str:
 
 
 def create_app(engine: Engine | None = None) -> FastAPI:
-    run = engine or MineruEngine()
+    run = engine or MineruEngine.from_env()
+    remote = isinstance(run, MineruEngine) and run.remote
 
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
         extension = file_extension(filename)
@@ -111,12 +115,12 @@ def create_app(engine: Engine | None = None) -> FastAPI:
 
     return create_shim_app(
         name=NAME,
-        version=service_version,
+        version=lambda: service_version(remote),
         mime_types=MIME_TYPES,
         capabilities={"page_images": False},
         api_key_env="MINERU_SHIM_API_KEY",
         parse=parse,
-        serialise=True,  # MinerU runs local models and may start an inference server
+        serialise=not remote,  # MinerU runs local models and may start an inference server
         jobs=True,  # a scanned PDF can take longer than one request may last
     )
 

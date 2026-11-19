@@ -4,16 +4,20 @@ version = "0.2.0"
 description = "Example ragcentre.parser/v1 service that parses documents with Docling."
 requires-python = ">=3.11"
 dependencies = [
-    "docling>=2.40",
+    "docling-core>=2.40",
     "fastapi>=0.115",
+    "httpx>=0.28",
     "python-multipart>=0.0.20",
     "shimkit",
     "uvicorn>=0.34",
 ]
 
+[project.optional-dependencies]
+# Docling itself (PyTorch and its models). Leave it out to use only a remote docling-serve.
+local = ["docling>=2.40"]
+
 [dependency-groups]
 dev = [
-    "httpx>=0.28",
     "pytest>=8",
 ]
 
