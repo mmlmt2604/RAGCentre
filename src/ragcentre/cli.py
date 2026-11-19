@@ -39,11 +39,13 @@ pipeline_app = typer.Typer(
     help="Pipelines: how a corpus is parsed, chunked, embedded and indexed.", no_args_is_help=True
 )
 eval_app = typer.Typer(help="Evaluation datasets and runs.", no_args_is_help=True)
+parser_app = typer.Typer(help="Check parser and OCR services.", no_args_is_help=True)
 app.add_typer(provider_app, name="provider")
 app.add_typer(corpus_app, name="corpus")
 app.add_typer(docs_app, name="docs")
 app.add_typer(pipeline_app, name="pipeline")
 app.add_typer(eval_app, name="eval")
+app.add_typer(parser_app, name="parser")
 
 log = logging.getLogger("ragcentre")
 
@@ -237,11 +239,16 @@ def provider_list() -> None:
 
 
 @provider_app.command("test")
-def provider_test(name: Annotated[str, typer.Argument(help="Provider name or id.")]) -> None:
+def provider_test(
+    name: Annotated[str, typer.Argument(help="Provider name or id.")],
+    deep: Annotated[
+        bool, typer.Option("--deep", help="For a parser: also parse a sample document and check its structure.")
+    ] = False,
+) -> None:
     """Check that a provider is reachable and working."""
     with _api() as api:
         p = api.provider(name)
-        result = api.post(f"/providers/{p['id']}/test")
+        result = api.post(f"/providers/{p['id']}/test", params={"deep": "true"} if deep else None)
 
     def human() -> None:
         status = "ok" if result["ok"] else "FAILED"
@@ -253,9 +260,72 @@ def provider_test(name: Annotated[str, typer.Argument(help="Provider name or id.
             typer.echo(f"  service: {s['name']} {s['version']}")
         if result.get("message"):
             typer.echo(f"  {result['message']}")
+        for finding in (result.get("check") or {}).get("findings", []):
+            if finding["level"] != "info":
+                typer.echo(f"  {finding['level']}: {finding['check']}: {finding['message']}")
+                if finding.get("lost"):
+                    typer.echo(f"      loses: {finding['lost']}")
 
     _emit(result, human)
     if not result["ok"]:
+        raise typer.Exit(1)
+
+
+@parser_app.command("check")
+def parser_check(
+    base_url: Annotated[str, typer.Argument(help="The service's base URL, e.g. http://127.0.0.1:8701.")],
+    file: Annotated[
+        Path | None, typer.Option("--file", help="Parse this file instead of the built-in two-page sample PDF.")
+    ] = None,
+    api_key_env: Annotated[
+        str | None, typer.Option("--api-key-env", help="Environment variable holding the service's bearer token.")
+    ] = None,
+    api_key: Annotated[
+        str | None,
+        typer.Option("--api-key", help="The bearer token itself (it shows in shell history: prefer --api-key-env)."),
+    ] = None,
+    job_timeout: Annotated[float, typer.Option("--job-timeout", help="Seconds to wait for an async job.")] = 600.0,
+    request_timeout: Annotated[float, typer.Option("--timeout", help="Seconds to wait for each request.")] = 600.0,
+    probe_errors: Annotated[
+        bool,
+        typer.Option("--probe-errors/--no-probe-errors", help="Also send an unreadable file to see how errors look."),
+    ] = True,
+) -> None:
+    """Check that a service speaks ragcentre.parser/v1 and see which RAGCentre features its output feeds.
+
+    Needs no running RAGCentre. Exits 1 when the service cannot be used as it is; warnings name the
+    feature each problem costs."""
+    import os
+
+    import httpx
+
+    from ragcentre.providers.parsers.check import check_parser
+
+    if api_key_env is not None:
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            _fail(f"environment variable {api_key_env} is not set")
+    upload = None
+    if file is not None:
+        if not file.is_file():
+            _fail(f"{file} is not a file")
+        upload = (file.name, file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    with httpx.Client(timeout=httpx.Timeout(request_timeout, connect=10.0), headers=headers) as client:
+        report = check_parser(client, base_url, file=upload, job_timeout=job_timeout, probe_errors=probe_errors)
+
+    def human() -> None:
+        marks = {"error": "FAIL", "warn": "warn", "info": "ok  "}
+        for finding in report.findings:
+            typer.echo(f"{marks[finding.level]}  {finding.check}: {finding.message}")
+            if finding.lost:
+                typer.echo(f"      loses: {finding.lost}")
+        warnings = sum(f.level == "warn" for f in report.findings)
+        verdict = "usable" if report.ok else "NOT usable"
+        typer.echo(f"{report.base_url}: {verdict}, {warnings} warning(s), {report.seconds:.1f} s")
+
+    _emit(report.as_dict(), human)
+    if not report.ok:
         raise typer.Exit(1)
 
 

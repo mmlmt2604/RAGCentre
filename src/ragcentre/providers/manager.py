@@ -351,7 +351,7 @@ class ProviderManager:
 
     # ---- health check -------------------------------------------------------------------------
 
-    def test(self, provider_id: str) -> dict[str, Any]:
+    def test(self, provider_id: str, *, deep: bool = False) -> dict[str, Any]:
         row = self.get(provider_id)
         result: dict[str, Any] = {
             "ok": False,
@@ -360,6 +360,7 @@ class ProviderManager:
             "service": None,
             "dimensions": None,
             "version_drift": None,
+            "check": None,
         }
         start = time.perf_counter()
         try:
@@ -386,6 +387,16 @@ class ProviderManager:
             elif row.kind == "vector_store":
                 inst.healthcheck()
             result["ok"] = result["version_drift"] is None
+            if deep and row.kind == "parser" and row.type == "http":
+                # Parse a sample document and look at the IR, not just /info.
+                from ragcentre.providers.parsers.check import check_parser
+
+                report = check_parser(cast(Any, inst).client, cast(Any, inst).base_url)
+                result["check"] = report.as_dict()
+                result["ok"] = bool(result["ok"] and report.ok)
+                if not report.ok and result["message"] is None:
+                    errors = [f.message for f in report.findings if f.level == "error"]
+                    result["message"] = redact("; ".join(errors))[:500]
         except ExecutionError as exc:
             result["message"] = redact(exc.message)
         except Exception as exc:

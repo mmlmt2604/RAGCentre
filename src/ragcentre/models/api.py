@@ -124,6 +124,24 @@ class VersionDrift(ResponseModel):
     current: str
 
 
+class ParserFinding(ResponseModel):
+    level: Literal["error", "warn", "info"]
+    check: str
+    message: str
+    lost: str | None
+
+
+class ParserCheck(ResponseModel):
+    """The result of a deep parser test (``?deep=true``): what the service returned for a sample
+    document, and which RAGCentre features its output feeds."""
+
+    ok: bool
+    blocks: int
+    pages: int
+    seconds: float
+    findings: list[ParserFinding]
+
+
 class ProviderTestResult(ResponseModel):
     ok: bool
     latency_ms: float
@@ -131,6 +149,7 @@ class ProviderTestResult(ResponseModel):
     service: ServiceDescription | None
     dimensions: int | None
     version_drift: VersionDrift | None
+    check: ParserCheck | None = None
 
 
 # ---------- Corpora ----------
