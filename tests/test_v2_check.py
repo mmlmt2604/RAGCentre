@@ -50,6 +50,24 @@ def test_check_passes_clean_on_sqlite_vec(tmp_path: Path) -> None:
         store.close()
 
 
+def test_finding_timings_are_milliseconds(tmp_path: Path) -> None:
+    import time
+
+    class SlowUpsert(SqliteVecStore):
+        def upsert(self, name: str, records: object) -> None:
+            time.sleep(0.05)
+            super().upsert(name, records)  # type: ignore[arg-type]
+
+    store = SlowUpsert(tmp_path / "vectors.db")
+    try:
+        report = check_store(store, store_type="sqlite_vec")
+        upsert = next(f for f in report.findings if f.check == "upsert")
+        assert 40 <= upsert.ms < 5000, upsert.ms  # seconds mislabelled as ms would be ~0.05
+        assert report.as_dict()["findings"][0]["ms"] >= 0
+    finally:
+        store.close()
+
+
 def test_check_passes_clean_on_qdrant_memory() -> None:
     pytest.importorskip("qdrant_client")
     from ragcentre.stores.qdrant import QdrantStore

@@ -77,8 +77,9 @@ class CheckReport:
     def ok(self) -> bool:
         return not any(f.level == "error" for f in self.findings)
 
-    def add(self, level: Level, check: str, message: str, ms: float = 0.0, lost: str | None = None) -> None:
-        self.findings.append(Finding(level, check, message, ms, lost))
+    def add(self, level: Level, check: str, message: str, seconds: float = 0.0, lost: str | None = None) -> None:
+        """Record a finding. Callers pass elapsed seconds; findings store milliseconds."""
+        self.findings.append(Finding(level, check, message, seconds * 1000.0, lost))
 
     def as_dict(self) -> dict[str, Any]:
         return {
