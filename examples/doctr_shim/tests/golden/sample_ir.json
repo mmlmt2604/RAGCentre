@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "page_count": 2,
+    "title": "Pump Manual",
+    "source_name": "manual.pdf"
+  },
+  "pages": [
+    {
+      "page": 1,
+      "width": 1200.0,
+      "height": 1600.0
+    },
+    {
+      "page": 2,
+      "width": 1200.0,
+      "height": 1600.0
+    }
+  ],
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Pump Manual",
+      "page": 1,
+      "bbox": [
+        100.0,
+        80.0,
+        600.0,
+        136.0
+      ],
+      "metadata": {
+        "confidence": 0.99
+      },
+      "id": "b1"
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "text": "Installation",
+      "page": 1,
+      "bbox": [
+        100.0,
+        200.0,
+        400.0,
+        240.0
+      ],
+      "metadata": {
+        "confidence": 0.98
+      },
+      "id": "b2"
+    },
+    {
+      "type": "paragraph",
+      "text": "Mount the pump on a level surface.",
+      "page": 1,
+      "bbox": [
+        100.0,
+        280.0,
+        1100.0,
+        304.0
+      ],
+      "metadata": {
+        "confidence": 0.96
+      },
+      "id": "b3"
+    },
+    {
+      "type": "paragraph",
+      "text": "Close the valve.",
+      "page": 1,
+      "bbox": [
+        120.0,
+        360.0,
+        600.0,
+        384.0
+      ],
+      "metadata": {
+        "confidence": 0.98
+      },
+      "id": "b4"
+    },
+    {
+      "type": "heading",
+      "level": 3,
+      "text": "Specifications",
+      "page": 2,
+      "bbox": [
+        100.0,
+        80.0,
+        500.0,
+        112.0
+      ],
+      "metadata": {
+        "confidence": 0.98
+      },
+      "id": "b5"
+    },
+    {
+      "type": "paragraph",
+      "text": "Flow",
+      "page": 2,
+      "bbox": [
+        100.0,
+        160.0,
+        200.0,
+        184.0
+      ],
+      "metadata": {
+        "confidence": 0.98
+      },
+      "id": "b6"
+    },
+    {
+      "type": "paragraph",
+      "text": "40 l/min",
+      "page": 2,
+      "bbox": [
+        600.0,
+        160.0,
+        750.0,
+        184.0
+      ],
+      "metadata": {
+        "confidence": 0.98
+      },
+      "id": "b7"
+    },
+    {
+      "type": "paragraph",
+      "text": "Rated pressure 6 bar and a maximum flow of 40 l/min.",
+      "page": 2,
+      "bbox": [
+        100.0,
+        220.0,
+        700.0,
+        274.0
+      ],
+      "metadata": {
+        "confidence": 0.98
+      },
+      "id": "b8"
+    },
+    {
+      "type": "paragraph",
+      "text": "smudge",
+      "page": 2,
+      "bbox": [
+        900.0,
+        900.0,
+        960.0,
+        924.0
+      ],
+      "metadata": {
+        "confidence": 0.12
+      },
+      "id": "b9"
+    }
+  ]
+}
