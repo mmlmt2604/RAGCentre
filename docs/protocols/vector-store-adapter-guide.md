@@ -73,8 +73,9 @@ For zero vectors, the reference cosine similarity is zero. Do not advertise `dot
 requires unit-length vectors and cannot return the raw dot product for arbitrary inputs. Check
 vendor score definitions against a running client: Euclidean and squared Euclidean are easy to
 confuse. Scores are comparable within one collection; the core uses ranks for default fusion.
-The current sqlite-vec 0.1.9 adapter offers only cosine and l2 because that library has no dot
-product distance function.
+The sqlite-vec adapter (0.1.9, the newest stable release) offers only cosine and l2: the library
+has no dot-product distance function, and its `vec_length` returns the element count rather than
+the norm, so the dot product cannot be derived from the available distances.
 
 ## Filters and metadata
 
