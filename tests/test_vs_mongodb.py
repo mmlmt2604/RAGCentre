@@ -216,7 +216,7 @@ def test_filter_compiler_rejects_undeclared_fields_and_bad_values() -> None:
         compile_filter(Cond("year", "$eq", "x"), FIELDS)
     with pytest.raises(StoreError, match="finite"):
         compile_filter(Cond("score", "$gt", math.nan), FIELDS)
-    with pytest.raises(StoreError, match="64 bits"):
+    with pytest.raises(StoreError, match="2\\*\\*53"):
         compile_filter(Cond("year", "$eq", 2**70), FIELDS)
     with pytest.raises(StoreError, match="does not apply"):
         compile_filter(Cond("lang", "$gt", "a"), FIELDS)
@@ -921,8 +921,8 @@ def wait_visible(store: MongoDBStore, name: str, timeout: float = 90.0) -> None:
     Search indexes are eventually consistent: the index follows the collection's change stream. A
     write is visible when the index has built its latest definition, its document count equals the
     collection's (deletes), and a query for this thread's last written record finds it with all its
-    metadata (inserts and overwrites: the index applies changes in order, so the last one implies the
-    earlier ones).
+    metadata. Unordered bulk writes can make the last record searchable before earlier records,
+    so the searchable count is checked as well as the last-written record.
     """
     if store.collection_info(name) is None:
         return
@@ -934,10 +934,13 @@ def wait_visible(store: MongoDBStore, name: str, timeout: float = 90.0) -> None:
         if idx is None or index_state(idx) != "ready":
             return False
         docs = idx.get("numDocs")
-        if docs is None:
-            return True
         before = store._db[physical].estimated_document_count()
-        return docs == before == store._db[physical].estimated_document_count()
+        if docs is not None and docs != before:
+            return False
+        entry = store._catalog.get(name)
+        assert entry is not None
+        searchable = store._visible(physical, entry.dim, before) if before else 0
+        return searchable == before == store._db[physical].estimated_document_count()
 
     def canary_found() -> bool:
         if canary is None:

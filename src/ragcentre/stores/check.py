@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
 from ragcentre.models.filters import FieldType, Filter, matches, parse_filter
-from ragcentre.stores.base import CollectionSpec, Metric, Record, VectorStore, upsert_batched
+from ragcentre.stores.base import CollectionSpec, Metric, Record, VectorStore, delete_batched, upsert_batched
 from ragcentre.testing.random_data import SCHEMA_FIELDS, full_schema, random_metadata, random_vector
 from ragcentre.vectors import cosine_similarity, dot, float32, l2_distance
 
@@ -145,16 +145,18 @@ def check_store(
     report.metrics = sorted(store.capabilities.metrics)
     name = f"rc_check_{uuid.uuid4().hex[:8]}"
     report.collection = name
-    created: list[str] = []
     try:
         if not _run(report, "healthcheck", "reachable: yes", store.healthcheck):
             return report
         for i, metric in enumerate(report.metrics):
             coll = name if i == 0 else f"{name}_{metric}"
-            created.append(coll)
-            _check_metric(store, report, coll, metric, records, rng, run_filters=(i == 0))
+            try:
+                _check_metric(store, report, coll, metric, records, rng, run_filters=(i == 0))
+            finally:
+                # Release each metric's collection before creating the next one, including when
+                # creation partially succeeds or a later operation fails (max_collections may be 1).
+                _drop_all(store, report, [coll])
     finally:
-        _drop_all(store, report, created)
         report.seconds = time.monotonic() - started
     return report
 
@@ -271,7 +273,20 @@ def _verify_query(
     if len(got) > k:
         report.add("error", check, f"returned {len(got)} results for k={k}", ms)
         return
+    got_ids = [m.id for m in got]
+    if len(set(got_ids)) != len(got_ids):
+        report.add("error", check, "returned duplicate record ids", ms)
+        return
     want = _expected(records, q, k, metric, f)
+    if f is not None and store.capabilities.filter_exact and len(got_ids) < len(want):
+        report.add(
+            "error",
+            check,
+            f"returned {len(got_ids)} unique filtered results, expected {len(want)} (filter_exact=True)",
+            ms,
+            lost=lost,
+        )
+        return
     if f is not None and not store.capabilities.filter_exact:
         want_set = {w[0] for w in want}
         recall = len({m.id for m in got} & want_set) / len(want_set) if want_set else 1.0
@@ -280,11 +295,15 @@ def _verify_query(
         else:
             report.add("info", check, f"recall {recall:.2f} against brute force (filter_exact=False): yes", ms)
         return
-    got_ids = [m.id for m in got]
     want_ids = [w[0] for w in want]
     if got_ids != want_ids:
+        overlap = len(set(got_ids) & set(want_ids))
         report.add(
-            "warn", check, f"top-k differs from brute force ({len(got_ids)} of {len(want_ids)} matched)", ms, lost=lost
+            "warn",
+            check,
+            f"top-k differs from brute force ({overlap} of {len(want_ids)} expected ids overlap)",
+            ms,
+            lost=lost,
         )
         return
     for m, (_, want_score) in zip(got, want, strict=True):
@@ -331,7 +350,7 @@ def _delete(store: VectorStore, report: CheckReport, name: str, records: list[Re
     expected = len(records) - 2
     t0 = time.perf_counter()
     try:
-        store.delete(name, doomed)
+        delete_batched(store, name, doomed)
         _settle(store, name, expected)
         info = store.collection_info(name)
     except Exception as exc:

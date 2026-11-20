@@ -57,6 +57,7 @@ from ragcentre.stores.pinecone import (
     STORE_TYPE,
     PineconeConfig,
     PineconeStore,
+    _disable_index_retries,
     check_metadata,
     check_record_id,
     compile_filter,
@@ -670,6 +671,135 @@ def test_catalog_round_trip_across_store_instances(tmp_path: Path) -> None:
         s.close()
 
 
+@pytest.fixture
+def connect_fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
+    """Exercise connect's catalog ownership with the existing in-memory data plane.
+
+    The SDK transport replacement is tested separately against the real SDK below.
+    """
+    import ragcentre.stores.pinecone as adapter
+
+    stores: list[PineconeStore] = []
+    servers: dict[str, FakeServer] = {}
+
+    def client(**kwargs: Any) -> FakePinecone:
+        assert kwargs["retry_config"].max_retries == 0
+        return FakePinecone(servers[kwargs["api_key"]])
+
+    px = SimpleNamespace(**vars(FAKE_PX), Pinecone=client, RetryConfig=SimpleNamespace)
+    monkeypatch.setattr(adapter, "_import", lambda: px)
+    monkeypatch.setattr(adapter, "_disable_index_retries", lambda index, px: None)
+
+    def connect(server: FakeServer, *, key: str = "original-key", **kwargs: Any) -> PineconeStore:
+        servers[key] = server
+        store = PineconeStore.connect(index_name="shared-index", data_dir=tmp_path, api_key=key, **kwargs)
+        stores.append(store)
+        assert store._shape is None and store._pc.opened == []  # no resolution during connect
+        return store
+
+    yield connect
+    for store in stores:
+        store.close()
+
+
+def test_connect_catalog_prefixes_isolate_entries_and_drop(connect_fake: Any) -> None:
+    server = FakeServer(DIM, "cosine")
+    a = connect_fake(server, prefix="a_")
+    b = connect_fake(server, prefix="b_")
+    name = "rc_unit_0001"
+    a.ensure_collection(_spec(fields={"lang": "str"}))
+    a.upsert(name, [_rec()])
+    assert b.collection_info(name) is None
+    with pytest.raises(CollectionNotFound):
+        b.query(name, _rec().vector, 1)
+    b.delete(name, ["r1"])
+    assert a.collection_info(name).count == 1
+    b.ensure_collection(_spec(fields={"lang": "int"}))  # incompatible fields are independent
+    b.upsert(name, [_rec(lang=7)])
+    assert a._catalog.get(name).fields == {"lang": "str"}
+    b.drop_collection(name)
+    assert b.collection_info(name) is None
+    assert a.collection_info(name).count == 1
+    assert a.query(name, _rec().vector, 1)[0].id == "r1"
+
+
+def test_connect_catalog_hosts_isolate_projects_with_the_same_index_name(connect_fake: Any) -> None:
+    a = connect_fake(FakeServer(DIM, "cosine", host="project-a.svc.pinecone.io"), key="project-a")
+    b = connect_fake(FakeServer(DIM, "cosine", host="project-b.svc.pinecone.io"), key="project-b")
+    name = "rc_unit_0001"
+    a.ensure_collection(_spec(fields={"lang": "str"}))
+    a.upsert(name, [_rec()])
+    assert b.collection_info(name) is None
+    b.ensure_collection(_spec(fields={"lang": "int"}))
+    b.upsert(name, [_rec(lang=7)])
+    b.drop_collection(name)
+    assert b.collection_info(name) is None
+    assert a.collection_info(name).count == 1
+    assert a._catalog.get(name).fields == {"lang": "str"}
+    assert a._catalog.instance_key != b._catalog.instance_key
+
+
+@pytest.mark.parametrize("operation", ["collection_info", "query", "upsert", "delete"])
+def test_connect_catalog_resolves_before_first_read_and_survives_key_rotation(
+    connect_fake: Any,
+    operation: str,
+) -> None:
+    server = FakeServer(DIM, "cosine")
+    original = connect_fake(server, prefix="p_")
+    name = "rc_unit_0001"
+    original.ensure_collection(_spec())
+    original.upsert(name, [_rec()])
+    original_key = original._catalog.instance_key
+    # A fresh store must discover the existing entry before its first catalog read.
+    rotated = connect_fake(server, key="rotated-key", prefix="p_")
+    if operation == "collection_info":
+        assert rotated.collection_info(name).count == 1
+    elif operation == "query":
+        assert rotated.query(name, _rec().vector, 1)[0].id == "r1"
+    elif operation == "upsert":
+        rotated.upsert(name, [_rec("r2")])
+        assert rotated.collection_info(name).count == 2
+    else:
+        rotated.delete(name, ["r1"])
+        assert rotated.collection_info(name).count == 0
+    assert rotated._catalog.instance_key == original_key
+    assert "original-key" not in original_key and "rotated-key" not in original_key
+    assert rotated._catalog.get(name).fields == SCHEMA_FIELDS
+
+
+def test_connect_legacy_catalog_requires_explicit_safe_reattachment(connect_fake: Any, tmp_path: Path) -> None:
+    store = connect_fake(FakeServer(DIM, "cosine"), prefix="team_")
+    legacy = LocalCatalog(tmp_path, "pinecone", "pinecone/shared-index")
+    name = "rc_unit_0001"
+    try:
+        legacy.ensure(_spec())
+        for operation in (
+            lambda: store.collection_info(name),
+            lambda: store.query(name, _rec().vector, 1),
+            lambda: store.delete(name, ["r1"]),
+        ):
+            with pytest.raises(StoreError, match=r"reindex.*ensure_collection"):
+                operation()
+        # The schema supplied by the owning pipeline safely reattaches the namespace.
+        store.ensure_collection(_spec())
+        assert store.collection_info(name) is not None
+        assert store._catalog.get(name).fields == SCHEMA_FIELDS
+        # Keep the ambiguous old entry: another prefix/project may still own it.
+        assert legacy.get(name) is not None
+    finally:
+        legacy.close()
+
+
+def test_connect_catalog_rebinds_when_a_refreshed_host_changes(connect_fake: Any) -> None:
+    store = connect_fake(FakeServer(DIM, "cosine", host="original.svc.pinecone.io"))
+    store.ensure_collection(_spec())
+    key = store._catalog.instance_key
+    store._pc.server = FakeServer(DIM, "cosine", host="replacement.svc.pinecone.io")
+    store.healthcheck()
+    assert store._catalog.instance_key != key
+    assert store.collection_info("rc_unit_0001") is None
+
+
 def test_lost_catalog_orphans_the_collection_but_is_rebuilt_by_ensure(tmp_path: Path) -> None:
     server = FakeServer(DIM, "cosine")
     a, _ = make_fake_store(tmp_path, server=server)
@@ -829,6 +959,109 @@ def test_connect_builds_a_store_without_a_server(tmp_path: Path) -> None:
     store.close()
     with pytest.raises(StoreError, match="api_key secret is required"):
         STORE_TYPE.factory(PineconeConfig(index_name="docs"), {}, tmp_path)
+
+
+@pytest.mark.parametrize("operation", ["describe", "query", "stats"])
+@pytest.mark.parametrize("failure", [429, 503, "connection"])
+def test_real_sdk_reads_never_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    failure: int | str,
+) -> None:
+    pytest.importorskip("pinecone")
+    from pinecone._internal import http_client
+
+    calls: list[httpx.Request] = []
+
+    def request(transport: Any, req: httpx.Request) -> httpx.Response:
+        calls.append(req)
+        if failure == "connection":
+            raise httpx.ConnectError("simulated connection failure", request=req)
+        return httpx.Response(failure, json={"message": "unavailable"}, request=req)
+
+    def no_sleep(delay: float) -> None:
+        pytest.fail("SDK attempted retry backoff")
+
+    # Patch below the SDK's retry transport, so a hidden retry increments calls too.
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", request)
+    monkeypatch.setattr(http_client, "_retry_sleep", no_sleep)
+    store = PineconeStore.connect(index_name="idx", data_dir=tmp_path, api_key="test-key")
+    try:
+        assert calls == []
+        if operation != "describe":
+            import ragcentre.stores.pinecone as adapter
+
+            monkeypatch.setattr(
+                store,
+                "_describe",
+                lambda: adapter.IndexShape(DIM, "cosine", "https://idx.svc.pinecone.io"),
+            )
+            store.ensure_collection(_spec())
+            assert calls == []  # index construction and transport replacement are also lazy
+            assert store._index._config.retry_config.max_retries == 0
+        with pytest.raises(StoreError, match="failed"):
+            if operation == "describe":
+                store.healthcheck()
+            elif operation == "query":
+                store.query("rc_unit_0001", _rec().vector, 1)
+            else:
+                store.collection_info("rc_unit_0001")
+        assert len(calls) == 1
+        assert (
+            calls[0].url.path
+            == {"describe": "/indexes/idx", "query": "/query", "stats": "/describe_index_stats"}[operation]
+        )
+        assert store._pc._config.retry_config.max_retries == 0
+    finally:
+        store.close()
+
+
+def test_sdk_retry_seam_preserves_transport_settings_and_closes_original() -> None:
+    px = pytest.importorskip("pinecone")
+    index = px.Index(
+        api_key="test-key",
+        host="https://idx.svc.pinecone.io",
+        timeout=7,
+        additional_headers={"X-Custom": "value"},
+        source_tag="ragcentre",
+        connection_pool_maxsize=13,
+    )
+    original = index._http
+    config = index._config
+    try:
+        _disable_index_retries(index, px)
+        assert original._client.is_closed
+        assert index._http is not original
+        assert index._http._headers == original._headers  # includes original API version and custom headers
+        from dataclasses import replace
+
+        assert index._config == replace(config, retry_config=px.RetryConfig(max_retries=0))
+        assert index._http._config == index._config
+    finally:
+        index.close()
+
+
+@pytest.mark.parametrize("broken", ["http", "config", "api_version"])
+def test_sdk_retry_seam_fails_clearly_if_incompatible(broken: str) -> None:
+    px = pytest.importorskip("pinecone")
+    index = px.Index(api_key="test-key", host="https://idx.svc.pinecone.io")
+    original_http, original_config = index._http, index._config
+    version = original_http._headers["X-Pinecone-Api-Version"]
+    try:
+        if broken == "http":
+            index._http = object()
+        elif broken == "config":
+            index._config = object()
+        else:
+            del original_http._headers["X-Pinecone-Api-Version"]
+        with pytest.raises(StoreError, match="incompatible SDK: cannot disable index retries"):
+            _disable_index_retries(index, px)
+        assert not original_http._client.is_closed
+    finally:
+        index._http, index._config = original_http, original_config
+        original_http._headers["X-Pinecone-Api-Version"] = version
+        index.close()
 
 
 # ---- the contract suite: shared parts --------------------------------------------------------------
@@ -1087,6 +1320,45 @@ class TestPineconeLocalContract(PineconeContract):
                 store.ensure_collection(self.spec())
         finally:
             store.close()
+
+    def test_catalog_prefix_isolation_and_key_rotation_on_the_emulator(self, tmp_path: Path) -> None:
+        index = _create_local_index("cosine", DIM)
+        self.indexes.append(index)
+
+        def connect(prefix: str, key: str = "pinecone-local") -> PineconeStore:
+            store = PineconeStore.connect(
+                index_name=index,
+                data_dir=tmp_path,
+                prefix=prefix,
+                api_key=key,
+                controller_host=LOCAL_URL,
+            )
+            self.opened.append(Tracked(store))
+            assert store._shape is None
+            return store
+
+        name = "rc_unit_0001"
+        a, b = connect("a_"), connect("b_")
+        a.ensure_collection(_spec(fields={"lang": "str"}))
+        a.upsert(name, [_rec()])
+        wait_until(lambda: a.collection_info(name).count == 1, timeout=10)
+        assert b.collection_info(name) is None
+        b.ensure_collection(_spec(fields={"lang": "int"}))
+        b.upsert(name, [_rec(lang=7)])
+        wait_until(lambda: b.collection_info(name).count == 1, timeout=10)
+
+        rotated = connect("a_", "rotated-local-key")
+        assert rotated.collection_info(name).count == 1  # first operation reads the persisted catalog
+        assert rotated._catalog.instance_key == a._catalog.instance_key
+        assert rotated._catalog.get(name).fields == {"lang": "str"}
+        assert rotated.query(name, _rec().vector, 1)[0].id == "r1"
+        b.drop_collection(name)
+        assert b.collection_info(name) is None
+        assert rotated.collection_info(name).count == 1
+        deleting = connect("a_", "another-local-key")
+        deleting.delete(name, ["r1"])  # first operation must resolve before looking in the catalog
+        wait_until(lambda: deleting.collection_info(name).count == 0, timeout=10)
+        assert a.collection_info(name).count == 0
 
     def test_euclidean_scores_are_the_negative_distance(self, tmp_path: Path) -> None:
         index = _create_local_index("l2", 3)

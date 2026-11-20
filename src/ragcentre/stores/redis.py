@@ -436,7 +436,7 @@ class RedisStore:
     def ensure_collection(self, spec: CollectionSpec) -> None:
         check_spec(spec, self.capabilities)
         for fname, ftype in spec.fields.items():
-            if not FIELD_RE.match(fname) or fname.startswith(RESERVED_FIELD_PREFIX):
+            if not FIELD_RE.fullmatch(fname) or fname.startswith(RESERVED_FIELD_PREFIX):
                 raise StoreError(f"field name {fname!r} cannot be a Redis search field")
             if fname == "document_id" and ftype != "str":
                 raise StoreError("document_id must be a str field")

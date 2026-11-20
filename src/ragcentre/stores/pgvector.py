@@ -11,9 +11,10 @@ metric, fields and the index-shaping options (``vector_type``, ``hnsw_m``,
 through ``filter_sql.compile_postgres``.
 
 Filtered HNSW scans can return fewer than ``k`` rows. With pgvector 0.8 or later each query sets
-``hnsw.iterative_scan = strict_order`` for its transaction, so the index keeps scanning until
-``k`` rows pass the filter. Older versions only get ``hnsw.ef_search = 1000``, which makes a
-short result much less likely for very selective filters but cannot rule it out.
+``hnsw.iterative_scan = strict_order`` for its transaction. If a filtered scan still returns fewer
+than ``k`` rows (because of scan or memory limits, or on older servers), an exact scan over a
+materialized set of matching rows fills the result. This preserves ``filter_exact`` without
+requiring unbounded HNSW scan memory.
 
 HNSW dimension limits: ``vector`` up to 2000, ``halfvec`` up to 4000. ``vector_type="auto"``
 uses ``halfvec`` above 2000 dims, and falls back to an exact scan (no HNSW index) above 4000 or
@@ -169,9 +170,14 @@ class PgvectorStore:
         self._pg = _import()
         from psycopg import sql
 
-        if not SCHEMA_RE.match(schema):
+        if not SCHEMA_RE.fullmatch(schema):
             raise StoreError(f"invalid schema name {schema!r}")
         self._sql = sql
+        # libpq's parse errors can echo the whole DSN, including credentials.
+        try:
+            self._pg.conninfo.conninfo_to_dict(dsn)
+        except self._pg.Error:
+            raise StoreError("pgvector: invalid PostgreSQL connection string") from None
         self.schema = schema
         self.vector_type = vector_type
         self.hnsw_m = hnsw_m
@@ -460,6 +466,15 @@ class PgvectorStore:
                 )
             conn.execute(s.SQL("SET LOCAL hnsw.ef_search = {}").format(s.Literal(ef_search)))
             rows = conn.execute(stmt, [q, *params, q, k]).fetchall()
+            if filter is not None and len(rows) < k:
+                # Iterative HNSW scans still stop at max_scan_tuples or their memory budget.
+                # Materializing the filtered rows prevents the planner from reusing HNSW and
+                # returns min(k, matching) even on pre-0.8 servers or with low scan settings.
+                exact = s.SQL(
+                    "WITH filtered AS MATERIALIZED (SELECT id, embedding FROM {} WHERE {}) "
+                    "SELECT id::text, {} FROM filtered ORDER BY {} LIMIT %s"
+                ).format(self._table(name), s.SQL(where), distance, distance)
+                rows = conn.execute(exact, [*params, q, q, k]).fetchall()
         return [Match(id=row[0], score=_score(metric, float(row[1]))) for row in rows]
 
     def close(self) -> None:

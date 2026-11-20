@@ -360,7 +360,8 @@ def test_max_dim_is_enforced(fresh: Any) -> None:
     assert s.collection_info("rc_big_0001") is None
 
 
-def test_selective_filter_with_index_scan(dsn: str) -> None:
+@pytest.mark.parametrize("scan_mode", ["iterative", "limited", "legacy"])
+def test_selective_filter_with_index_scan(dsn: str, scan_mode: str) -> None:
     """Through the HNSW index (sequential scans disabled), a 1% filter still returns k rows.
 
     A plain HNSW scan returns at most ``ef_search`` candidates before filtering, so here it finds
@@ -370,7 +371,11 @@ def test_selective_filter_with_index_scan(dsn: str) -> None:
     from psycopg.conninfo import make_conninfo
 
     forced = make_conninfo(dsn, options="-c enable_seqscan=off")
-    s = PgvectorStore(forced, schema=f"rc_test_{uuid.uuid4().hex[:12]}")
+    s = PgvectorStore(
+        forced, schema=f"rc_test_{uuid.uuid4().hex[:12]}", max_scan_tuples=1 if scan_mode == "limited" else None
+    )
+    if scan_mode == "legacy":
+        s._iterative_scan = False  # exercise servers without iterative scans
     try:
         _selective(s, forced, psycopg)
     finally:
@@ -381,8 +386,6 @@ def test_selective_filter_with_index_scan(dsn: str) -> None:
 def _selective(s: PgvectorStore, forced: str, psycopg: Any) -> None:
     import random
 
-    if not s._iterative_scan:
-        pytest.skip(f"pgvector {s.extension_version} has no iterative index scans")
     s.ensure_collection(CollectionSpec(name="rc_sel_00001", dim=8, metric="l2", fields={"lang": "str"}))
     rng = random.Random(7)
     records = [
@@ -402,6 +405,16 @@ def _selective(s: PgvectorStore, forced: str, psycopg: Any) -> None:
     got = s.query("rc_sel_00001", [0.0] * 8, 40, parse_filter({"lang": "rare"}, {"lang": "str", "document_id": "str"}))
     assert len(got) == 40
     assert [m.score for m in got] == sorted((m.score for m in got), reverse=True)
+    # When fewer than k actually exist, the fallback still returns each match exactly once.
+    all_matches = s.query("rc_sel_00001", [0.0] * 8, 100, parse_filter({"lang": "rare"}, {"lang": "str"}))
+    assert {m.id for m in all_matches} == {r.id for r in records if r.metadata["lang"] == "rare"}
+    assert len(all_matches) == 50
+
+
+def test_malformed_dsn_does_not_expose_credentials() -> None:
+    with pytest.raises(StoreError, match="invalid PostgreSQL connection string") as caught:
+        PgvectorStore("user:private-password@host/db")
+    assert "private-password" not in str(caught.value)
 
 
 def test_rejects_bad_schema_and_missing_dsn(dsn: str, tmp_path: Any) -> None:

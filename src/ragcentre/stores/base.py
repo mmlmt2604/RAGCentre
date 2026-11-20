@@ -119,7 +119,7 @@ def require_extra(module: str, *, store: str, extra: str, package: str) -> Modul
 
 
 def check_collection_name(name: str) -> str:
-    if not COLLECTION_RE.match(name):
+    if not COLLECTION_RE.fullmatch(name):
         raise StoreError(f"invalid collection name {name!r}")
     return name
 

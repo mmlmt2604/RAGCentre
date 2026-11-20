@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import random
+from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,8 +15,9 @@ from typer.testing import CliRunner
 from ragcentre import cli
 from ragcentre.cli import app
 from ragcentre.context import AppContext
-from ragcentre.stores.base import Capabilities, CollectionInfo, StoreError
-from ragcentre.stores.check import check_store
+from ragcentre.models.filters import Filter, parse_filter
+from ragcentre.stores.base import Capabilities, CollectionInfo, CollectionSpec, Match, Record, StoreError
+from ragcentre.stores.check import CheckReport, _verify_query, check_store
 from ragcentre.stores.sqlite_vec import SqliteVecStore
 
 
@@ -188,7 +192,7 @@ def test_cli_direct_store_check_requires_type_or_provider() -> None:
 def test_cli_store_check_by_provider_name(monkeypatch: pytest.MonkeyPatch) -> None:
     class StubClient:
         def provider(self, ref: str) -> dict[str, object]:
-            return {"id": "p1", "name": ref}
+            return {"id": "p1", "name": ref, "kind": "vector_store"}
 
         def post(self, path: str, json: object = None, **kwargs: object) -> dict[str, object]:
             assert kwargs.get("params") == {"deep": "true"}
@@ -246,3 +250,134 @@ def test_cli_exits_1_when_the_store_is_not_usable(monkeypatch: pytest.MonkeyPatc
     result = CliRunner().invoke(app, ["store", "check", "--type", "sqlite_vec", "--config", "{}"])
     assert result.exit_code == 1, result.output
     assert "NOT usable" in result.output and "simulated write failure" in result.output
+
+
+@pytest.mark.parametrize("filter_exact", [True, False])
+@pytest.mark.parametrize("fault", ["underfill", "empty", "duplicates"])
+def test_filtered_query_cardinality_is_enforced(tmp_path: Path, filter_exact: bool, fault: str) -> None:
+    class FaultyQuery(SqliteVecStore):
+        def query(self, name: str, vector: Sequence[float], k: int, filter: Filter | None = None) -> list[Match]:
+            got = super().query(name, vector, k, filter)
+            if filter is None or not got:
+                return got
+            if fault == "empty":
+                return []
+            if fault == "underfill":
+                return got[:-1]
+            return [got[0]] * len(got)
+
+    store = FaultyQuery(tmp_path / "vectors.db")
+    store.capabilities = replace(store.capabilities, filter_exact=filter_exact)
+    try:
+        report = check_store(store)
+        findings = [f for f in report.findings if f.check.startswith("filter:")]
+        assert findings
+        if filter_exact or fault == "duplicates":
+            assert not report.ok, report.as_dict()
+            assert all(f.level == "error" for f in findings), report.as_dict()
+            message = "duplicate record ids" if fault == "duplicates" else "unique filtered results, expected"
+            assert all(message in f.message for f in findings)
+        else:
+            assert report.ok, report.as_dict()
+            assert all(f.level in {"info", "warn"} and "filter_exact=False" in f.message for f in findings)
+            assert next(f for f in findings if f.check == "filter:selective").level == "warn"
+        for name in temp_names(report):
+            assert store.collection_info(name) is None
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("filtered", [False, True])
+def test_top_k_warning_reports_actual_id_overlap(tmp_path: Path, filtered: bool) -> None:
+    records = [Record(id=f"{i:02}", vector=[1.0, 0.0], metadata={"lang": "en"}) for i in range(20)]
+
+    class WrongRanking(SqliteVecStore):
+        def query(self, name: str, vector: Sequence[float], k: int, filter: Filter | None = None) -> list[Match]:
+            return [Match(r.id, 0.0) for r in records[-k:]]
+
+    store = WrongRanking(tmp_path / "vectors.db")
+    try:
+        report = CheckReport("wrong_ranking")
+        f = parse_filter({"lang": "en"}, {"lang": "str"}) if filtered else None
+        _verify_query(store, report, "query:cosine", "unused", "cosine", records, random.Random(0), f, lost="ranking")
+        assert report.ok
+        finding = report.findings[0]
+        assert finding.level == "warn"
+        assert "0 of 10 expected ids overlap" in finding.message
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("failure", [None, "create", "upsert"])
+def test_metrics_release_their_collection_before_the_next_metric(tmp_path: Path, failure: str | None) -> None:
+    class LimitedStore(SqliteVecStore):
+        def __init__(self, path: Path) -> None:
+            super().__init__(path)
+            self.capabilities = replace(self.capabilities, max_collections=1, max_batch=2)
+            self.live: set[str] = set()
+            self.created: list[str] = []
+            self.dropped: list[str] = []
+
+        def ensure_collection(self, spec: CollectionSpec) -> None:
+            if self.live:
+                raise StoreError("collection limit exceeded")
+            super().ensure_collection(spec)
+            self.live.add(spec.name)
+            self.created.append(spec.name)
+            if failure == "create" and len(self.created) == 1:
+                raise StoreError("failed after creating the collection")
+
+        def upsert(self, name: str, records: Sequence[Record]) -> None:
+            assert len(records) <= self.capabilities.max_batch
+            if failure == "upsert" and name == self.created[0]:
+                raise StoreError("write failed")
+            super().upsert(name, records)
+
+        def delete(self, name: str, ids: Sequence[str]) -> None:
+            assert len(ids) <= self.capabilities.max_batch
+            super().delete(name, ids)
+
+        def drop_collection(self, name: str) -> None:
+            super().drop_collection(name)
+            self.live.remove(name)
+            self.dropped.append(name)
+
+    store = LimitedStore(tmp_path / "vectors.db")
+    try:
+        report = check_store(store)
+        assert report.ok == (failure is None), report.as_dict()
+        assert len(store.created) == len(report.metrics) == 2
+        assert store.created == store.dropped
+        assert not store.live
+        assert any(f.check == "query:l2" and f.level == "info" for f in report.findings)
+        for name in store.created:
+            assert store.collection_info(name) is None
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("kind", ["parser", "embedder", "chunker", "reranker"])
+def test_cli_store_check_rejects_other_provider_kinds_before_testing(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    class StubClient:
+        def provider(self, ref: str) -> dict[str, object]:
+            return {"id": "p1", "name": ref, "kind": kind}
+
+        def post(self, *args: object, **kwargs: object) -> None:
+            pytest.fail("non-store providers must be rejected before POST /test")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli.state, "client_factory", StubClient)
+    result = CliRunner().invoke(app, ["store", "check", "my-provider"])
+    assert result.exit_code == 1, result.output
+    assert "provider 'my-provider' is not a vector_store" in result.output
+
+
+def test_cli_provider_deep_help_mentions_vector_stores() -> None:
+    result = CliRunner().invoke(app, ["provider", "test", "--help"], color=False)
+    assert result.exit_code == 0, result.output
+    assert "for a vector" in result.output
+    assert "store: check live data" in result.output

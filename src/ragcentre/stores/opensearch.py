@@ -93,6 +93,8 @@ class OpenSearchStore(SearchEngineStore):
             "use_ssl": url.lower().startswith("https://"),
             "verify_certs": verify_certs,
             "timeout": request_timeout,
+            "max_retries": 0,
+            "retry_on_timeout": False,
         }
         if ca_certs:
             kwargs["ca_certs"] = ca_certs

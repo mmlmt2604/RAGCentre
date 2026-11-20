@@ -124,6 +124,28 @@ describe("providers (UI-1)", () => {
     expect(within(drift).getByText("2.14.0")).toBeInTheDocument();
   });
 
+  it("shows and refreshes the connected store's reported capabilities on its detail page", async () => {
+    const user = userEvent.setup();
+    const { uuidFrom } = await import("../../mocks/hash");
+    const id = uuidFrom("provider:qdrant-main");
+    const { state } = renderApp(`/providers/${id}`);
+    state.providers.find((p) => p.id === id)!.config.capabilities = {
+      ...providerTypes.find((t) => t.kind === "vector_store" && t.type === "qdrant")!.capabilities!,
+      consistency: "eventual", filter_exact: false, max_dim: 128,
+    };
+    const caps = await screen.findByLabelText("Store capabilities");
+    expect(within(caps).getByText("eventual")).toBeInTheDocument();
+    expect(within(caps).getByText(/Filtered search is not exact/)).toBeInTheDocument();
+    expect(within(caps).getByText(/limited to 128 dimensions/)).toBeInTheDocument();
+    state.providers.find((p) => p.id === id)!.config.capabilities = {
+      ...providerTypes.find((t) => t.kind === "vector_store" && t.type === "qdrant")!.capabilities!,
+      max_dim: 64,
+    };
+    await user.click(screen.getByRole("button", { name: "Test connection" }));
+    expect(await within(caps).findByText(/limited to 64 dimensions/)).toBeInTheDocument();
+    expect(within(caps).queryByText(/Filtered search is not exact/)).toBeNull();
+  });
+
   it("runs a deep test on a vector store and shows its findings", async () => {
     const user = userEvent.setup();
     const { uuidFrom } = await import("../../mocks/hash");

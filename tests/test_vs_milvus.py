@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import multiprocessing
 import os
 import random
 import uuid
@@ -43,6 +44,7 @@ from ragcentre.stores.milvus import (  # noqa: E402
     MilvusConfig,
     MilvusStore,
     _factory,
+    _target_lock,
     is_lite_uri,
 )
 from ragcentre.stores.registry import vector_store_types  # noqa: E402
@@ -118,6 +120,38 @@ def env(request: pytest.FixtureRequest) -> Iterator[Env]:
         e = Env("server", request.getfixturevalue("server_client"), SERVER_URI)
     yield e
     e.cleanup()
+
+
+def _lock_process(key: str, started: Any, done: Any) -> None:
+    started.set()
+    with _target_lock(key)():
+        done.set()
+
+
+@pytest.mark.parametrize("start_method", [m for m in ("spawn", "fork") if m in multiprocessing.get_all_start_methods()])
+@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
+def test_target_lock_is_reentrant_and_shared_between_processes(start_method: str) -> None:
+    # Run before live clients; the child uses only the Python/file-lock path, never gRPC.
+    ctx = multiprocessing.get_context(start_method)
+    key = f"http://user:secret@milvus/{uuid.uuid4().hex}"
+    lock = _target_lock(key)
+    started, done = ctx.Event(), ctx.Event()
+    worker = ctx.Process(target=_lock_process, args=(key, started, done))
+    try:
+        with lock(), lock():
+            worker.start()
+            assert started.wait(15)
+            assert not done.wait(0.5), "child bypassed a parent-held file lock"
+            path = lock._root / "locks" / hashlib.sha256(key.encode()).hexdigest()
+            assert path.read_bytes() == b""  # Neither target identity nor credentials go on disk.
+        assert done.wait(15), "file lock was not released"
+        worker.join(timeout=5)
+        assert worker.exitcode == 0
+    finally:
+        if worker.pid is not None:
+            if worker.is_alive():
+                worker.terminate()
+            worker.join(timeout=5)
 
 
 # ---- the contract ---------------------------------------------------------------------------------
@@ -364,12 +398,11 @@ def test_dimension_and_input_validation(env: Env) -> None:
 
 
 def test_collection_names_and_prefix(env: Env) -> None:
-    with pytest.raises(StoreError, match="prefix"):
-        env.store(prefix="1bad")
-    with pytest.raises(StoreError, match="prefix"):
-        env.store(prefix="has-dash")
-    with pytest.raises(StoreError, match="prefix"):
-        env.store(prefix="x" * 200)
+    for prefix in ("1bad", "has-dash", "x" * 200, "valid_\n"):
+        with pytest.raises(StoreError, match="prefix"):
+            env.store(prefix=prefix)
+    with pytest.raises(StoreError, match="valid Milvus collection name"):
+        MilvusStore._checked_name("valid_name\n")
     s = env.store()
     for bad in ("Bad", "a", "has-dash", "x" * 64, CATALOG_SUFFIX):
         with pytest.raises(StoreError):
@@ -465,6 +498,150 @@ def test_concurrent_ensure_is_safe(env: Env) -> None:
     assert info is not None and info.count == 0
 
 
+def test_failed_ensure_preserves_an_entry_published_by_another_worker(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    failing, successful = env.store(), env.store()
+    spec = _spec(dim=2)
+    verify = failing._verify_physical
+
+    def publish_then_fail(physical: str, entry: Any) -> None:
+        verify(physical, entry)
+        # Simulate a successful worker publishing after this worker's physical create.
+        # This also covers callers outside the file lock's coordination scope.
+        successful.ensure_collection(_spec(dim=2, lang="str", year="int"))
+        raise StoreError("verification connection lost")
+
+    monkeypatch.setattr(failing, "_verify_physical", publish_then_fail)
+    with pytest.raises(StoreError, match="verification connection lost"):
+        failing.ensure_collection(spec)
+    entry = env.store()._catalog.get(spec.name)
+    assert entry is not None and entry.fields == {"lang": "str", "year": "int"}
+    assert env.store().collection_info(spec.name) is not None
+
+
+def test_failed_create_leaves_no_provisional_catalog_entry(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    s = env.store()
+
+    def fail(physical: str, entry: Any) -> None:
+        assert env.store()._catalog.get("rc_milvus_0001") is None
+        raise StoreError("create failed")
+
+    monkeypatch.setattr(s, "_create", fail)
+    with pytest.raises(StoreError, match="create failed"):
+        s.ensure_collection(_spec(dim=2))
+    assert env.store()._catalog.get("rc_milvus_0001") is None
+
+
+def _catalog_process(
+    uri: str, prefix: str, action: str, started: Any, paused: Any, release: Any, done: Any, results: Any
+) -> None:
+    """Spawn fresh clients/locks; pause a mutation while a second process attempts one."""
+    s = MilvusStore(pymilvus.MilvusClient(uri=uri), target=uri, prefix=prefix)
+    try:
+        started.set()
+        if action in ("create_pause", "fail_pause"):
+            create = s._create
+
+            def paused_create(physical: str, entry: Any) -> None:
+                paused.set()
+                if not release.wait(30):
+                    raise RuntimeError("parent did not release create")
+                if action == "fail_pause":
+                    raise StoreError("injected create failure")
+                create(physical, entry)
+
+            s._create = paused_create  # type: ignore[method-assign]
+            s.ensure_collection(_spec(dim=2, lang="str", year="int"))
+        elif action == "catalog_pause":
+            read = s._catalog._read
+
+            def paused_read(name: str) -> str | None:
+                snapshot = read(name)
+                if not paused.is_set():
+                    paused.set()
+                    if not release.wait(30):
+                        raise RuntimeError("parent did not release catalog read")
+                return snapshot
+
+            s._catalog._read = paused_read
+            s._catalog.ensure(_spec(dim=2, lang="str", year="int"), s._options)
+        elif action == "drop":
+            s.drop_collection("rc_milvus_0001")
+        elif action == "catalog":
+            s._catalog.ensure(_spec(dim=2, lang="str", score="float"), s._options)
+        else:
+            s.ensure_collection(_spec(dim=2, lang="str", score="float"))
+        results.put((action, None))
+    except BaseException as exc:
+        results.put((action, str(exc)))
+    finally:
+        s.close()
+        done.set()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("first_action", "second_action"),
+    [("create_pause", "ensure"), ("fail_pause", "ensure"), ("create_pause", "drop"), ("catalog_pause", "catalog")],
+)
+def test_cross_process_catalog_mutations_are_serialized(
+    server_client: Any, first_action: str, second_action: str
+) -> None:
+    env = Env("server", server_client, SERVER_URI)
+    if first_action == "catalog_pause":
+        env.store().ensure_collection(_spec(dim=2))
+    ctx = multiprocessing.get_context("spawn")
+    started_a, started_b, paused, release, done_a, done_b = [ctx.Event() for _ in range(6)]
+    results = ctx.Queue()
+    first = ctx.Process(
+        target=_catalog_process,
+        args=(SERVER_URI, env.prefix, first_action, started_a, paused, release, done_a, results),
+    )
+    second = ctx.Process(
+        target=_catalog_process,
+        args=(SERVER_URI, env.prefix, second_action, started_b, paused, release, done_b, results),
+    )
+    try:
+        first.start()
+        assert paused.wait(30), "first worker did not reach the paused mutation"
+        second.start()
+        assert started_b.wait(30), "second worker did not connect"
+        assert not done_b.wait(1), "second process bypassed the target lock"
+        release.set()
+        for worker, done in ((first, done_a), (second, done_b)):
+            assert done.wait(30), "mutation deadlocked (including nested catalog transactions)"
+            worker.join(timeout=5)
+            assert worker.exitcode == 0
+        outcomes = dict(results.get(timeout=5) for _ in range(2))
+        assert outcomes[second_action] is None, outcomes
+        if first_action == "fail_pause":
+            assert "injected create failure" in outcomes[first_action]
+        else:
+            assert outcomes[first_action] is None, outcomes
+        entry = env.store()._catalog.get("rc_milvus_0001")
+        if second_action == "drop":
+            assert entry is None
+            assert not server_client.has_collection(env.physical("rc_milvus_0001"))
+        else:
+            assert entry is not None
+            expected = {"lang": "str", "score": "float"}
+            if first_action != "fail_pause":
+                expected["year"] = "int"
+            assert entry.fields == expected
+            assert env.store().collection_info("rc_milvus_0001") is not None
+    finally:
+        release.set()
+        for worker in (first, second):
+            if worker.pid is not None:
+                if worker.is_alive():
+                    worker.terminate()
+                worker.join(timeout=5)
+        results.close()
+        results.join_thread()
+        env.cleanup()
+
+
 def test_a_failing_client_raises_store_error() -> None:
     class Broken:
         def __getattr__(self, name: str) -> Callable[..., Any]:
@@ -503,8 +680,10 @@ def test_query_path_calls_do_not_retry(env: Env) -> None:
     spy = MilvusStore(Spy(), target=env.target, prefix=env.prefix)
     spy.query("rc_milvus_0001", [1.0, 0.0], 1)
     spy.collection_info("rc_milvus_0001")
-    reads = [kw for name, kw in seen if name in ("search", "query", "has_collection")]
+    reads = [kw for name, kw in seen if name in ("search", "query", "has_collection", "load_collection")]
+    assert sum(name == "load_collection" for name, kw in seen) == 2  # cold catalog and physical collection
     assert reads and all(kw.get("retry_times") == 0 for kw in reads), seen
+    assert all(kw.get("retry_on_rate_limit") is False and "timeout" not in kw for kw in reads), seen
     assert all(kw.get("consistency_level") == "Strong" for name, kw in seen if name in ("search", "query"))
 
 
@@ -537,6 +716,8 @@ def test_config_validation() -> None:
         {"uri": "data.sqlite"},  # not a .db path and not a URL
         {"uri": "http://h", "prefix": "1x"},
         {"uri": "http://h", "prefix": "a-b"},
+        {"uri": "http://h", "prefix": "valid_\n"},
+        {"uri": "http://h", "db_name": "valid_db\n"},
         {"uri": "http://h", "db_name": "1db"},
         {"uri": "http://h", "db_name": "a;b"},
         {"uri": "http://h", "index_type": "IVF_FLAT"},

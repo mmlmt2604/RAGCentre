@@ -28,6 +28,7 @@ from ragcentre.hashing import new_id, provider_fp
 from ragcentre.logs import redact, register_secret
 from ragcentre.providers.base import KINDS, BuildEnv, InfoService, ProviderTypeSpec, ServiceInfo
 from ragcentre.providers.registry import get_type, provider_types
+from ragcentre.stores.base import StoreError
 from ragcentre.timeutil import now_iso
 
 if TYPE_CHECKING:
@@ -171,6 +172,8 @@ class ProviderManager:
             info = self._capture_info(spec, provider_id, name, model)
             stored["service_name"] = info.name
             stored["service_version"] = info.version
+            if "capabilities" in spec.captured_fields:
+                stored["capabilities"] = info.capabilities
             if "options_schema" in spec.captured_fields and info.options_schema is not None:
                 stored["options_schema"] = info.options_schema
         if self.by_name(name) is not None:
@@ -192,12 +195,14 @@ class ProviderManager:
     def _capture_info(self, spec: ProviderTypeSpec, provider_id: str, name: str, model: BaseModel) -> ServiceInfo:
         """Call ``/info`` (without credentials) to pin the service name and version."""
         env = self._env(provider_id, name, model)
-        service = spec.factory(model, {}, env)
+        service = None
         try:
+            service = spec.factory(model, {}, env)
             info = cast(InfoService, service).info()
-        except ExecutionError as exc:
+        except (ExecutionError, StoreError) as exc:
+            message = exc.message if isinstance(exc, ExecutionError) else str(exc)
             raise ProviderFailed(
-                f"Could not read {name}'s /info to pin its version: {exc.message}",
+                redact(f"Could not read {name}'s /info to pin its version: {message}"),
                 details={"provider": name},
             ) from None
         finally:
@@ -383,8 +388,27 @@ class ProviderManager:
                 info = cast(Any, inst).info(fresh=True)
                 result["service"] = {"name": info.name, "version": info.version, "mime_types": info.mime_types}
                 pinned = str(row.config.get("service_version", ""))
+                if row.kind == "vector_store" and not pinned:
+                    # HTTP stores created before metadata capture have no version to compare.
+                    # Pin the first successful handshake instead of reporting drift from "".
+                    with self.db.write() as conn:
+                        conn.execute(
+                            "UPDATE providers SET config = json_set(config, '$.service_name', ?, "
+                            "'$.service_version', ?, '$.capabilities', json(?)) WHERE id = ? AND updated_at = ?",
+                            (info.name, info.version, json.dumps(info.capabilities), row.id, row.updated_at),
+                        )
+                    pinned = info.version
                 if "options_schema" in spec.captured_fields and info.options_schema != row.config.get("options_schema"):
                     self._store_options_schema(row, info.options_schema)  # the service's options changed
+                if "capabilities" in spec.captured_fields and info.capabilities != row.config.get("capabilities"):
+                    with self.db.write() as conn:
+                        conn.execute(
+                            "UPDATE providers SET config = json_set(config, '$.capabilities', json(?)) "
+                            "WHERE id = ? AND updated_at = ?",
+                            (json.dumps(info.capabilities), row.id, row.updated_at),
+                        )
+                if row.kind == "vector_store":
+                    inst.healthcheck()
                 if info.version != pinned:
                     result["version_drift"] = {"pinned": pinned, "current": info.version}
                     result["message"] = (
@@ -407,6 +431,8 @@ class ProviderManager:
                 from ragcentre.providers.parsers.check import check_parser
 
                 report = check_parser(cast(Any, inst).client, cast(Any, inst).base_url)
+                for finding in report.findings:
+                    finding.message = redact(finding.message)
                 result["check"] = report.as_dict()  # only a deep test has this key
                 result["ok"] = bool(result["ok"] and report.ok)
                 if not report.ok and result["message"] is None:
@@ -417,6 +443,8 @@ class ProviderManager:
                 from ragcentre.stores.check import check_store
 
                 store_report = check_store(cast("VectorStore", inst), store_type=row.type)
+                for store_finding in store_report.findings:
+                    store_finding.message = redact(store_finding.message)
                 result["check"] = store_report.as_dict()  # only a deep test has this key
                 result["ok"] = bool(result["ok"] and store_report.ok)
                 if not store_report.ok and result["message"] is None:

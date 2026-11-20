@@ -44,7 +44,8 @@ is required. Existing adapters with `ClassVar[Capabilities]` continue to work.
   collection. Report the actual stored shape; retrieval checks it against the built index.
 - `upsert` replaces a record completely, including its metadata. IDs are UUID strings.
   Validate dimensions and reject batches above `max_batch`. The core's `upsert_batched` helper
-  respects that bound. An empty batch is harmless.
+  respects that bound. Production deletion also uses `delete_batched` with the same bound.
+  An empty batch is harmless.
 - `delete` ignores missing IDs. `drop_collection` ignores missing collections and removes both
   records and catalog metadata. Dropping and recreating a name may change its shape.
 - `query` returns only IDs and scores, at most `k`, sorted by descending score. Validate the

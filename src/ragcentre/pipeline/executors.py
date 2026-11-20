@@ -18,7 +18,7 @@ from ragcentre.locks import document_lock
 from ragcentre.models.ir import IRError, normalise_ir
 from ragcentre.providers.base import invalid_response
 from ragcentre.queue.claims import is_current
-from ragcentre.stores.base import Record, upsert_batched
+from ragcentre.stores.base import Record, delete_batched, upsert_batched
 
 if TYPE_CHECKING:
     from ragcentre.context import AppContext
@@ -297,7 +297,7 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
         if records:
             upsert_batched(store, physical, records)
         if previous - new_ids:
-            store.delete(physical, list(previous - new_ids))
+            delete_batched(store, physical, list(previous - new_ids))
         with ctx.db.write() as conn:
             conn.execute(
                 "DELETE FROM index_records WHERE index_id = ? AND document_id = ?", (index_row["id"], claim.document_id)

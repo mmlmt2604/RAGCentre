@@ -203,8 +203,15 @@ class LocalCatalog:
             )
 
     def get(self, name: str) -> CatalogEntry | None:
+        return self.get_for_instance(name, self.instance_key)
+
+    def get_for_instance(self, name: str, instance_key: str) -> CatalogEntry | None:
+        """Read another identity without changing this catalog's active namespace.
+
+        Adapters use this to detect legacy identities and report an explicit recovery path.
+        """
         text = self._db.scalar(
-            "SELECT entry FROM catalog WHERE instance_key = ? AND collection = ?", (self.instance_key, name)
+            "SELECT entry FROM catalog WHERE instance_key = ? AND collection = ?", (instance_key, name)
         )
         return None if text is None else CatalogEntry.from_json(text)
 

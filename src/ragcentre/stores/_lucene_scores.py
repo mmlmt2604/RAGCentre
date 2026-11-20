@@ -34,6 +34,7 @@ import math
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import replace
 from typing import Any, ClassVar
 
 from ragcentre.errors import CollectionMismatch
@@ -265,7 +266,19 @@ class SearchEngineStore(ABC):
         meta = (mappings.get("_meta") or {}).get(META_KEY)
         if meta is None or VECTOR_FIELD not in (mappings.get("properties") or {}):
             raise StoreError(f"{self.label} index for collection {name} was not created by RAGCentre")
-        return json.dumps(meta)
+        # The engine merges mapping properties atomically, whereas concurrent updates replace
+        # _meta wholesale. Recover field types from those authoritative properties so two
+        # successful schema additions cannot make each other's fields disappear from the catalog.
+        entry = CatalogEntry.from_json(json.dumps(meta))
+        fields = dict(entry.fields)
+        field_types = {value: key for key, value in _FIELD_MAPPING.items()}
+        for name, mapping in (mappings.get("properties") or {}).items():
+            ftype = field_types.get(mapping.get("type"))
+            if ftype is not None and not name.startswith(RESERVED_PREFIX):
+                if name in fields and fields[name] != ftype:
+                    raise StoreError(f"{self.label}: field {name} disagrees with its physical mapping")
+                fields[name] = ftype
+        return replace(entry, fields=fields).to_json()
 
     def _properties(self, fields: Mapping[str, FieldType]) -> dict[str, Any]:
         return {f: {"type": _FIELD_MAPPING[t]} for f, t in fields.items()}

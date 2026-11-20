@@ -55,6 +55,8 @@ def _store_spec(st: VectorStoreType) -> ProviderTypeSpec:
         secret_keys=st.secret_keys,
         factory=factory,
         capabilities=st.capabilities,
+        captured_fields=st.captured_fields,
+        info_protocol=st.info_protocol,
     )
 
 

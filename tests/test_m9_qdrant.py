@@ -77,6 +77,48 @@ def test_float_field_matches_integer_filter_values() -> None:
     s.close()
 
 
+def test_nin_matches_records_without_the_field() -> None:
+    from ragcentre.models.filters import matches
+
+    s = QdrantStore.connect(path=":memory:")
+    fields: dict[str, Any] = {"lang": "str", "year": "int"}
+    s.ensure_collection(CollectionSpec(name="rc_nin_0001", dim=2, metric="cosine", fields=fields))
+    ids = [f"6f9619ff-8b86-d011-b42d-00c04fc964f{i}" for i in range(1, 6)]
+    metas: list[dict[str, Any]] = [
+        {"lang": "en", "year": 2019},
+        {"lang": "de"},
+        {"year": 2019},
+        {},
+        {"lang": "fr", "year": 2020},
+    ]
+    s.upsert("rc_nin_0001", [Record(i, [1.0, float(n)], m) for n, (i, m) in enumerate(zip(ids, metas, strict=True))])
+    schema = {**fields, "document_id": "str"}
+    for raw in ({"lang": {"$nin": ["en", "fr"]}}, {"year": {"$nin": [2019]}}, {"lang": {"$nin": ["zz"]}}):
+        f = parse_filter(raw, schema)  # type: ignore[arg-type]
+        want = {i for i, m in zip(ids, metas, strict=True) if matches(f, m)}
+        got = {m.id for m in s.query("rc_nin_0001", [1.0, 1.0], 10, f)}
+        assert got == want, raw
+    s.close()
+
+
+def test_grpc_not_found_is_recognised() -> None:
+    from ragcentre.stores.qdrant import _is_not_found
+
+    class Code:
+        name = "NOT_FOUND"
+
+    class RpcError(Exception):
+        def code(self) -> Code:
+            return Code()
+
+    class Other(Exception):
+        def code(self) -> object:
+            return type("C", (), {"name": "UNAVAILABLE"})()
+
+    assert _is_not_found(RpcError())
+    assert not _is_not_found(Other())
+
+
 def test_config_requires_one_location() -> None:
     with pytest.raises(ValueError):
         QdrantConfig.model_validate({})

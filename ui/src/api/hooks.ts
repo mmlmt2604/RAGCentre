@@ -295,9 +295,11 @@ export function useDeleteSecret(id: string) {
 }
 
 export function useTestProvider(id: string) {
+  const qc = useQueryClient();
   return useMutation({
-    // `deep` also parses a sample document and reports which RAGCentre features the output feeds.
+    // A deep test checks a sample document or a vector store's live behavior.
     mutationFn: (deep?: boolean) => request<ProviderTestResult>(`/providers/${id}/test`, { method: "POST", query: deep ? { deep: "true" } : undefined }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.provider(id) }),
   });
 }
 

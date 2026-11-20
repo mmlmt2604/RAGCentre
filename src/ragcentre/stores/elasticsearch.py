@@ -113,7 +113,12 @@ class ElasticsearchStore(SearchEngineStore):
             raise StoreError("elasticsearch needs exactly one of 'url' and 'cloud_id'")
         if api_key and password:
             raise StoreError("elasticsearch: give either an api_key or a password, not both")
-        kwargs: dict[str, Any] = {"request_timeout": request_timeout, "verify_certs": verify_certs}
+        kwargs: dict[str, Any] = {
+            "request_timeout": request_timeout,
+            "verify_certs": verify_certs,
+            "max_retries": 0,
+            "retry_on_timeout": False,
+        }
         if url is not None:
             kwargs["hosts"] = [url]
         else:
@@ -183,6 +188,8 @@ class ElasticsearchStore(SearchEngineStore):
             self._server_version = _version(str(self._info()["version"]["number"]))
         version = self._server_version
         needed = max(MIN_VERSION, _MIN_OPTION_VERSION.get(self._index_options, MIN_VERSION))
+        if self._index_options in QUANTIZED:
+            needed = max(needed, RESCORE_VERSION)  # exact score normalization needs full-precision rescoring
         if version < needed:
             raise StoreError(
                 f"elasticsearch {'.'.join(map(str, version))} is too old for index_options "
@@ -198,7 +205,11 @@ class ElasticsearchStore(SearchEngineStore):
         }
         if flt is not None:
             knn["filter"] = flt  # inside knn: a sibling filter would be applied after the top-k
-        if entry.options.get("index_options", self._index_options) in QUANTIZED and self._supports_rescore():
+        if entry.options.get("index_options", self._index_options) in QUANTIZED:
+            if not self._supports_rescore():
+                raise StoreError(
+                    "elasticsearch: querying a quantized index needs 8.18 or later for full-precision rescoring"
+                )
             knn["rescore_vector"] = {"oversample": RESCORE_OVERSAMPLE}
         return self._client.search(index=index, knn=knn, size=k, source=False).body
 
@@ -217,7 +228,7 @@ class ElasticsearchConfig(BaseModel):
     index_options: IndexOptions = Field(
         default="hnsw",
         description="Vector index type (set once): hnsw is full precision; int8_/int4_/bbq_ variants quantise "
-        "for memory at some cost in recall (bbq needs 64+ dimensions); flat variants scan exactly",
+        "for memory at some cost in recall (bbq needs 64+ dimensions; quantized indexes need Elasticsearch 8.18+); flat variants scan exactly",
     )
     num_candidates_factor: int = Field(
         default=10, ge=1, le=1000, description="num_candidates = k x this factor (capped at 10,000): recall vs speed"

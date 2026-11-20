@@ -12,7 +12,7 @@ import {
   useSetSecret,
   useTestProvider,
 } from "../../api/hooks";
-import type { ParserCheck, Provider, ProviderTestResult, ProviderType, StoreCheck } from "../../api/types";
+import type { ParserCheck, Provider, ProviderTestResult, ProviderType, StoreCapabilities, StoreCheck } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
 import { ConfigFields, LockedSettings } from "../../components/ConfigForm";
 import { ConfirmDialog } from "../../components/Dialog";
@@ -66,6 +66,7 @@ function BackLink() {
 
 function Detail({ p, type }: { p: Provider; type: ProviderType }) {
   const test = useTestProvider(p.id);
+  const capabilities = (p.config.capabilities as StoreCapabilities | undefined) ?? type.capabilities;
   const fields = useMemo(() => configFields(type.config_schema), [type]);
   const permanentKeys = new Set(type.fingerprint_fields);
   const operational = fields.filter((f) => !permanentKeys.has(f.key));
@@ -126,7 +127,7 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
 
       <TestResultView result={test.data} error={test.error} />
 
-      {type.capabilities ? <StoreCapabilitiesPanel caps={type.capabilities} immutable={[]} /> : null}
+      {capabilities ? <StoreCapabilitiesPanel caps={capabilities} immutable={[]} /> : null}
 
       {operational.length ? <SettingsForm p={p} fields={operational} /> : null}
 
@@ -173,8 +174,7 @@ export function TestResultView({ result, error }: { result: ProviderTestResult |
           <div>
             <p>
               The service now reports version <span className="mono">{result.version_drift.current}</span>, but this provider was pinned to{" "}
-              <span className="mono">{result.version_drift.pinned}</span>. Parsing is refused until you create a new provider for the new version, so results
-              from the two versions are never mixed.
+              <span className="mono">{result.version_drift.pinned}</span>. Review the service change and create a new provider to use the new version.
             </p>
           </div>
         </div>

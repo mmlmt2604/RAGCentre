@@ -13,6 +13,12 @@ standalone server; see the ``DECISIONS.md`` notes in ``integration/t-milvus.md``
   in a side collection ``<prefix>ragcentre_catalog`` (VARCHAR key, VARCHAR entry, a dummy 2-d
   vector because Milvus refuses collections without a vector field). Milvus has no free-form
   collection metadata slot, and its collection properties accept fixed keys only.
+* Ensure, drop and catalog read/merge/write transactions use a reentrant file lock. It coordinates
+  cooperating processes using the same target identity, host, OS user and temporary directory.
+  It is not a distributed lock: callers on different hosts (or with different target aliases,
+  users or temporary directories) must externally serialize schema/catalog mutations.
+  New catalog entries are published only after the physical collection is verified and loaded;
+  failed creates never delete a catalog entry as cleanup.
 * Queries and the catalog use ``consistency_level="Strong"`` (Milvus' default, Bounded, can miss
   recent writes). Counts use ``count(*)``: collection statistics are stale after writes and deletes
   on a standalone server.
@@ -31,17 +37,21 @@ names itself. ``pymilvus`` is imported only when a store is created.
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import math
+import os
 import re
+import tempfile
 import threading
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, BinaryIO, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ragcentre.errors import CollectionMismatch
+from ragcentre.hashing import sha256_text
 from ragcentre.models.filters import Filter
 from ragcentre.stores.base import (
     Capabilities,
@@ -56,7 +66,7 @@ from ragcentre.stores.base import (
     check_spec,
     require_extra,
 )
-from ragcentre.stores.catalog import CatalogEntry, InStoreCatalog
+from ragcentre.stores.catalog import CatalogEntry, InStoreCatalog, reconcile
 from ragcentre.stores.filter_milvus import compile_milvus, string_literal
 from ragcentre.stores.registry import VectorStoreType
 
@@ -88,14 +98,60 @@ BEST_CASE = Capabilities(
     max_collections=MAX_COLLECTIONS,
 )
 
-_locks: dict[str, threading.RLock] = {}
+
+class _TargetLock:
+    """Reenter the thread lock without opening and flocking a second file descriptor."""
+
+    def __init__(self, key: str) -> None:
+        self._root = Path(tempfile.gettempdir()) / f"ragcentre-milvus-{os.getuid()}"
+        self._path = self._root / "locks" / sha256_text(key)
+        self._thread = threading.RLock()
+        self._depth = 0
+        self._pid = os.getpid()
+        self._file: BinaryIO | None = None
+
+    @contextlib.contextmanager
+    def __call__(self) -> Iterator[None]:
+        if self._pid != os.getpid():
+            # Close the inherited descriptor without LOCK_UN, which would unlock the parent.
+            if self._file is not None:
+                self._file.close()
+                self._file = None
+            self._thread = threading.RLock()
+            self._depth = 0
+            self._pid = os.getpid()
+        with self._thread:
+            if self._depth:
+                self._depth += 1
+                try:
+                    yield
+                finally:
+                    self._depth -= 1
+            else:
+                # Like document_lock: an empty file named only by the hash of the target key.
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                with self._path.open("a+b") as lock:
+                    self._file = lock
+                    try:
+                        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                        self._depth = 1
+                        try:
+                            yield
+                        finally:
+                            self._depth = 0
+                            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+                    finally:
+                        self._file = None
+
+
+_locks: dict[str, _TargetLock] = {}
 _locks_guard = threading.Lock()
 
 
-def _target_lock(key: str) -> threading.RLock:
-    """One lock per (uri, database, prefix), shared by every store object in this process."""
+def _target_lock(key: str) -> _TargetLock:
+    """One reentrant thread/file lock per target and prefix, shared by store objects."""
     with _locks_guard:
-        return _locks.setdefault(key, threading.RLock())
+        return _locks.setdefault(key, _TargetLock(key))
 
 
 def _import() -> Any:
@@ -125,7 +181,7 @@ class MilvusStore:
         hnsw_ef_construction: int = 200,
         hnsw_ef: int = 64,
     ) -> None:
-        if not _PREFIX_RE.match(prefix):
+        if not _PREFIX_RE.fullmatch(prefix):
             raise StoreError("prefix must start with a letter or underscore and use letters, digits and '_' only")
         self._mod = _import()
         self._client = client
@@ -144,7 +200,7 @@ class MilvusStore:
         self._ready: set[str] = set()  # physical names loaded and checked in this process
         self._catalog_ready = False
         self._catalog = InStoreCatalog(
-            self._catalog_read, self._catalog_write, self._catalog_remove, transaction=lambda: self._lock
+            self._catalog_read, self._catalog_write, self._catalog_remove, transaction=self._lock
         )
 
     @classmethod
@@ -191,7 +247,7 @@ class MilvusStore:
 
     @staticmethod
     def _checked_name(physical: str) -> str:
-        if not _NAME_RE.match(physical):
+        if not _NAME_RE.fullmatch(physical):
             raise StoreError(
                 f"{physical!r} is not a valid Milvus collection name (letters, digits and '_', not starting "
                 f"with a digit, at most {MAX_NAME} characters); shorten the prefix"
@@ -235,7 +291,7 @@ class MilvusStore:
         if self._catalog_ready:
             return True
         name = self._catalog_name
-        with self._lock:
+        with self._lock():
             if not self._has(name, **_READ):
                 if not create:
                     return False
@@ -259,7 +315,7 @@ class MilvusStore:
                 except StoreError:
                     if not self._has(name):  # created concurrently by another process?
                         raise
-            self._call(f"load catalog collection {name}", self._client.load_collection, name, timeout=self._timeout)
+            self._call(f"load catalog collection {name}", self._client.load_collection, name, **_READ)
             self._catalog_ready = True
         return True
 
@@ -321,7 +377,7 @@ class MilvusStore:
                 self._entries[name] = entry
         if not ready:
             try:
-                self._call(f"load collection {physical}", self._client.load_collection, physical, timeout=self._timeout)
+                self._call(f"load collection {physical}", self._client.load_collection, physical, **_READ)
             except CollectionNotFound:
                 self._forget(name, physical)
                 raise
@@ -387,28 +443,25 @@ class MilvusStore:
                 f"Milvus needs at least {MIN_DIM} dimensions per vector; collection {spec.name} has {spec.dim}"
             )
         physical = self._physical(spec.name)
-        with self._lock:
+        with self._lock():
             exists = self._has(physical, timeout=self._timeout)
             if not exists:
-                # A catalog entry without a collection is the residue of a crash or a failed create.
+                # Under the target lock, an entry without a collection is crash residue.
                 self._catalog_open(create=True)
                 self._catalog.drop(spec.name)
-            had_entry = self._catalog.get(spec.name) is not None
-            entry = self._catalog.ensure(spec, self._options)  # raises CollectionMismatch
+            entry = reconcile(self._catalog.get(spec.name), spec, self._options)
             try:
                 if not exists:
                     try:
                         self._create(physical, entry)
                     except StoreError:
-                        if not self._has(physical, timeout=self._timeout):  # not created by a concurrent process
+                        if not self._has(physical, timeout=self._timeout):
                             raise
                 self._verify_physical(physical, entry)
                 self._call(f"load collection {physical}", self._client.load_collection, physical, timeout=self._timeout)
-            except BaseException:
-                if not had_entry:
-                    with contextlib.suppress(Exception):
-                        self._catalog.drop(spec.name)
-                raise
+                # Do not publish a provisional entry or delete one on failure. A physical
+                # collection left by a crash here can be verified and adopted on the next ensure.
+                self._catalog.ensure(spec, self._options)
             finally:
                 self._forget(spec.name)
             with self._state:
@@ -432,7 +485,7 @@ class MilvusStore:
 
     def drop_collection(self, name: str) -> None:
         physical = self._physical(name)
-        with self._lock:
+        with self._lock():
             self._forget(name, physical)
             self._call(f"drop collection {physical}", self._client.drop_collection, physical, timeout=self._timeout)
             self._catalog.drop(name)
@@ -532,14 +585,14 @@ class MilvusConfig(BaseModel):
     @field_validator("prefix")
     @classmethod
     def _check_prefix(cls, v: str) -> str:
-        if not _PREFIX_RE.match(v):
+        if not _PREFIX_RE.fullmatch(v):
             raise ValueError("prefix must start with a letter or underscore and use letters, digits and '_' only")
         return v
 
     @field_validator("db_name")
     @classmethod
     def _check_db(cls, v: str) -> str:
-        if not _DB_RE.match(v):
+        if not _DB_RE.fullmatch(v):
             raise ValueError("db_name must start with a letter and use letters, digits and '_' only")
         return v
 

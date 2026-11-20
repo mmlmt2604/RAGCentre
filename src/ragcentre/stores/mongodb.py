@@ -98,7 +98,7 @@ _METRIC_FROM_SIMILARITY: dict[str, Metric] = {v: k for k, v in _SIMILARITY.items
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,38}$")
 _PREFIX_RE = re.compile(r"^[A-Za-z0-9_-]{0,32}$")
 _SCHEMES = ("mongodb://", "mongodb+srv://")
-_INT_LIMIT = 2**63
+_INT_LIMIT = 2**53  # search indexes compare numeric filters at double precision
 _DUPLICATE_KEY = 11000
 _INDEX_EXISTS = 68  # "Index <name> already exists with a different definition"
 
@@ -114,8 +114,8 @@ def _scalar(value: Any) -> Any:
     if isinstance(value, bool):
         return value
     if isinstance(value, int):
-        if not -_INT_LIMIT < value < _INT_LIMIT:
-            raise StoreError("filter integers must fit in 64 bits")
+        if not -_INT_LIMIT <= value <= _INT_LIMIT:
+            raise StoreError("filter integers must be within +/-2**53 for exact numeric comparisons")
         return value
     if isinstance(value, float):
         if not math.isfinite(value):
@@ -269,7 +269,13 @@ class MongoDBStore:
         if not uri.startswith(_SCHEMES):
             raise StoreError("mongodb: the 'uri' secret must start with mongodb:// or mongodb+srv://")
         try:
-            client = pymongo.MongoClient(uri, appname="ragcentre", serverSelectionTimeoutMS=15000, connect=False)
+            client = pymongo.MongoClient(
+                uri,
+                appname="ragcentre",
+                serverSelectionTimeoutMS=15000,
+                connect=False,
+                retryReads=False,
+            )
         except Exception as exc:  # the uri may hold a password: report the kind of problem only
             raise StoreError(f"mongodb: invalid connection string ({type(exc).__name__})") from None
         return cls(
@@ -468,14 +474,11 @@ class MongoDBStore:
             # index's own document count (``numDocs``) can run ahead of the searcher by a few seconds
             # (measured), so a small collection is also counted by an exact search (``_visible``).
             indexed = idx.get("numDocs")
-            if isinstance(indexed, int):
-                count = (
-                    min(indexed, self._visible(physical, dim, indexed))
-                    if 0 < indexed <= VISIBLE_PROBE_LIMIT
-                    else indexed
-                )
-            else:  # a deployment that does not report it: the collection's own document count
-                count = self._db[physical].estimated_document_count()
+            if not isinstance(indexed, int):
+                indexed = self._db[physical].estimated_document_count()
+            count = (
+                min(indexed, self._visible(physical, dim, indexed)) if 0 < indexed <= VISIBLE_PROBE_LIMIT else indexed
+            )
             return CollectionInfo(dim, metric, int(count))
 
     def drop_collection(self, name: str) -> None:
@@ -508,8 +511,8 @@ class MongoDBStore:
                     f"record {rec.id}: field {key} is {len(value)} characters; filter fields over "
                     f"{MAX_STRING_CHARS} are not matched reliably by MongoDB search indexes"
                 )
-            if isinstance(value, int) and not isinstance(value, bool) and not -_INT_LIMIT < value < _INT_LIMIT:
-                raise StoreError(f"record {rec.id}: field {key} does not fit in 64 bits")
+            if isinstance(value, int) and not isinstance(value, bool) and not -_INT_LIMIT <= value <= _INT_LIMIT:
+                raise StoreError(f"record {rec.id}: field {key} must be within +/-2**53 for exact numeric comparisons")
             doc[key] = value
         return doc
 

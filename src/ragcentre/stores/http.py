@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Sequence
+from dataclasses import asdict
 from typing import Any, cast
 
 import httpx
@@ -23,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ragcentre.errors import CollectionMismatch
 from ragcentre.models.filters import Filter, to_json
+from ragcentre.providers.base import ServiceInfo, parse_retry_after
 from ragcentre.stores.base import (
     METRICS,
     Capabilities,
@@ -118,7 +120,9 @@ def _capabilities(caps: dict[str, Any]) -> Capabilities:
 
 def _read_info(client: httpx.Client) -> tuple[str, str, Capabilities]:
     try:
-        resp = client.get("/info")
+        request = client.build_request("GET", "/info")
+        request.headers.pop("Authorization", None)
+        resp = client.send(request)
     except httpx.HTTPError as exc:
         raise StoreError(f"http store: could not read /info: {exc}") from exc
     if resp.status_code >= 300:
@@ -214,12 +218,23 @@ class HttpStore:
 
     # ---- VectorStore --------------------------------------------------------------------------
 
+    def info(self, *, fresh: bool = False) -> ServiceInfo:
+        if fresh:
+            self.service_name, self.service_version, self.capabilities = _read_info(self._client)
+        caps = asdict(self.capabilities)
+        caps["metrics"] = sorted(self.capabilities.metrics)
+        return ServiceInfo(PROTOCOL, self.service_name, self.service_version, capabilities=caps)
+
     def healthcheck(self) -> None:
         self._request("GET", "/health")
 
     def ensure_collection(self, spec: CollectionSpec) -> None:
         check_spec(spec, self.capabilities)
-        body = {"dim": spec.dim, "metric": spec.metric, "fields": dict(spec.fields)}
+        body = {
+            "dim": spec.dim,
+            "metric": spec.metric,
+            "fields": {k: v for k, v in spec.fields.items() if k != "document_id"},
+        }
         self._request("PUT", f"/collections/{spec.name}", retry=True, json=body)
 
     def collection_info(self, name: str) -> CollectionInfo | None:
@@ -286,14 +301,12 @@ def _retryable(status: int) -> bool:
 
 
 def _backoff(attempt: int, resp: httpx.Response | None) -> float:
+    delay = min(BASE_BACKOFF * float(2**attempt), MAX_BACKOFF)
     if resp is not None:
-        raw = resp.headers.get("retry-after", "").strip()
-        if raw:
-            try:
-                return min(max(0.0, float(raw)), MAX_BACKOFF)
-            except ValueError:
-                pass
-    return min(BASE_BACKOFF * float(2**attempt), MAX_BACKOFF)
+        retry_after = parse_retry_after(resp.headers.get("retry-after"))
+        if retry_after is not None:
+            delay = max(delay, retry_after)
+    return delay
 
 
 # ---- registration ---------------------------------------------------------------------------
@@ -319,4 +332,6 @@ STORE_TYPE = VectorStoreType(
     # Best case for the registry/UI. A real instance reports its actual capabilities from /info.
     capabilities=Capabilities(metrics=frozenset(METRICS), max_batch=DEFAULT_MAX_BATCH),
     factory=_factory,
+    captured_fields=("service_name", "service_version", "capabilities"),
+    info_protocol=PROTOCOL,
 )

@@ -69,6 +69,14 @@ def _import() -> Any:
 def _is_not_found(exc: Exception) -> bool:
     if getattr(exc, "status_code", None) == 404:
         return True
+    # gRPC (prefer_grpc=True) raises a bare ``grpc.RpcError`` with ``.code()`` and no status code.
+    code = getattr(exc, "code", None)
+    if callable(code):
+        try:
+            if getattr(code(), "name", "") == "NOT_FOUND":
+                return True
+        except Exception:
+            pass
     return isinstance(exc, ValueError) and "not found" in str(exc).lower()
 
 
@@ -133,7 +141,9 @@ def _condition(c: Cond, ftype: FieldType, models: Any) -> Any:
         return models.Filter(should=exact) if c.op == "$in" else models.Filter(must_not=exact)
     if c.op == "$in":
         return models.Filter(must=[cond(match=models.MatchAny(any=values))])
-    return models.Filter(must=[cond(match=models.MatchExcept(**{"except": values}))])
+    # ``$nin`` must also match records that lack the field (like ``matches``). ``MatchExcept`` requires
+    # the field to exist, so negate ``MatchAny`` instead.
+    return models.Filter(must_not=[cond(match=models.MatchAny(any=values))])
 
 
 # ---- store ----------------------------------------------------------------------------------

@@ -23,7 +23,7 @@ from typing import Annotated, Any, NoReturn
 import typer
 
 from ragcentre.client import ApiError, Client, Unreachable
-from ragcentre.logs import configure_logging
+from ragcentre.logs import configure_logging, redact, register_secret
 from ragcentre.settings import Settings
 
 app = typer.Typer(
@@ -77,7 +77,7 @@ def _main(
 
 
 def _fail(message: str, code: int = 1) -> NoReturn:
-    typer.echo(f"error: {message}", err=True)
+    typer.echo(f"error: {redact(message)}", err=True)
     raise typer.Exit(code)
 
 
@@ -244,7 +244,8 @@ def provider_list() -> None:
 def provider_test(
     name: Annotated[str, typer.Argument(help="Provider name or id.")],
     deep: Annotated[
-        bool, typer.Option("--deep", help="For a parser: also parse a sample document and check its structure.")
+        bool,
+        typer.Option("--deep", help="For a parser: parse a sample document; for a vector store: check live data."),
     ] = False,
 ) -> None:
     """Check that a provider is reachable and working."""
@@ -340,6 +341,7 @@ def _store_env_secrets(type_: str, keys: Sequence[str]) -> dict[str, str]:
         env_var = f"RAGCENTRE_{type_.upper()}_{key.upper()}"
         value = os.environ.get(env_var)
         if value:
+            register_secret(value)
             secrets[key] = value
     return secrets
 
@@ -422,6 +424,8 @@ def store_check(
             _fail(f"could not build {type_}: {exc}")
         try:
             report = check_store(store, store_type=type_).as_dict()
+            for finding in report["findings"]:
+                finding["message"] = redact(finding["message"])
         finally:
             store.close()
         _emit(report, lambda: _print_store_check(report["store_type"], report))
@@ -432,6 +436,8 @@ def store_check(
     assert provider is not None
     with _api() as api:
         p = api.provider(provider)
+        if p.get("kind") != "vector_store":
+            _fail(f"provider {p['name']!r} is not a vector_store")
         result = api.post(f"/providers/{p['id']}/test", params={"deep": "true"})
 
     def human() -> None:

@@ -52,6 +52,9 @@ class VectorStoreType:
     # change after the provider is created: changing one means a new store provider, so a new index.
     # Connection fields (url, timeout, credentials) stay mutable.
     immutable_fields: tuple[str, ...] = ()
+    # Service metadata captured from info() when a provider is created.
+    captured_fields: tuple[str, ...] = ()
+    info_protocol: str | None = None
 
     def __post_init__(self) -> None:
         unknown = [f for f in self.immutable_fields if f not in self.config_model.model_fields]

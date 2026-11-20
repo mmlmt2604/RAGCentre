@@ -137,7 +137,15 @@ This table is generated from the store registry (`ragcentre store list --markdow
 fails when it drifts. `ragcentre store list` shows the same facts in the terminal, and
 `ragcentre store check` writes to a temporary collection on a live store and reports which
 guarantees it really gives. The web UI shows a type's guarantees and warnings when you create a
-provider.
+provider. HTTP stores capture their service name, version and actual capabilities from `/info`;
+the provider detail page uses those reported capabilities, and a connection test refreshes them.
+
+pgvector retries a short filtered HNSW result with an exact scan over matching rows, preserving
+filtered result counts even when scan limits are reached. Quantized Elasticsearch indexes require
+8.18 or later for full-precision score rescoring. MongoDB filter metadata and integer operands must
+stay within ±2⁵³, where its search index preserves numeric comparisons. Milvus coordinates schema
+changes across worker processes on one host; separate hosts must use separate prefixes or serialize
+schema changes externally. Back up Pinecone's local collection catalog with the RAGCentre data directory.
 
 To add a store, follow the [adapter guide](docs/protocols/vector-store-adapter-guide.md): publish a
 `VectorStoreType` through the `ragcentre.vector_stores` entry point and pass

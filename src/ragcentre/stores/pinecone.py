@@ -9,7 +9,8 @@ use different prefixes). Namespaces appear when the first vector is written.
 
 **Catalog.** Pinecone has nowhere to keep collection metadata, so dimension, metric and filter-field
 types live in ``LocalCatalog`` (``<data dir>/store_catalogs/pinecone.db``), keyed by
-``<index host or control-plane URL>/<index name>`` and the collection name. Losing that file
+``[resolved physical index host, namespace prefix]`` and the collection name. The host is resolved
+lazily before any catalog access; API keys and logical index names are not part of its identity. Losing that file
 orphans the collections, exactly like losing the core database. ``drop_collection`` empties the
 namespace (``delete(delete_all=True)``; a namespace that does not exist is fine) and forgets the
 catalog entry.
@@ -98,6 +99,37 @@ _AUTH_HINT = " (check the api_key secret and that it belongs to the project that
 
 def _import() -> Any:
     return require_extra("pinecone", store="pinecone", extra="pinecone", package="pinecone")
+
+
+def _disable_index_retries(index: Any, px: Any) -> None:
+    """Bridge the pinned 10.3.x/10.x legacy Index API's missing retry configuration.
+
+    ``Pinecone(retry_config=...)`` configures only the control plane; ``Index`` rejects that
+    keyword and creates its own default retry policy. Before the index is used, rebuild its
+    HTTPClient with a replaced dataclass config and the original API version. Keep all other
+    transport settings. This private SDK seam is covered by real transport tests and must fail
+    explicitly if the SDK changes, rather than silently re-enabling retries. It also disables
+    write retries because reads and writes share the transport.
+    """
+    try:
+        from pinecone._internal.http_client import HTTPClient
+
+        original = index._http
+        if not isinstance(original, HTTPClient):
+            raise TypeError("unexpected index HTTP client")
+        api_version = original._headers["X-Pinecone-Api-Version"]
+        if not isinstance(api_version, str) or not api_version:
+            raise TypeError("missing index API version")
+        config = replace(index._config, retry_config=px.RetryConfig(max_retries=0))
+        replacement = HTTPClient(config, api_version)
+    except Exception as exc:
+        raise StoreError(
+            "pinecone: incompatible SDK: cannot disable index retries via the pinned 10.x HTTPClient seam "
+            f"({type(exc).__name__}); use a supported pinecone>=10.3,<11 SDK"
+        ) from None
+    index._http = replacement
+    index._config = config
+    original.close()
 
 
 # ---- validation -----------------------------------------------------------------------------------
@@ -277,6 +309,8 @@ class PineconeStore:
         self._pc = pc
         self._px = px
         self._catalog = catalog
+        # Only connect-created catalogs are rebound; an injected catalog remains a test seam.
+        self._managed_catalog: LocalCatalog | None = None
         self._index_name = index_name
         self._prefix = prefix
         self._controller = controller_host
@@ -317,14 +351,21 @@ class PineconeStore:
         if not key:
             raise StoreError("pinecone: the api_key secret is required")
         try:
-            pc = px.Pinecone(api_key=key, host=controller_host, timeout=timeout, source_tag="ragcentre")
+            pc = px.Pinecone(
+                api_key=key,
+                host=controller_host,
+                timeout=timeout,
+                source_tag="ragcentre",
+                retry_config=px.RetryConfig(max_retries=0),
+            )
         except Exception as exc:  # the SDK validates keys and hosts
             raise StoreError(
                 f"pinecone: could not create the client: {type(exc).__name__}: {exc}".replace(key, "***")
             ) from None
-        target = index_host or controller_host or "pinecone"
-        catalog = LocalCatalog(data_dir, "pinecone", instance_key=f"{target.rstrip('/')}/{index_name}")
-        return cls(
+        # This provisional key is never read or written: _resolve binds it to the physical host
+        # before catalog access. Creating the local file here needs no network.
+        catalog = LocalCatalog(data_dir, "pinecone", instance_key=json.dumps([None, prefix]))
+        store = cls(
             pc,
             px,
             catalog,
@@ -335,6 +376,8 @@ class PineconeStore:
             api_key=key,
             timeout=timeout,
         )
+        store._managed_catalog = catalog
+        return store
 
     # ---- helpers ------------------------------------------------------------------------------
 
@@ -399,16 +442,44 @@ class PineconeStore:
                 if self._index is None or (self._shape is not None and self._shape.host != shape.host):
                     if self._index is not None:
                         self._index.close()
+                        self._index = None
+                    index = None
                     try:
-                        self._index = self._pc.index(host=shape.host)
+                        index = self._pc.index(host=shape.host)
+                        if self._managed_catalog is not None:
+                            _disable_index_retries(index, self._px)
+                    except StoreError:
+                        if index is not None:
+                            index.close()
+                        self._index = None
+                        raise
                     except self._px.PineconeError as exc:
                         raise self._wrap("opening the index", exc) from None
+                    self._index = index
+                if self._managed_catalog is not None:
+                    self._managed_catalog.instance_key = json.dumps([shape.host, self._prefix])
                 self._shape = shape
                 self._caps = replace(self.BEST_CASE, metrics=frozenset({shape.metric}))
             return self._index, self._shape
 
-    def _entry(self, name: str) -> Any:
+    def _catalog_entry(self, name: str) -> Any:
         entry = self._catalog.get(name)
+        if entry is None and self._managed_catalog is not None:
+            target = self._index_host or self._controller or "pinecone"
+            legacy_key = f"{target.rstrip('/')}/{self._index_name}"
+            if self._managed_catalog.get_for_instance(name, legacy_key) is not None:
+                # A legacy key may belong to another prefix or project. Do not silently copy it
+                # or claim the collection is missing: the caller must supply the known schema.
+                raise StoreError(
+                    f"pinecone: collection {name} has legacy catalog metadata with an ambiguous target; "
+                    "reindex its RAGCentre pipeline (or call ensure_collection with its known schema) "
+                    "to attach it to this index host and namespace prefix"
+                )
+        return entry
+
+    def _entry(self, name: str) -> Any:
+        self._resolve()
+        entry = self._catalog_entry(name)
         if entry is None:
             raise CollectionNotFound(f"pinecone: collection {name} does not exist")
         return entry
@@ -436,10 +507,10 @@ class PineconeStore:
 
     def collection_info(self, name: str) -> CollectionInfo | None:
         ns = self._namespace(name)
-        entry = self._catalog.get(name)
+        index, shape = self._resolve()
+        entry = self._catalog_entry(name)
         if entry is None:
             return None
-        index, shape = self._resolve()
         try:
             stats = index.describe_index_stats()
         except self._px.PineconeError as exc:
@@ -496,11 +567,13 @@ class PineconeStore:
 
     def delete(self, name: str, ids: Sequence[str]) -> None:
         ns = self._namespace(name)
-        if not ids or self._catalog.get(name) is None:
+        if not ids:
+            return
+        index, _ = self._resolve()
+        if self._catalog_entry(name) is None:
             return
         for rid in ids:
             check_record_id(rid)
-        index, _ = self._resolve()
         for start in range(0, len(ids), MAX_DELETE_IDS):
             try:
                 index.delete(ids=list(ids[start : start + MAX_DELETE_IDS]), namespace=ns)

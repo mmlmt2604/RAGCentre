@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from ragcentre.errors import ExecutionError
+from ragcentre.stores.base import delete_batched
 
 
 def _run_delete_document(ctx: Any, payload: dict[str, Any]) -> None:
@@ -28,7 +29,7 @@ def _run_delete_document(ctx: Any, payload: dict[str, Any]) -> None:
                 )
             ]
             if record_ids:
-                store.delete(index["physical_name"], record_ids)
+                delete_batched(store, index["physical_name"], record_ids)
     with ctx.db.write() as conn:
         conn.execute("DELETE FROM index_records WHERE document_id = ?", (document_id,))
         conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
