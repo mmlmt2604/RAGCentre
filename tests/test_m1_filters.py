@@ -147,3 +147,11 @@ def test_field_names_are_validated_before_interpolation() -> None:
 
     with pytest.raises(ValueError):
         sqlite_json_field()("x'); DROP TABLE t; --")
+
+
+def test_check_field_rejects_trailing_newline() -> None:
+    from ragcentre.stores.filter_sql import check_field
+
+    assert check_field("lang") == "lang"
+    with pytest.raises(ValueError):
+        check_field("lang\n")

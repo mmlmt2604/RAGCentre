@@ -32,6 +32,9 @@ pgvector = [
 chroma = [
     "chromadb>=1.5.9",
 ]
+lancedb = [
+    "lancedb>=0.41.0",
+]
 
 [project.entry-points."ragcentre.provider_types"]
 parser_builtin_text = "ragcentre.providers.parsers.builtin_text:SPEC"
@@ -53,6 +56,7 @@ sqlite_vec = "ragcentre.stores.sqlite_vec:STORE_TYPE"
 qdrant = "ragcentre.stores.qdrant:STORE_TYPE"
 pgvector = "ragcentre.stores.pgvector:STORE_TYPE"
 chroma = "ragcentre.stores.chroma:STORE_TYPE"
+lancedb = "ragcentre.stores.lancedb:STORE_TYPE"
 
 [build-system]
 requires = ["hatchling"]
