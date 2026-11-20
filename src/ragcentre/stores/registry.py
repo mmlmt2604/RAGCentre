@@ -28,6 +28,8 @@ BUILTIN = {
     "lancedb": "ragcentre.stores.lancedb:STORE_TYPE",
     "redis": "ragcentre.stores.redis:STORE_TYPE",
     "weaviate": "ragcentre.stores.weaviate:STORE_TYPE",
+    "elasticsearch": "ragcentre.stores.elasticsearch:STORE_TYPE",
+    "opensearch": "ragcentre.stores.opensearch:STORE_TYPE",
     "http": "ragcentre.stores.http:STORE_TYPE",
 }
 

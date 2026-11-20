@@ -41,6 +41,12 @@ redis = [
 weaviate = [
     "weaviate-client>=4.24.1",
 ]
+elasticsearch = [
+    "elasticsearch>=8.19.3",
+]
+opensearch = [
+    "opensearch-py>=2.8.0",
+]
 
 [project.entry-points."ragcentre.provider_types"]
 parser_builtin_text = "ragcentre.providers.parsers.builtin_text:SPEC"
@@ -65,6 +71,8 @@ chroma = "ragcentre.stores.chroma:STORE_TYPE"
 lancedb = "ragcentre.stores.lancedb:STORE_TYPE"
 redis = "ragcentre.stores.redis:STORE_TYPE"
 weaviate = "ragcentre.stores.weaviate:STORE_TYPE"
+elasticsearch = "ragcentre.stores.elasticsearch:STORE_TYPE"
+opensearch = "ragcentre.stores.opensearch:STORE_TYPE"
 
 [build-system]
 requires = ["hatchling"]
