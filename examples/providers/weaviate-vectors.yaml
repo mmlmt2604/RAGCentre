@@ -1,0 +1,13 @@
+# Install the weaviate extra. These ports match tests/docker-compose.yml.
+# Cloud: use an HTTPS URL, grpc_port: 443, grpc_secure: true.
+name: weaviate-main
+kind: vector_store
+type: weaviate
+config:
+  url: http://localhost:58080
+  grpc_port: 50051
+  collection_prefix: Ragcentre
+  index_type: flat
+# Remove this block for an anonymous development server.
+secrets:
+  api_key: {env: WEAVIATE_API_KEY}

@@ -1,0 +1,7 @@
+# Embedded Milvus Lite. Install the milvus-lite extra; no Docker service is needed.
+name: milvus-local
+kind: vector_store
+type: milvus
+config:
+  uri: milvus.db
+  index_type: FLAT

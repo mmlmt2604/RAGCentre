@@ -32,6 +32,20 @@ pgvector = [
 chroma = [
     "chromadb>=1.5.9",
 ]
+milvus = [
+    "pymilvus>=3.0.3",
+]
+milvus-lite = [
+    "pymilvus>=3.0.3",
+    "milvus-lite>=3.2.2",
+]
+weaviate = [
+    "weaviate-client>=4.24.1",
+]
+pinecone = [
+    # Pinecone Local implements the classic dense-index API used by SDK 7.
+    "pinecone>=7.3.0,<8",
+]
 
 [project.entry-points."ragcentre.provider_types"]
 parser_builtin_text = "ragcentre.providers.parsers.builtin_text:SPEC"
@@ -53,6 +67,9 @@ sqlite_vec = "ragcentre.stores.sqlite_vec:STORE_TYPE"
 qdrant = "ragcentre.stores.qdrant:STORE_TYPE"
 pgvector = "ragcentre.stores.pgvector:STORE_TYPE"
 chroma = "ragcentre.stores.chroma:STORE_TYPE"
+milvus = "ragcentre.stores.milvus:STORE_TYPE"
+weaviate = "ragcentre.stores.weaviate:STORE_TYPE"
+pinecone = "ragcentre.stores.pinecone:STORE_TYPE"
 
 [build-system]
 requires = ["hatchling"]

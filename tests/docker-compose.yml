@@ -1,9 +1,31 @@
-# PostgreSQL with pgvector for the integration tests (tests/test_m9_pgvector.py):
+# Servers for the integration tests (tests/test_m9_pgvector.py, test_v15_weaviate.py, test_v15_pinecone.py):
 #
 #   docker compose -f tests/docker-compose.yml up -d
 #   uv run pytest -m integration
 #   docker compose -f tests/docker-compose.yml down
+#
+# The Milvus contract tests also run without a container, on Milvus Lite (the `milvus-lite` extra).
 services:
+  milvus:
+    image: milvusdb/milvus:v3.0.6
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+    volumes:
+      - ./milvus-embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
+    ports:
+      - "127.0.0.1:19530:19530"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
   pgvector:
     image: pgvector/pgvector:pg17
     environment:
@@ -17,3 +39,20 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.36.2
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      DEFAULT_VECTORIZER_MODULE: none
+      CLUSTER_HOSTNAME: node1
+    ports:
+      - "127.0.0.1:58080:8080"
+      - "127.0.0.1:50051:50051"
+  pinecone:
+    image: ghcr.io/pinecone-io/pinecone-local:latest
+    environment:
+      PORT: 5080
+      PINECONE_HOST: localhost
+    ports:
+      - "127.0.0.1:5080-5100:5080-5100"

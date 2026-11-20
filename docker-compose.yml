@@ -2,7 +2,7 @@
 #
 # The example parser services are opt-in profiles, started next to RAGCentre:
 #   docker compose --profile docling up --build
-# (also: mineru, paddleocr, surya; several --profile flags may be given). Inside this network a
+# (also: mineru, paddleocr, surya, easyocr, doctr; several --profile flags may be given). Inside this network a
 # parser is reached by its service name, so register it with `base_url: http://docling:8701`
 # (see examples/providers/). Each one downloads its models on the first parse, into its volume.
 services:
@@ -24,6 +24,8 @@ services:
       MINERU_SHIM_API_KEY: ${MINERU_SHIM_API_KEY:-}
       PADDLEOCR_SHIM_API_KEY: ${PADDLEOCR_SHIM_API_KEY:-}
       SURYA_SHIM_API_KEY: ${SURYA_SHIM_API_KEY:-}
+      EASYOCR_SHIM_API_KEY: ${EASYOCR_SHIM_API_KEY:-}
+      DOCTR_SHIM_API_KEY: ${DOCTR_SHIM_API_KEY:-}
     restart: unless-stopped
 
   docling:
@@ -93,9 +95,39 @@ services:
       SURYA_INFERENCE_API_KEY: ${SURYA_INFERENCE_API_KEY:-}
     restart: unless-stopped
 
+  easyocr:
+    profiles: [easyocr]
+    build:
+      context: examples
+      dockerfile: easyocr_shim/Dockerfile
+    ports:
+      - "127.0.0.1:8705:8705"
+    volumes:
+      - easyocr-models:/home/shim/.EasyOCR
+    environment:
+      EASYOCR_SHIM_API_KEY: ${EASYOCR_SHIM_API_KEY:-}
+      # Default languages, comma-separated EasyOCR codes (a route can choose its own).
+      EASYOCR_SHIM_LANGS: ${EASYOCR_SHIM_LANGS:-}
+    restart: unless-stopped
+
+  doctr:
+    profiles: [doctr]
+    build:
+      context: examples
+      dockerfile: doctr_shim/Dockerfile
+    ports:
+      - "127.0.0.1:8706:8706"
+    volumes:
+      - doctr-models:/home/shim/.cache
+    environment:
+      DOCTR_SHIM_API_KEY: ${DOCTR_SHIM_API_KEY:-}
+    restart: unless-stopped
+
 volumes:
   ragcentre-data:
   docling-models:
   mineru-models:
   paddleocr-models:
   surya-models:
+  easyocr-models:
+  doctr-models:

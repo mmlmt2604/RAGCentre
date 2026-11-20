@@ -1,0 +1,12 @@
+# Install the pinecone extra and start the Pinecone Local test service.
+# Set PINECONE_API_KEY to any nonempty value, e.g. pclocal.
+name: pinecone-local
+kind: vector_store
+type: pinecone
+config:
+  host: http://localhost:5080
+  index_prefix: local
+  cloud: aws
+  region: us-east-1
+secrets:
+  api_key: {env: PINECONE_API_KEY}

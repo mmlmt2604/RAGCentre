@@ -9,7 +9,7 @@ import sys
 SCRIPT = r"""
 import importlib, importlib.abc, pkgutil, sys
 
-BLOCKED = ("qdrant_client", "chromadb", "psycopg", "pgvector")
+BLOCKED = ("qdrant_client", "chromadb", "psycopg", "pgvector", "pymilvus", "weaviate", "pinecone")
 
 class Block(importlib.abc.MetaPathFinder):
     def find_spec(self, name, path=None, target=None):
@@ -28,9 +28,10 @@ from ragcentre.stores.base import StoreUnavailable
 from ragcentre.stores.registry import vector_store_types
 
 types = vector_store_types()
-assert {"sqlite_vec", "qdrant", "pgvector", "chroma"} <= set(types), sorted(types)
+assert {"sqlite_vec", "qdrant", "pgvector", "chroma", "milvus", "weaviate", "pinecone"} <= set(types), sorted(types)
 for name, config, secrets in [("qdrant", {"path": ":memory:"}, {}), ("pgvector", {}, {"dsn": "postgresql://x"}),
-                              ("chroma", {}, {})]:
+                              ("chroma", {}, {}), ("milvus", {}, {}), ("weaviate", {}, {}),
+                              ("pinecone", {}, {"api_key": "local"})]:
     assert get_type("vector_store", name) is not None
     t = types[name]
     try:
@@ -46,7 +47,7 @@ def test_stores_without_extras() -> None:
     out = subprocess.run([sys.executable, "-c", SCRIPT], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     lines = dict(line.split(": ", 1) for line in out.stdout.strip().splitlines())
-    assert set(lines) == {"qdrant", "pgvector", "chroma"}
+    assert set(lines) == {"qdrant", "pgvector", "chroma", "milvus", "weaviate", "pinecone"}
     for extra, message in lines.items():
         assert f"'{extra}' extra" in message and f"ragcentre[{extra}]" in message, message
         assert "pip" not in message and "install " not in message.replace("installed", "")

@@ -1,0 +1,11 @@
+# Install the pinecone extra. Each RAGCentre collection creates a serverless index.
+# Check project quotas and billing before using many pipelines.
+name: pinecone-main
+kind: vector_store
+type: pinecone
+config:
+  index_prefix: rc
+  cloud: aws
+  region: us-east-1
+secrets:
+  api_key: {env: PINECONE_API_KEY}
