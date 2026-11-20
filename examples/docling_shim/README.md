@@ -60,10 +60,46 @@ The parse route's `options` are passed to the service:
 |---|---|---|
 | `ocr` | `true` | Run OCR on scanned pages and images in PDFs |
 | `include_page_images` | `false` | Render each page and return it as a base64 PNG in `pages[].image` |
+| `heading_hierarchy` | `true` | Rank section headers by PDF bookmarks, numbering (`1`, `1.1`) and font style. Docling's own default leaves every header at one level, which flattens RAGCentre's heading paths and the `structure` chunker. PDF only |
+| `ocr_engine` | `auto` | `auto`, `easyocr`, `tesseract` (needs the `tesseract` program), `rapidocr` or `ocrmac` (macOS) |
+| `ocr_lang` | engine's | OCR languages in the engine's codes: `["en", "de"]` for EasyOCR, `["eng", "deu"]` for Tesseract |
+| `force_full_page_ocr` | `false` | OCR every page as an image, not only the regions that have no text layer |
+| `table_mode` | `accurate` | `accurate` or `fast` (TableFormer) |
+| `code_enrichment` | `false` | Detect code languages and read code blocks with a code model (slow) |
+| `formula_enrichment` | `false` | Read formulas as LaTeX (slow) |
+| `picture_classification` | `false` | Classify each picture; the class is kept as the block's `metadata.classification` |
+| `picture_description` | `false` | Describe each picture with a small local vision model (slow); the text follows the caption |
+| `page_range` | all | `[first, last]`, 1-based and inclusive |
+| `max_pages` | all | Convert at most this many pages, counted from `page_range`'s first page |
+
+Not offered: Docling's VLM pipeline (GraniteDocling), whose model choices change between Docling releases.
+Docling's remote picture-description service is configured on the server, not per request.
+
+Options must be booleans: `"false"` (a string) is rejected with `400 invalid_options`.
+
+## Using a docling-serve you already run
+
+Set `DOCLING_SERVE_URL` (and `DOCLING_SERVE_API_KEY` when the server needs its `X-Api-Key`) and the
+shim sends each file to `POST /v1/convert/file` on that server instead of running Docling itself.
+The result is the same `DoclingDocument`, mapped by the same code, so the IR does not change. The
+shim then needs only `docling-core`, not PyTorch or the models:
+
+```sh
+uv sync                                  # without the `local` extra: no Docling, no PyTorch
+DOCLING_SERVE_URL=http://localhost:5001 uv run uvicorn docling_shim.app:app --port 8701
+docker build --build-arg ENGINE=remote -f examples/docling_shim/Dockerfile examples   # the slim image
+```
+
+(`uv sync --extra local` installs Docling for the in-process mode.) `/info` then reports
+`<shim>+docling-serve.<the server's Docling version>`, so upgrading the server is a new version, as
+it is in-process. The options `ocr`, `include_page_images` and `heading_hierarchy` are sent as
+`do_ocr`, `include_page_images` and `do_pdf_heading_hierarchy`. `DOCLING_SERVE_TIMEOUT` (seconds,
+default 3600) limits one conversion.
 
 ## Authentication
 
-Set `DOCLING_SHIM_API_KEY` to require `Authorization: Bearer <key>`, and give RAGCentre the same
+Set `DOCLING_SHIM_API_KEY` to require `Authorization: Bearer <key>` on every request except
+`GET /info` (RAGCentre reads `/info` without credentials when it creates the provider), and give RAGCentre the same
 value as the provider's `api_key` secret:
 
 ```sh
@@ -72,7 +108,7 @@ uv run ragcentre provider set-secret docling api_key --env DOCLING_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.1.0+docling.<docling version>`. RAGCentre records that version when the
+`/info` reports `0.3.0+docling.<docling version>`. RAGCentre records that version when the
 provider is created and refuses to parse with a service reporting a different one (unless the
 provider's `on_version_drift` is `warn`). Upgrading Docling therefore means creating a new
 provider and a new pipeline, so parses from two Docling versions are never mixed in one index.
@@ -83,6 +119,13 @@ See the table at the top of `docling_shim/convert.py`. In short: the title and s
 become headings, tables become Markdown (with HTML alongside), pictures become `figure` blocks
 whose text is their caption, and every block carries its page number and a top-left-origin
 bounding box.
+
+## Long documents
+
+The service reports `capabilities.async`, so RAGCentre submits each document as a background job and
+polls it: a scanned PDF may take far longer than the provider's `timeout_seconds`, which then limits
+only each request (the whole wait is `job_timeout_seconds`, six hours by default). See
+`docs/protocols/parser-v1.md`.
 
 ## Tests
 

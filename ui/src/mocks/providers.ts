@@ -128,7 +128,7 @@ export function deleteSecret(state: MockState, id: string, key: string): Provide
   return p;
 }
 
-export function testProvider(state: MockState, id: string): ProviderTestResult {
+export function testProvider(state: MockState, id: string, deep = false): ProviderTestResult {
   const p = findProvider(state, id);
   const fault = state.serviceFaults[p.name] ?? {};
   const latency = 18 + ((p.name.length * 37) % 140);
@@ -146,6 +146,24 @@ export function testProvider(state: MockState, id: string): ProviderTestResult {
     }
   } else if (p.kind === "embedder") {
     result.dimensions = typeof p.config.dimensions === "number" ? p.config.dimensions : 256;
+  } else if (p.kind === "vector_store" && deep) {
+    // A successful deep test, mirroring the backend's stores/check.py: write, query, filter, delete, drop.
+    result.check = {
+      ok: true,
+      store_type: p.type,
+      collection: "rc_check_ab12cd34",
+      records: 50,
+      metrics: ["cosine", "l2"],
+      seconds: 0.4,
+      findings: [
+        { level: "info", check: "healthcheck", message: "reachable: yes", ms: 2, lost: null },
+        { level: "info", check: "create", message: "collection rc_check_ab12cd34 (metric cosine): yes", ms: 5, lost: null },
+        { level: "info", check: "upsert", message: "wrote 50 records: yes", ms: 12, lost: null },
+        { level: "info", check: "query:cosine", message: "top-k and scores match brute force (k=10): yes", ms: 8, lost: null },
+        { level: "info", check: "filter:selective", message: "top-k and scores match brute force (k=10): yes", ms: 3, lost: null },
+        { level: "info", check: "drop", message: "removed temporary collection rc_check_ab12cd34: yes", ms: 4, lost: null },
+      ],
+    };
   }
   return result;
 }

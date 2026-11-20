@@ -26,6 +26,11 @@ that Surya starts on the first parse:
 - **NVIDIA GPUs**: Surya uses `vllm` in Docker.
 - **A server you already run**: set `SURYA_INFERENCE_BACKEND` and `SURYA_INFERENCE_URL`.
 
+When you attach to a server, also set `SURYA_INFERENCE_API_KEY` if it requires one, and
+`SURYA_INFERENCE_PARALLEL` to the number of requests it can run at once. The service reports
+`capabilities.async`, so RAGCentre submits each document as a background job and polls it: CPU
+inference can take minutes per page, longer than the provider's `timeout_seconds`.
+
 Surya picks the backend itself (`SURYA_INFERENCE_BACKEND` overrides it). The shim stops the server
 it started when the service stops.
 
@@ -77,6 +82,9 @@ The parse route's `options` are passed to the service:
 | `include_page_images` | `false` | Return each rendered page as a base64 PNG in `pages[].image`. Its pixels are the unit of the boxes |
 | `ocr_figures` | `false` | Also read text inside pictures, figures and diagrams (otherwise they are left empty) |
 | `dpi` | `192` | Render resolution for PDF pages, an integer from 72 to 400 |
+| `page_range` | all pages | PDFs only: `[first, last]`, 1-based and inclusive; a `last` past the end is clamped. Blocks keep the original page numbers |
+
+Each block also carries Surya's recognition `confidence` (0 to 1) as `metadata.confidence`.
 
 The shim does not serialise parses: it is a client of the inference server. The provider file sets
 `max_concurrency: 2`. Only the first frame of a multi-page TIFF is read.
@@ -94,8 +102,8 @@ uv run ragcentre provider set-secret surya api_key --env SURYA_SHIM_API_KEY
 
 ## Versioning
 
-`/info` reports `0.1.0+surya.<surya-ocr version>.<model>`, for example
-`0.1.0+surya.0.24.0.surya-ocr-2.5` (the model is the last segment of `SURYA_MODEL_CHECKPOINT`).
+`/info` reports `0.2.0+surya.<surya-ocr version>.<model>`, for example
+`0.2.0+surya.0.24.0.surya-ocr-2.5` (the model is the last segment of `SURYA_MODEL_CHECKPOINT`).
 RAGCentre records that version when the provider is created and refuses to parse with a service
 reporting a different one (unless the provider's `on_version_drift` is `warn`). Upgrading Surya or
 changing the model therefore means creating a new provider and a new pipeline.

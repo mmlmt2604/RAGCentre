@@ -559,7 +559,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Test Provider */
+        /**
+         * Test Provider
+         * @description Check that a provider works. With ``deep=true`` a parser service also parses a sample
+         *     document and reports which RAGCentre features its output feeds.
+         */
         post: operations["test_provider_v1_providers__provider_id__test_post"];
         delete?: never;
         options?: never;
@@ -1305,6 +1309,37 @@ export interface components {
              */
             type: "parse";
         };
+        /**
+         * ParserCheck
+         * @description The result of a deep parser test (``?deep=true``): what the service returned for a sample
+         *     document, and which RAGCentre features its output feeds.
+         */
+        ParserCheck: {
+            /** Blocks */
+            blocks: number;
+            /** Findings */
+            findings: components["schemas"]["ParserFinding"][];
+            /** Ok */
+            ok: boolean;
+            /** Pages */
+            pages: number;
+            /** Seconds */
+            seconds: number;
+        };
+        /** ParserFinding */
+        ParserFinding: {
+            /** Check */
+            check: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "error" | "warn" | "info";
+            /** Lost */
+            lost: string | null;
+            /** Message */
+            message: string;
+        };
         /** Pipeline */
         Pipeline: {
             /** Archived */
@@ -1506,6 +1541,8 @@ export interface components {
         };
         /** ProviderTestResult */
         ProviderTestResult: {
+            /** Check */
+            check: components["schemas"]["ParserCheck"] | components["schemas"]["StoreCheck"] | null;
             /** Dimensions */
             dimensions: number | null;
             /** Latency Ms */
@@ -1718,14 +1755,62 @@ export interface components {
         };
         /** StoreCapabilities */
         StoreCapabilities: {
+            /**
+             * Consistency
+             * @enum {string}
+             */
+            consistency: "immediate" | "eventual";
+            /** Filter Exact */
+            filter_exact: boolean;
             /** Max Batch */
             max_batch: number;
+            /** Max Collections */
+            max_collections: number | null;
+            /** Max Dim */
+            max_dim: number | null;
             /** Metrics */
             metrics: ("cosine" | "l2" | "dot")[];
             /** Multi Vector */
             multi_vector: boolean;
             /** Native Hybrid */
             native_hybrid: boolean;
+        };
+        /**
+         * StoreCheck
+         * @description The result of a deep vector-store test (``?deep=true``): a contract-lite run against a
+         *     temporary collection, one finding per capability, always cleaned up afterwards.
+         */
+        StoreCheck: {
+            /** Collection */
+            collection: string;
+            /** Findings */
+            findings: components["schemas"]["StoreFinding"][];
+            /** Metrics */
+            metrics: string[];
+            /** Ok */
+            ok: boolean;
+            /** Records */
+            records: number;
+            /** Seconds */
+            seconds: number;
+            /** Store Type */
+            store_type: string;
+        };
+        /** StoreFinding */
+        StoreFinding: {
+            /** Check */
+            check: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "error" | "warn" | "info";
+            /** Lost */
+            lost: string | null;
+            /** Message */
+            message: string;
+            /** Ms */
+            ms: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -3224,7 +3309,9 @@ export interface operations {
     };
     test_provider_v1_providers__provider_id__test_post: {
         parameters: {
-            query?: never;
+            query?: {
+                deep?: boolean;
+            };
             header?: never;
             path: {
                 provider_id: string;

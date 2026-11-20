@@ -1,0 +1,12 @@
+# OpenSearch 2.19 or later (k-NN plugin). Needs `pip install "ragcentre[opensearch]"`.
+# `engine` is set once: faiss (default) or lucene; both filter inside the search.
+name: opensearch
+kind: vector_store
+type: opensearch
+config:
+  url: https://localhost:9200
+  username: admin
+  engine: faiss
+  verify_certs: true
+secrets:
+  password: {env: OPENSEARCH_PASSWORD}

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# The Docling parser shim. Build with `examples/` as the context:
+# The Docling parser shim. Build with `examples/` as the context (it needs ../shimkit):
 #   docker build -f examples/docling_shim/Dockerfile examples
 # or, from the repository root, `docker compose --profile docling up --build`.
 FROM python:3.13-slim
@@ -10,12 +10,20 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # `--build-arg TORCH_BACKEND=cu128` and give the container the GPU.
 ARG TORCH_BACKEND=cpu
 
+# `local` (default) runs Docling in this container. `remote` installs no Docling or PyTorch and
+# needs DOCLING_SERVE_URL pointing at a docling-serve:
+#   docker build --build-arg ENGINE=remote -f examples/docling_shim/Dockerfile examples
+ARG ENGINE=local
+
 WORKDIR /src
-COPY docling_shim/pyproject.toml ./
-COPY docling_shim/docling_shim ./docling_shim
+COPY shimkit ./shimkit
+COPY docling_shim/pyproject.toml ./docling_shim/
+COPY docling_shim/docling_shim ./docling_shim/docling_shim
 RUN uv venv /opt/venv \
- && VIRTUAL_ENV=/opt/venv uv pip install --no-cache --torch-backend "$TORCH_BACKEND" . \
- && /opt/venv/bin/python -c "import docling.document_converter, docling_shim.app"
+ && VIRTUAL_ENV=/opt/venv uv pip install --no-cache --no-sources --torch-backend "$TORCH_BACKEND" ./shimkit \
+      "$( [ "$ENGINE" = remote ] && echo ./docling_shim || echo './docling_shim[local]' )" \
+ && if [ "$ENGINE" = remote ]; then /opt/venv/bin/python -c "import docling_shim.app"; \
+    else /opt/venv/bin/python -c "import docling.document_converter, docling_shim.app"; fi
 
 # Docling downloads its layout and OCR models into ~/.cache on first use; mount a volume there.
 RUN useradd --create-home --uid 1000 shim \

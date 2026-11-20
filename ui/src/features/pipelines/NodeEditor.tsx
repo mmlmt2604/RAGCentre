@@ -6,6 +6,8 @@ import { Checkbox, Field, Select, TextInput } from "../../components/Field";
 import { NumberInput } from "../../components/NumberInput";
 import { INPUT_TYPE } from "./graph";
 import { NODE_LABEL } from "./model";
+import { optionSpecs } from "./optionsSchema";
+import { ParserOptions } from "./ParserOptions";
 
 const STRATEGY_HINT: Record<string, string> = {
   fixed: "Fixed-size character windows over the whole document.",
@@ -52,10 +54,10 @@ function ProviderSelect({ kind, value, onChange, providers, label, error }: { ki
   );
 }
 
-function JsonOptions({ value, onChange, label }: { value: Record<string, unknown> | undefined; onChange: (v: Record<string, unknown> | undefined) => void; label: string }) {
+function JsonOptions({ value, onChange, label, error }: { value: Record<string, unknown> | undefined; onChange: (v: Record<string, unknown> | undefined) => void; label: string; error?: string }) {
   const text = value && Object.keys(value).length ? JSON.stringify(value) : "";
   return (
-    <Field label={label} hint='A JSON object passed to the service, e.g. {"ocr": true}. Leave blank for none.'>
+    <Field label={label} hint='A JSON object passed to the service, e.g. {"ocr": true}. Leave blank for none.' error={error ?? null}>
       {(a11y) => (
         <TextInput
           {...a11y}
@@ -104,6 +106,11 @@ export function NodeEditor({
 }) {
   const index = config.nodes.findIndex((n) => n.id === node.id);
   const errAt = (suffix: string) => problems.find((p) => p.path === `nodes[${index}].${suffix}`)?.message;
+  // Problems under `nodes[i].<prefix>`, with the prefix removed (".dpi", ".page_range[0]", ...).
+  const problemsUnder = (prefix: string) => {
+    const full = `nodes[${index}].${prefix}`;
+    return problems.filter((p) => p.path === full || p.path.startsWith(`${full}.`) || p.path.startsWith(`${full}[`)).map((p) => ({ path: p.path.slice(full.length), message: p.message }));
+  };
   const wantInput = INPUT_TYPE[node.type];
   const candidates = wantInput ? config.nodes.filter((n) => n.type === wantInput) : [];
   const input = "inputs" in node ? (node.inputs?.[0] ?? "") : "";
@@ -150,19 +157,29 @@ export function NodeEditor({
               routes.splice(i + d, 0, item!);
               onChange({ ...node, routes });
             };
+            const specs = optionSpecs(providers.find((p) => p.kind === "parser" && p.name === r.provider)?.config.options_schema);
             return (
-              <div key={i} className="route">
+              <div key={i} className={specs ? "route route--schema" : "route"}>
                 <span className="route__n mono">{i + 1}</span>
                 <Field label="MIME pattern" error={errAt(`routes[${i}].mime`) ?? null}>
                   {(a11y) => <TextInput {...a11y} mono value={r.mime} onChange={(e) => set({ mime: e.target.value })} placeholder="text/*" />}
                 </Field>
                 <ProviderSelect kind="parser" label="Parser" value={r.provider} onChange={(v) => set({ provider: v })} providers={providers} error={errAt(`routes[${i}].provider`)} />
-                <JsonOptions label="Options" value={r.options} onChange={(v) => set({ options: v })} />
+                {specs ? null : <JsonOptions label="Options" value={r.options} onChange={(v) => set({ options: v })} error={errAt(`routes[${i}].options`)} />}
                 <span className="route__actions">
                   <IconButton icon={ArrowUp} label={`Move route ${i + 1} up`} disabled={i === 0} onClick={() => move(-1)} />
                   <IconButton icon={ArrowDown} label={`Move route ${i + 1} down`} disabled={i === node.routes.length - 1} onClick={() => move(1)} />
                   <IconButton icon={Trash2} label={`Remove route ${i + 1}`} onClick={() => onChange({ ...node, routes: node.routes.filter((_, j) => j !== i) })} />
                 </span>
+                {specs ? (
+                  <ParserOptions
+                    specs={specs}
+                    value={r.options}
+                    onChange={(v) => set({ options: v })}
+                    problems={problemsUnder(`routes[${i}].options`)}
+                    asJson={<JsonOptions label="Options as JSON" value={r.options} onChange={(v) => set({ options: v })} error={errAt(`routes[${i}].options`)} />}
+                  />
+                ) : null}
               </div>
             );
           })}

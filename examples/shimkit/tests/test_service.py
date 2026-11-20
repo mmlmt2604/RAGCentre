@@ -23,7 +23,7 @@ from shimkit.service import (
 IR = {"schema_version": "1.0", "metadata": {}, "pages": [], "blocks": [{"type": "paragraph", "text": "hi", "id": "b1"}]}
 
 
-def make_client(parse: Any = None, *, serialise: bool = False, version: Any = None) -> TestClient:
+def make_client(parse: Any = None, *, serialise: bool = False, version: Any = None, **kwargs: Any) -> TestClient:
     return TestClient(
         create_app(
             name="demo-shim",
@@ -33,6 +33,7 @@ def make_client(parse: Any = None, *, serialise: bool = False, version: Any = No
             api_key_env="DEMO_SHIM_API_KEY",
             parse=parse or (lambda content, filename, options: IR),
             serialise=serialise,
+            **kwargs,
         )
     )
 
@@ -295,3 +296,115 @@ def test_shutdown_hook_runs_when_the_server_stops() -> None:
 def test_no_shutdown_hook_is_fine() -> None:
     with TestClient(make_client().app):
         pass
+
+
+# --- async jobs ---------------------------------------------------------------------------------
+
+
+def wait_for(client: TestClient, job_id: str, status: str) -> dict[str, Any]:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        body = client.get(f"/jobs/{job_id}").json()
+        if body["status"] == status:
+            return body
+        time.sleep(0.01)
+    raise AssertionError(f"job did not reach {status}")
+
+
+def submit(client: TestClient, name: str = "m.pdf") -> str:
+    resp = client.post("/parse?mode=async", files={"file": (name, b"%PDF", "application/pdf")})
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["poll_after_seconds"] > 0
+    return resp.json()["job_id"]
+
+
+def test_sync_only_service_has_no_jobs() -> None:
+    client = make_client()
+    assert "async" not in client.get("/info").json()["capabilities"]
+    # ?mode=async is ignored: the service answers synchronously, as protocol 1.0 requires.
+    resp = client.post("/parse?mode=async", files={"file": ("m.pdf", b"%PDF", "application/pdf")})
+    assert resp.status_code == 200 and resp.json() == IR
+    assert client.get("/jobs/abc").status_code == 404
+
+
+def test_async_job_lifecycle() -> None:
+    release = threading.Event()
+
+    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+        release.wait(5)
+        return IR
+
+    client = make_client(parse, jobs=True)
+    assert client.get("/info").json()["capabilities"] == {"page_images": False, "async": True}
+    job_id = submit(client)
+    assert client.get(f"/jobs/{job_id}").json() == {"status": "running"}
+    assert client.get(f"/jobs/{job_id}/result").status_code == 409
+    release.set()
+    wait_for(client, job_id, "succeeded")
+    assert client.get(f"/jobs/{job_id}/result").json() == IR
+    assert client.delete(f"/jobs/{job_id}").status_code == 204
+    assert client.get(f"/jobs/{job_id}").status_code == 404
+    assert client.delete(f"/jobs/{job_id}").status_code == 204  # idempotent
+
+
+def test_prefer_header_requests_async() -> None:
+    client = make_client(jobs=True)
+    resp = client.post(
+        "/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")}, headers={"Prefer": "respond-async"}
+    )
+    assert resp.status_code == 202
+    # Without it the same service still answers synchronously.
+    assert post(client).status_code == 200
+
+
+def test_async_job_failure_keeps_the_error() -> None:
+    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+        if filename.endswith(".xyz"):
+            raise ShimError(415, "unsupported_media_type", "no")
+        raise RuntimeError("boom")
+
+    client = make_client(parse, jobs=True)
+    job = wait_for(client, submit(client, "a.xyz"), "failed")
+    assert job["error"] == {"http_status": 415, "code": "unsupported_media_type", "message": "no"}
+    job_id = submit(client, "b.pdf")
+    wait_for(client, job_id, "failed")
+    result = client.get(f"/jobs/{job_id}/result")
+    assert result.status_code == 422 and "boom" in result.json()["error"]["message"]
+
+
+def test_async_jobs_need_the_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEMO_SHIM_API_KEY", "k")
+    client = make_client(jobs=True)
+    headers = {"Authorization": "Bearer k"}
+    resp = client.post("/parse?mode=async", files={"file": ("m.pdf", b"%PDF", "application/pdf")}, headers=headers)
+    job_id = resp.json()["job_id"]
+    assert client.get(f"/jobs/{job_id}").status_code == 401
+    assert client.get(f"/jobs/{job_id}", headers=headers).status_code == 200
+
+
+def test_finished_jobs_expire() -> None:
+    client = make_client(jobs=True, job_ttl=0.05)
+    job_id = submit(client)
+    wait_for(client, job_id, "succeeded")
+    time.sleep(0.1)
+    assert client.get(f"/jobs/{job_id}").status_code == 404
+
+
+def test_serialised_jobs_run_one_at_a_time() -> None:
+    active = peak = 0
+    guard = threading.Lock()
+
+    def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
+        nonlocal active, peak
+        with guard:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.05)
+        with guard:
+            active -= 1
+        return IR
+
+    client = make_client(parse, serialise=True, jobs=True)
+    for job_id in [submit(client) for _ in range(3)]:
+        wait_for(client, job_id, "succeeded")
+    assert peak == 1

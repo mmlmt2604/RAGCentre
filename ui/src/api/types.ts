@@ -18,13 +18,19 @@ export interface Health {
 // ---------- Providers ----------
 export type ProviderKind = "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
 
+export interface StoreCapabilities {
+  metrics: Metric[]; max_batch: number; multi_vector: boolean; native_hybrid: boolean;
+  max_dim: number | null; consistency: "immediate" | "eventual";
+  filter_exact: boolean;                     // false: a filtered search may return fewer than k matches
+  max_collections: number | null;
+}
+
 export interface ProviderType {
   kind: ProviderKind; type: string; label: string; description: string;
   config_schema: Record<string, unknown>;    // JSON Schema for `config`
   fingerprint_fields: string[];              // keys of config that are permanent once created
   secret_keys: string[];                     // e.g. ["api_key"]
-  capabilities: { metrics: Metric[]; max_batch: number;
-                  multi_vector: boolean; native_hybrid: boolean } | null;  // vector stores only
+  capabilities: StoreCapabilities | null;    // vector stores only; the type's best case
 }
 
 export interface Provider {
@@ -45,7 +51,12 @@ export interface ProviderTestResult {
   service: { name: string; version: string; mime_types: string[] } | null;  // parsers, chunkers
   dimensions: number | null;                 // embedders
   version_drift: { pinned: string; current: string } | null;
+  check?: ParserCheck | StoreCheck | null;   // only a deep test (`?deep=true`)
 }
+export interface ParserFinding { level: "error" | "warn" | "info"; check: string; message: string; lost: string | null }
+export interface ParserCheck { ok: boolean; blocks: number; pages: number; seconds: number; findings: ParserFinding[] }
+export interface StoreFinding { level: "error" | "warn" | "info"; check: string; message: string; ms: number; lost: string | null }
+export interface StoreCheck { ok: boolean; store_type: string; collection: string; records: number; metrics: string[]; seconds: number; findings: StoreFinding[] }
 
 // ---------- Corpora ----------
 export interface MetadataSchema { fields: Record<string, { type: FieldType; default: Scalar }> }

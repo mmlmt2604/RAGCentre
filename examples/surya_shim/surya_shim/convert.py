@@ -9,8 +9,8 @@ Input, one dict per page::
      "image": {"mime": "image/png", "data_b64": "..."} or None}
 
 The shapes come from ``surya/recognition/schema.py`` (``PageOCRResult``: ``image_bbox``, ``blocks``;
-``BlockOCRResult``: ``label``, ``html``, ``skipped``, ``error``, ``reading_order`` and the
-``PolygonBox`` ``bbox``) and ``surya/layout/label.py`` (the labels).
+``BlockOCRResult``: ``label``, ``html``, ``skipped``, ``error``, ``reading_order``, ``confidence``
+(kept as ``metadata.confidence``) and the ``PolygonBox`` ``bbox``) and ``surya/layout/label.py`` (the labels).
 
 ======================================  =======================================================
 Label                                   IR block
@@ -107,8 +107,11 @@ def to_ir(
         for raw in ordered:
             if raw.get("error") or raw.get("label") == "BlankPage":
                 continue
+            confidence = raw.get("confidence")
             for block in _blocks(raw):
                 block["page"] = number
+                if isinstance(confidence, int | float) and not isinstance(confidence, bool):
+                    block.setdefault("metadata", {})["confidence"] = round(float(confidence), 4)
                 if raw.get("bbox") is not None:
                     block["bbox"] = [float(v) for v in raw["bbox"]]
                 blocks.append(block)

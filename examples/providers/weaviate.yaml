@@ -1,0 +1,12 @@
+# Weaviate (HTTP and gRPC). Needs `pip install "ragcentre[weaviate]"`. RAGCentre supplies every
+# vector, so no Weaviate vectorizer module is used. Use `host`, `port` and `secure` instead of `url`
+# for a deployment that serves gRPC on another host name.
+name: weaviate
+kind: vector_store
+type: weaviate
+config:
+  url: http://localhost:8080
+  grpc_port: 50051
+  prefix: rc_
+secrets:
+  api_key: {env: WEAVIATE_API_KEY}

@@ -5,16 +5,19 @@ description = "Example ragcentre.parser/v1 service that parses documents with Pa
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "fastapi>=0.115",
-    "paddleocr[doc-parser]>=3.7",
+    "httpx>=0.28",
     "python-multipart>=0.0.20",
     "shimkit",
     "uvicorn>=0.34",
 ]
 # PaddlePaddle is not a dependency: install the CPU or GPU wheel that suits your machine. See the README.
 
+[project.optional-dependencies]
+# PaddleOCR itself. Leave it out to use only a running PaddleX serving instance (PADDLEX_SERVING_URL).
+local = ["paddleocr[doc-parser]>=3.7"]
+
 [dependency-groups]
 dev = [
-    "httpx>=0.28",
     "pytest>=8",
 ]
 

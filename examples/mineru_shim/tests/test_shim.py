@@ -253,14 +253,23 @@ def test_service_endpoints() -> None:
     assert info["protocol"] == "ragcentre.parser/v1" and info["name"] == NAME == "mineru-shim"
     assert info["version"].startswith("0.1.0+mineru.")
     assert "application/pdf" in info["mime_types"] and "text/html" in info["mime_types"]
-    assert info["mime_types"] == MIME_TYPES and info["capabilities"] == {"page_images": False}
+    assert info["mime_types"] == MIME_TYPES and info["capabilities"] == {"page_images": False, "async": True}
 
     resp = post(client, options={"tier": "basic", "ocr": True, "image_analysis": True})
     assert resp.status_code == 200
     assert resp.json()["blocks"][0]["text"] == "Pump Manual" and resp.json()["metadata"]["source_name"] == "m.pdf"
-    assert calls[0] == (b"%PDF", "m.pdf", {"tier": "basic", "ocr_mode": "ocr", "image_analysis": True})
+    assert calls[0] == (
+        b"%PDF",
+        "m.pdf",
+        {"tier": "basic", "ocr_mode": "ocr", "image_analysis": True, "page_range": ""},
+    )
     assert post(client).status_code == 200
-    assert calls[1][2] == {"tier": "standard", "ocr_mode": "auto", "image_analysis": False}  # defaults
+    assert calls[1][2] == {
+        "tier": "standard",
+        "ocr_mode": "auto",
+        "image_analysis": False,
+        "page_range": "",
+    }  # defaults
 
     assert post(client, options="[1]").json()["error"]["code"] == "invalid_options"
     for options in ({"tier": "fast"}, {"tier": 1}, {"ocr": "yes"}, {"ocr": None}, {"ocr": 1}, {"image_analysis": "no"}):
@@ -361,6 +370,9 @@ class FakeMineru:
     def __init__(self) -> None:
         self.parse_calls: list[tuple[Path, dict[str, Any], bytes]] = []
         self.fail: Exception | None = None
+        self.api_inits: list[dict[str, Any]] = []
+        self.api_parse_calls: list[tuple[Path, bytes]] = []
+        self.api_parse_kwargs: list[dict[str, Any]] = []
 
 
 @pytest.fixture
@@ -373,8 +385,20 @@ def fake_mineru(monkeypatch: pytest.MonkeyPatch) -> FakeMineru:
             raise state.fail
         return types.SimpleNamespace(middle_json="MIDDLE")
 
+    class FakeApiParser:
+        def __init__(self, **kwargs: Any) -> None:
+            state.api_inits.append(kwargs)
+
+        def parse(self, path: Path, **kwargs: Any) -> Any:
+            state.api_parse_calls.append((path, path.read_bytes()))
+            state.api_parse_kwargs.append(kwargs)
+            if state.fail:
+                raise state.fail
+            return types.SimpleNamespace(middle_json="REMOTE-MIDDLE")
+
     mineru = types.ModuleType("mineru")
     mineru.parse = parse  # type: ignore[attr-defined]
+    mineru.MinerUApiParser = FakeApiParser  # type: ignore[attr-defined]
     render = types.ModuleType("mineru.render")
     content_list = types.ModuleType("mineru.render.content_list")
     content_list.render_content_list = lambda middle: [{"type": "text", "text": f"from {middle}", "page_idx": 0}]  # type: ignore[attr-defined]
@@ -392,7 +416,7 @@ def test_engine_calls_mineru_with_a_path(fake_mineru: FakeMineru) -> None:
     content_list, sizes = MineruEngine()(b"%PDF-data", "m.PDF", {**OPTIONS, "ocr_mode": "txt", "image_analysis": True})
     ((path, kwargs, content),) = fake_mineru.parse_calls
     assert content == b"%PDF-data" and path.suffix == ".pdf" and not path.exists()
-    assert kwargs == {"tier": "basic", "ocr_mode": "txt", "image_analysis": True}
+    assert kwargs == {"tier": "basic", "ocr_mode": "txt", "image_analysis": True, "page_range": ""}
     assert content_list == [{"type": "text", "text": "from MIDDLE", "page_idx": 0}] and sizes == {}
 
 
@@ -474,3 +498,76 @@ def test_page_sizes_are_empty_for_other_formats_and_unreadable_files(fake_mineru
     assert page_sizes(tmp_path / "a.docx", "docx") == {}
     assert page_sizes(tmp_path / "a.html", "html") == {}
     assert page_sizes(tmp_path / "a.pdf", "pdf") == {}  # pypdfium2 is not importable here
+
+
+# --- remote mode: a MinerU API server -----------------------------------------------------------
+
+
+def test_remote_engine_uses_the_api_parser(fake_mineru: FakeMineru) -> None:
+    engine = MineruEngine(api_url="http://mineru:8000", api_key="k")
+    content_list, _ = engine(b"%PDF-data", "m.pdf", {**OPTIONS, "ocr_mode": "ocr", "tier": "advanced"})
+    assert fake_mineru.api_inits == [
+        {"api_url": "http://mineru:8000", "api_key": "k", "tier": "advanced", "ocr_mode": "ocr"}
+    ]
+    assert fake_mineru.api_parse_calls[0][1] == b"%PDF-data" and fake_mineru.parse_calls == []
+    assert content_list[0]["text"] == "from REMOTE-MIDDLE"  # the same renderer as in-process
+
+
+def test_remote_engine_errors_are_translated(fake_mineru: FakeMineru) -> None:
+    fake_mineru.fail = MineruError("rate_limit_exceeded", "rate_limit_error")
+    with pytest.raises(ShimError) as caught:
+        MineruEngine(api_url="http://mineru:8000")(b"x", "a.pdf", OPTIONS)
+    assert caught.value.status == 503
+
+
+def test_remote_is_chosen_by_environment(monkeypatch: pytest.MonkeyPatch, fake_mineru: FakeMineru) -> None:
+    monkeypatch.delenv("MINERU_API_URL", raising=False)
+    monkeypatch.delenv("MINERU_SHIM_API_KEY", raising=False)
+    assert not MineruEngine.from_env().remote
+    monkeypatch.setenv("MINERU_API_URL", "http://mineru:8000")
+    monkeypatch.setenv("MINERU_API_KEY", "k")
+    client = TestClient(create_app())
+    assert client.get("/info").json()["version"].endswith(".remote")
+    assert post(client).status_code == 200
+    assert fake_mineru.api_inits[0]["api_key"] == "k"
+
+
+def test_options_are_published_and_typos_are_rejected() -> None:
+    calls: list[tuple[Any, ...]] = []
+    client = TestClient(create_app(fake_engine(calls)))
+    schema = client.get("/info").json()["options_schema"]
+    assert schema["type"] == "object" and schema["additionalProperties"] is False and schema["properties"]
+    assert all("description" in spec for spec in schema["properties"].values())
+    bad = post(client, options={"definitely_not_an_option": True})
+    assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid_options"
+    assert "definitely_not_an_option" in bad.json()["error"]["message"] and calls == []
+
+
+# --- page ranges ------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("pages", ["1-5,8", "3", "all", " 2 - 4 , 7 ", "3-r1", "r2"])
+def test_page_range_is_passed_to_the_engine(pages: str) -> None:
+    calls: list[tuple[Any, ...]] = []
+    resp = post(TestClient(create_app(fake_engine(calls))), options={"page_range": pages})
+    assert resp.status_code == 200 and calls[0][2]["page_range"] == pages.strip()
+
+
+@pytest.mark.parametrize("pages", ["", "0", "5-", "a-b", "1;2", "-3", "1-2-3", 5, [1, 2]])
+def test_bad_page_range_is_a_400(pages: Any) -> None:
+    calls: list[tuple[Any, ...]] = []
+    resp = post(TestClient(create_app(fake_engine(calls))), options={"page_range": pages})
+    assert resp.status_code == 400 and resp.json()["error"]["code"] == "invalid_options" and calls == []
+
+
+def test_page_range_needs_a_pdf() -> None:
+    calls: list[tuple[Any, ...]] = []
+    resp = post(TestClient(create_app(fake_engine(calls))), name="notes.docx", options={"page_range": "1-2"})
+    assert resp.status_code == 400 and "PDF" in resp.json()["error"]["message"] and calls == []
+
+
+def test_engine_passes_the_page_range_to_mineru_and_to_the_api_parser(fake_mineru: FakeMineru) -> None:
+    MineruEngine()(b"%PDF", "m.pdf", {**OPTIONS, "page_range": "2-3"})
+    assert fake_mineru.parse_calls[0][1]["page_range"] == "2-3"
+    MineruEngine(api_url="http://mineru:8000")(b"%PDF", "m.pdf", {**OPTIONS, "page_range": "2-3"})
+    assert fake_mineru.api_parse_kwargs == [{"page_range": "2-3"}]

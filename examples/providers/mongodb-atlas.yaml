@@ -1,0 +1,14 @@
+# MongoDB Atlas Vector Search ($vectorSearch). Needs `pip install "ragcentre[mongodb]"`.
+# Also works on mongodb/mongodb-atlas-local and on MongoDB Community 8.2+ with mongot. The
+# connection string carries credentials, so it is a secret read from the environment, e.g.
+# mongodb+srv://user:password@cluster0.example.mongodb.net/
+# exact: true runs exact nearest-neighbour search, so every filtered query returns min(k, matches).
+name: mongodb-atlas
+kind: vector_store
+type: mongodb
+config:
+  database: ragcentre
+  exact: false
+  num_candidates_factor: 20
+secrets:
+  uri: {env: MONGODB_URI}

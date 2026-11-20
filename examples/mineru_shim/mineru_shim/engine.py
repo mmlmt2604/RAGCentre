@@ -6,6 +6,7 @@ path, not bytes, so the upload is written to a temporary file.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -63,8 +64,25 @@ def translate_error(exc: Exception) -> ShimError | None:
 
 
 class MineruEngine:
-    """``(content, filename, options) -> (content_list, page_sizes)``. Not thread-safe: the app
-    serialises calls."""
+    """``(content, filename, options) -> (content_list, page_sizes)``.
+
+    In-process (the default) it is not thread-safe, and the app serialises calls. With ``api_url``
+    it hands the file to a MinerU API server (``mineru-kit api-server``, or the hosted service) with
+    ``mineru.MinerUApiParser``; the server runs the models, so ``image_analysis`` is the server's
+    setting there."""
+
+    def __init__(self, api_url: str | None = None, api_key: str | None = None) -> None:
+        self.api_url = api_url
+        self.api_key = api_key
+
+    @classmethod
+    def from_env(cls) -> MineruEngine:
+        """Remote when ``MINERU_API_URL`` is set (``MINERU_API_KEY`` is its bearer token)."""
+        return cls(os.environ.get("MINERU_API_URL") or None, os.environ.get("MINERU_API_KEY") or None)
+
+    @property
+    def remote(self) -> bool:
+        return self.api_url is not None
 
     def __call__(
         self, content: bytes, filename: str, options: dict[str, Any]
@@ -77,9 +95,19 @@ class MineruEngine:
         extension = file_extension(filename)
         with temp_upload(content, filename) as path:
             try:
-                result = mineru.parse(
-                    path, tier=options["tier"], ocr_mode=options["ocr_mode"], image_analysis=options["image_analysis"]
-                )
+                if self.api_url is not None:
+                    parser = mineru.MinerUApiParser(
+                        api_url=self.api_url, api_key=self.api_key, tier=options["tier"], ocr_mode=options["ocr_mode"]
+                    )
+                    result = parser.parse(path, page_range=options.get("page_range", ""))
+                else:
+                    result = mineru.parse(
+                        path,
+                        tier=options["tier"],
+                        ocr_mode=options["ocr_mode"],
+                        image_analysis=options["image_analysis"],
+                        page_range=options.get("page_range", ""),
+                    )
                 content_list = render_content_list(result.middle_json)
             except Exception as exc:
                 translated = translate_error(exc)

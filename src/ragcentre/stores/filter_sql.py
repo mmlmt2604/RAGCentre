@@ -21,7 +21,7 @@ _SQL_OPS = {"$eq": "=", "$gt": ">", "$gte": ">=", "$lt": "<", "$lte": "<="}
 
 
 def check_field(name: str) -> str:
-    if not FIELD_RE.match(name):
+    if not FIELD_RE.fullmatch(name):
         raise ValueError(f"invalid field name {name!r}")
     return name
 

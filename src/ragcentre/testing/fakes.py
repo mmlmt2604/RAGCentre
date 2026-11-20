@@ -84,6 +84,15 @@ class FakeServices:
         self.chunker_version = "0.3.0"
         self.echo_auth_in_errors = False
         self.parse_override: Callable[[bytes, str, dict[str, Any]], Any] | None = None
+        # Async mode (parser protocol 1.1): the fake advertises capabilities.async, answers
+        # POST /parse?mode=async with a job, and reports it "running" for ``job_running_polls``
+        # status requests before it succeeds. ``job_failure`` makes jobs end in ``failed`` with
+        # that ``{"http_status", "code", "message"}`` error.
+        self.parser_async = False
+        self.parser_options_schema: dict[str, Any] | None = None  # published as /info options_schema
+        self.job_running_polls = 0
+        self.job_failure: dict[str, Any] | None = None
+        self.jobs: dict[str, dict[str, Any]] = {}
 
     # ---- scripting ----------------------------------------------------------------------------
 
@@ -123,6 +132,8 @@ class FakeServices:
         path = request.url.path
         if service == "embedder" and path.startswith("/v1"):
             path = path[3:]
+        if service == "parser" and path.startswith("/jobs/"):
+            return self._parser_job(request, path)
         key = (service, path)
         with self.lock:
             self.calls[key] += 1
@@ -151,14 +162,16 @@ class FakeServices:
     # ---- parser -------------------------------------------------------------------------------
 
     def _parser_info(self, request: httpx.Request) -> httpx.Response:
+        extra = {"options_schema": self.parser_options_schema} if self.parser_options_schema is not None else {}
         return httpx.Response(
             200,
             json={
+                **extra,
                 "protocol": "ragcentre.parser/v1",
                 "name": self.parser_name,
                 "version": self.parser_version,
                 "mime_types": self.parser_mime_types,
-                "capabilities": {"page_images": False},
+                "capabilities": {"page_images": False, **({"async": True} if self.parser_async else {})},
             },
         )
 
@@ -167,10 +180,46 @@ class FakeServices:
         _, mime, content = form.get("file", (None, "application/octet-stream", b""))
         options = json.loads(form.get("options", (None, "", b"{}"))[2] or b"{}")
         if self.parse_override is not None:
-            return httpx.Response(200, json=self.parse_override(content, mime, options))
-        if mime.startswith("text/"):
-            return httpx.Response(200, json=parse_text(content, mime))
-        return httpx.Response(200, json=paged_ir(decode(content)))
+            ir = self.parse_override(content, mime, options)
+        elif mime.startswith("text/"):
+            ir = parse_text(content, mime)
+        else:
+            ir = paged_ir(decode(content))
+        if self.parser_async and request.url.params.get("mode") == "async":
+            with self.lock:
+                job_id = f"job-{len(self.jobs) + 1}"
+                self.jobs[job_id] = {"polls": 0, "ir": ir}
+            return httpx.Response(202, json={"job_id": job_id, "poll_after_seconds": 0.5})
+        return httpx.Response(200, json=ir)
+
+    def forget_job(self, job_id: str) -> None:
+        """Make the service lose a job, as a restart would."""
+        with self.lock:
+            self.jobs.pop(job_id, None)
+
+    def _parser_job(self, request: httpx.Request, path: str) -> httpx.Response:
+        parts = path.strip("/").split("/")  # jobs, <id>[, result]
+        suffix = "/jobs/result" if parts[2:] == ["result"] else "/jobs"
+        with self.lock:
+            self.calls[("parser", suffix)] += 1
+            self.requests.append(request)
+            job = self.jobs.get(parts[1])
+            if request.method == "DELETE":
+                self.jobs.pop(parts[1], None)
+                return httpx.Response(204)
+            if job is None:
+                return _error(404, "unknown or expired job")
+            if suffix == "/jobs/result":
+                if self.job_failure is not None:
+                    err = self.job_failure
+                    return httpx.Response(err["http_status"], json={"error": err})
+                return httpx.Response(200, json=job["ir"])
+            job["polls"] += 1
+            if job["polls"] <= self.job_running_polls:
+                return httpx.Response(200, json={"status": "running"})
+            if self.job_failure is not None:
+                return httpx.Response(200, json={"status": "failed", "error": self.job_failure})
+            return httpx.Response(200, json={"status": "succeeded"})
 
     # ---- embedder -----------------------------------------------------------------------------
 

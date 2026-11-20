@@ -1,4 +1,4 @@
-import { ArrowLeft, CopyPlus, KeyRound, Lock, PlugZap, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeft, CopyPlus, FileSearch, KeyRound, Lock, PlugZap, Trash2, TriangleAlert } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../../api/client";
@@ -12,7 +12,7 @@ import {
   useSetSecret,
   useTestProvider,
 } from "../../api/hooks";
-import type { Provider, ProviderTestResult, ProviderType } from "../../api/types";
+import type { ParserCheck, Provider, ProviderTestResult, ProviderType, StoreCapabilities, StoreCheck } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
 import { ConfigFields, LockedSettings } from "../../components/ConfigForm";
 import { ConfirmDialog } from "../../components/Dialog";
@@ -26,6 +26,7 @@ import { duration, plural } from "../../lib/format";
 import { useToast } from "../../lib/toast";
 import { KIND_LABEL } from "./model";
 import { SecretInput, type SecretDraft } from "./SecretInput";
+import { StoreCapabilitiesPanel } from "./StoreCapabilities";
 
 export function ProviderDetail() {
   const { providerId = "" } = useParams();
@@ -65,6 +66,7 @@ function BackLink() {
 
 function Detail({ p, type }: { p: Provider; type: ProviderType }) {
   const test = useTestProvider(p.id);
+  const capabilities = (p.config.capabilities as StoreCapabilities | undefined) ?? type.capabilities;
   const fields = useMemo(() => configFields(type.config_schema), [type]);
   const permanentKeys = new Set(type.fingerprint_fields);
   const operational = fields.filter((f) => !permanentKeys.has(f.key));
@@ -105,6 +107,16 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
           <Button variant="primary" icon={PlugZap} loading={test.isPending} onClick={() => test.mutate()}>
             Test connection
           </Button>
+          {p.kind === "parser" && p.type === "http" ? (
+            <Button icon={FileSearch} loading={test.isPending} onClick={() => test.mutate(true)}>
+              Test with a sample document
+            </Button>
+          ) : null}
+          {p.kind === "vector_store" ? (
+            <Button icon={FileSearch} loading={test.isPending} onClick={() => test.mutate(true)}>
+              Test with live data
+            </Button>
+          ) : null}
           <ButtonLink to={`/providers/new?from=${p.id}`} icon={CopyPlus}>
             New provider from this one
           </ButtonLink>
@@ -115,17 +127,20 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
 
       <TestResultView result={test.data} error={test.error} />
 
+      {capabilities ? <StoreCapabilitiesPanel caps={capabilities} immutable={[]} /> : null}
+
       {operational.length ? <SettingsForm p={p} fields={operational} /> : null}
 
       {locked.length || serverSet.length ? (
         <section className="prov-section" aria-labelledby="perm-title">
           <h2 id="perm-title">
-            <Lock size={14} strokeWidth={2} aria-hidden /> Permanent settings
+            <Lock size={14} strokeWidth={2} aria-hidden /> {p.kind === "vector_store" ? "Set once" : "Permanent settings"}
           </h2>
           <LockedSettings items={[...locked, ...serverSet]}>
             <p className="prov-perm__why">
-              These settings decide what {p.name} produces, so they are part of its fingerprint and cannot change. Pipelines that used it would otherwise mix
-              results from two different services.{" "}
+              {p.kind === "vector_store"
+                ? `These settings shape the index ${p.name} builds, so they are set once and cannot change. Changing one would leave existing indexes inconsistent with the store.`
+                : `These settings decide what ${p.name} produces, so they are part of its fingerprint and cannot change. Pipelines that used it would otherwise mix results from two different services.`}{" "}
               {p.builtin ? null : (
                 <Link to={`/providers/new?from=${p.id}`} className="inline-link">
                   Create a new provider from this one
@@ -159,8 +174,7 @@ export function TestResultView({ result, error }: { result: ProviderTestResult |
           <div>
             <p>
               The service now reports version <span className="mono">{result.version_drift.current}</span>, but this provider was pinned to{" "}
-              <span className="mono">{result.version_drift.pinned}</span>. Parsing is refused until you create a new provider for the new version, so results
-              from the two versions are never mixed.
+              <span className="mono">{result.version_drift.pinned}</span>. Review the service change and create a new provider to use the new version.
             </p>
           </div>
         </div>
@@ -189,7 +203,62 @@ export function TestResultView({ result, error }: { result: ProviderTestResult |
           </div>
         ) : null}
       </dl>
+      {result.check ? (isStoreCheck(result.check) ? <StoreCheckView check={result.check} /> : <ParserCheckView check={result.check} />) : null}
     </section>
+  );
+}
+
+const isStoreCheck = (c: ParserCheck | StoreCheck): c is StoreCheck => "store_type" in c;
+
+const LEVEL_LABEL = { error: "Problem", warn: "Warning", info: "OK" } as const;
+
+/** What a sample document showed about a parser, one line per finding. A warning names the
+ *  RAGCentre feature that the problem costs. */
+function ParserCheckView({ check }: { check: ParserCheck }) {
+  const shown = check.findings.filter((f) => f.level !== "info");
+  return (
+    <div className="prov-check">
+      <p className="prov-check__sum">
+        Parsed a sample document in <span className="num">{check.seconds.toFixed(1)} s</span>: <span className="num">{check.blocks}</span> blocks on{" "}
+        <span className="num">{check.pages}</span> pages. {shown.length ? `${shown.length} finding${shown.length === 1 ? "" : "s"}.` : "Nothing to fix."}
+      </p>
+      {shown.length ? (
+        <ul className="prov-check__list">
+          {shown.map((f, i) => (
+            <li key={i} className={`prov-check__item prov-check__item--${f.level}`}>
+              <strong>{LEVEL_LABEL[f.level]}</strong> <span className="mono">{f.check}</span> {f.message}
+              {f.lost ? <span className="muted"> Loses: {f.lost}.</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** What live data showed about a vector store, one line per finding. Each finding names the
+ *  capability it proves, with its timing; a warning names the RAGCentre feature it costs. */
+function StoreCheckView({ check }: { check: StoreCheck }) {
+  const shown = check.findings.filter((f) => f.level !== "info");
+  return (
+    <div className="prov-check">
+      <p className="prov-check__sum">
+        Wrote <span className="num">{check.records}</span> records to <span className="mono">{check.collection}</span> and checked{" "}
+        <span className="num">{check.metrics.length}</span> metric{check.metrics.length === 1 ? "" : "s"} in{" "}
+        <span className="num">{check.seconds.toFixed(1)} s</span>. {shown.length ? `${shown.length} finding${shown.length === 1 ? "" : "s"}.` : "Nothing to fix."}
+      </p>
+      {shown.length ? (
+        <ul className="prov-check__list">
+          {shown.map((f, i) => (
+            <li key={i} className={`prov-check__item prov-check__item--${f.level}`}>
+              <strong>{LEVEL_LABEL[f.level]}</strong> <span className="mono">{f.check}</span> {f.message}{" "}
+              <span className="muted num">({f.ms.toFixed(0)} ms)</span>
+              {f.lost ? <span className="muted"> Loses: {f.lost}.</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

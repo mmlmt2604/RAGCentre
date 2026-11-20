@@ -32,6 +32,30 @@ pgvector = [
 chroma = [
     "chromadb>=1.5.9",
 ]
+lancedb = [
+    "lancedb>=0.41.0",
+]
+redis = [
+    "redis>=8.1.0",
+]
+weaviate = [
+    "weaviate-client>=4.24.1",
+]
+elasticsearch = [
+    "elasticsearch>=8.19.3",
+]
+opensearch = [
+    "opensearch-py>=2.8.0",
+]
+milvus = [
+    "pymilvus[milvus-lite]>=3.0.3",
+]
+pinecone = [
+    "pinecone>=10.3.0,<11",
+]
+mongodb = [
+    "pymongo>=4.20.1",
+]
 
 [project.entry-points."ragcentre.provider_types"]
 parser_builtin_text = "ragcentre.providers.parsers.builtin_text:SPEC"
@@ -53,6 +77,14 @@ sqlite_vec = "ragcentre.stores.sqlite_vec:STORE_TYPE"
 qdrant = "ragcentre.stores.qdrant:STORE_TYPE"
 pgvector = "ragcentre.stores.pgvector:STORE_TYPE"
 chroma = "ragcentre.stores.chroma:STORE_TYPE"
+lancedb = "ragcentre.stores.lancedb:STORE_TYPE"
+redis = "ragcentre.stores.redis:STORE_TYPE"
+weaviate = "ragcentre.stores.weaviate:STORE_TYPE"
+elasticsearch = "ragcentre.stores.elasticsearch:STORE_TYPE"
+opensearch = "ragcentre.stores.opensearch:STORE_TYPE"
+milvus = "ragcentre.stores.milvus:STORE_TYPE"
+pinecone = "ragcentre.stores.pinecone:STORE_TYPE"
+mongodb = "ragcentre.stores.mongodb:STORE_TYPE"
 
 [build-system]
 requires = ["hatchling"]
@@ -91,7 +123,10 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-markers = ["integration: needs external services (Docker)"]
+markers = [
+    "integration: needs external services (Docker)",
+    "cloud: needs a hosted service and credentials (opt-in)",
+]
 filterwarnings = [
     "error::pytest.PytestUnraisableExceptionWarning",
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",

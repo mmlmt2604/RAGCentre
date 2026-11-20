@@ -1,0 +1,7 @@
+# The built-in store with a name prefix: several RAGCentre installations (or environments) can share
+# one vectors.db without their collection tables colliding. Omit `path` to use <data dir>/vectors.db.
+name: sqlite-staging
+kind: vector_store
+type: sqlite_vec
+config:
+  prefix: staging_

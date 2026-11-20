@@ -18,7 +18,7 @@ from ragcentre.locks import document_lock
 from ragcentre.models.ir import IRError, normalise_ir
 from ragcentre.providers.base import invalid_response
 from ragcentre.queue.claims import is_current
-from ragcentre.stores.base import Record, upsert_batched
+from ragcentre.stores.base import Record, delete_batched, upsert_batched
 
 if TYPE_CHECKING:
     from ragcentre.context import AppContext
@@ -57,6 +57,32 @@ def _parse_route(node: dict[str, Any], mime: str) -> dict[str, Any] | None:
     return None
 
 
+class _ParseJob:
+    """Remembers the async job of one parse in ``parse_jobs`` (keyed by the parse cache key), so a
+    worker that restarts, or a retry after a timeout, resumes polling instead of submitting again."""
+
+    def __init__(self, ctx: AppContext, cache_key: str, provider_id: str) -> None:
+        self.ctx, self.cache_key, self.provider_id = ctx, cache_key, provider_id
+
+    def get(self) -> str | None:
+        row = self.ctx.db.one(
+            "SELECT job_id FROM parse_jobs WHERE cache_key = ? AND provider_id = ?", (self.cache_key, self.provider_id)
+        )
+        return None if row is None else str(row["job_id"])
+
+    def save(self, job_id: str) -> None:
+        with self.ctx.db.write() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO parse_jobs (cache_key, provider_id, job_id, created_at) "
+                "VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                (self.cache_key, self.provider_id, job_id),
+            )
+
+    def clear(self) -> None:
+        with self.ctx.db.write() as conn:
+            conn.execute("DELETE FROM parse_jobs WHERE cache_key = ?", (self.cache_key,))
+
+
 def execute_parse(ctx: AppContext, claim: Any) -> dict[str, Any]:
     started = time.perf_counter()
     doc = _doc(ctx, claim.document_id)
@@ -86,12 +112,23 @@ def execute_parse(ctx: AppContext, claim: Any) -> dict[str, Any]:
                 f"{provider.name} now reports version {info.version}; it was pinned at {pinned} when created.",
                 provider=provider.name,
             )
-    raw = parser.parse(content, str(doc["filename"]), str(doc["mime_type"]), route["options"])
+    if provider.type == "http":
+        raw = parser.parse(
+            content,
+            str(doc["filename"]),
+            str(doc["mime_type"]),
+            route["options"],
+            job=_ParseJob(ctx, cache_key, provider_id),
+        )
+    else:
+        raw = parser.parse(content, str(doc["filename"]), str(doc["mime_type"]), route["options"])
     try:
         ir = normalise_ir(raw)
     except IRError as exc:
         raise invalid_response(provider.name, str(exc)) from None
-    blob = ctx.blobs.put_json_gz(ir.model_dump(mode="json"))
+    # Nothing reads page images after parsing (the UI strips them, chunk providers never see them),
+    # and they can be megabytes per page, so the cache blob does not keep them.
+    blob = ctx.blobs.put_json_gz(ir.without_page_images())
     with ctx.db.write() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO parse_cache (cache_key, blob_sha256, created_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
@@ -231,7 +268,7 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
     if index_row is None:
         raise ExecutionError("index_missing", f"index for node {claim.node_fp} does not exist")
     store = ctx.providers.store(store_provider_id)
-    from ragcentre.stores.base import CollectionSpec
+    from ragcentre.stores.base import CollectionSpec, DimensionLimitExceeded
 
     physical = index_row["physical_name"]
     with document_lock(ctx.settings.data_dir, claim.document_id):
@@ -244,7 +281,10 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
             wanted = len(vectors[0])
             if dim is not None and wanted != dim:
                 raise ExecutionError("embedding_dimension_mismatch", f"Expected {dim} dimensions, received {wanted}")
-            store.ensure_collection(CollectionSpec(physical, wanted, metric, {"document_id": "str", **field_types}))
+            try:
+                store.ensure_collection(CollectionSpec(physical, wanted, metric, {"document_id": "str", **field_types}))
+            except DimensionLimitExceeded as exc:
+                raise ExecutionError("store_dimension_limit", str(exc)) from exc
             ctx.db.execute("UPDATE indexes SET dim = ? WHERE id = ? AND dim IS NULL", (wanted, index_row["id"]))
         previous = {
             r[0]
@@ -257,7 +297,7 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
         if records:
             upsert_batched(store, physical, records)
         if previous - new_ids:
-            store.delete(physical, list(previous - new_ids))
+            delete_batched(store, physical, list(previous - new_ids))
         with ctx.db.write() as conn:
             conn.execute(
                 "DELETE FROM index_records WHERE index_id = ? AND document_id = ?", (index_row["id"], claim.document_id)

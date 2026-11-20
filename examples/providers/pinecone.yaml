@@ -1,0 +1,13 @@
+# Pinecone. Needs `pip install "ragcentre[pinecone]"`.
+# RAGCentre never creates or deletes a Pinecone index: create a dense index first, with the
+# dimension and metric of your embedder, and name it here. Each RAGCentre collection becomes a
+# namespace in it. Pinecone is eventually consistent and gives no exact-filter guarantee; see the
+# README table. The API key is read from the environment.
+name: pinecone
+kind: vector_store
+type: pinecone
+config:
+  index_name: ragcentre
+  prefix: rc_
+secrets:
+  api_key: {env: PINECONE_API_KEY}

@@ -14,18 +14,24 @@ Docling label                      IR block
 text-like labels                   stores it as ``metadata.original_type``)
 ``list_item``                      ``list_item``
 ``table``                          ``table``: Markdown in ``text``, HTML in ``html``
-``picture``, ``chart``             ``figure``, with the caption as ``text`` (may be empty)
-``caption``, ``footnote``,         same name
-``code``, ``formula``,
+``picture``, ``chart``             ``figure``, with the caption as ``text`` (may be empty); a picture
+                                   description (``picture_description`` option) follows the caption
+                                   after a blank line; the picture's class is
+                                   ``metadata.classification``
+``caption``, ``footnote``,         same name; ``code`` also gets ``metadata.language`` (when
+``code``, ``formula``,             Docling knows it)
 ``page_header``, ``page_footer``
 =================================  =========================================================
 
 ``page`` and ``bbox`` come from the item's first provenance entry; boxes are converted to a
-top-left origin in page units, as the IR requires.
+top-left origin in page units, as the IR requires. An item that runs over a page break (a table
+split across pages has one provenance entry per page) also gets ``metadata.page_end``, the last
+page it touches, so a chunk made of it reports both pages.
 """
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 IR_VERSION = "1.0"
@@ -50,11 +56,45 @@ def _location(item: Any, sizes: dict[int, tuple[float, float]]) -> dict[str, Any
         return {}
     first = prov[0]
     out: dict[str, Any] = {"page": int(first.page_no)}
+    last = max(int(p.page_no) for p in prov)
+    if last > out["page"]:
+        out["metadata"] = {"page_end": last}
     size = sizes.get(int(first.page_no))
     if size is not None and first.bbox is not None:
         box = first.bbox.to_top_left_origin(page_height=size[1])
         out["bbox"] = [float(box.l), float(box.t), float(box.r), float(box.b)]
     return out
+
+
+def _annotations(item: Any) -> list[Any]:
+    """The legacy ``annotations`` list (docling-core 2.x before ``meta``), without its deprecation warning."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return list(getattr(item, "annotations", None) or [])
+
+
+def _picture_description(item: Any) -> str | None:
+    """The text Docling's picture-description model wrote: ``meta.description`` in current
+    docling-core, or a ``description`` annotation in older output."""
+    text = getattr(getattr(getattr(item, "meta", None), "description", None), "text", None)
+    if not text:
+        for note in _annotations(item):
+            if getattr(note, "kind", None) == "description":
+                text = getattr(note, "text", None)
+                break
+    return str(text).strip() or None if text else None
+
+
+def _picture_class(item: Any) -> str | None:
+    """The picture classifier's best class (``meta.classification`` or a ``classification``
+    annotation), e.g. ``bar_chart`` or ``logo``."""
+    predictions = list(getattr(getattr(getattr(item, "meta", None), "classification", None), "predictions", None) or [])
+    for note in _annotations(item):
+        if getattr(note, "kind", None) == "classification":
+            predictions.extend(getattr(note, "predicted_classes", None) or [])
+    best = max(predictions, key=lambda p: getattr(p, "confidence", 0) or 0, default=None)
+    name = getattr(best, "class_name", None)
+    return str(name) if name else None
 
 
 def _block(item: Any, doc: Any, sizes: dict[int, tuple[float, float]]) -> dict[str, Any] | None:
@@ -70,9 +110,16 @@ def _block(item: Any, doc: Any, sizes: dict[int, tuple[float, float]]) -> dict[s
         if html:
             block["html"] = html
     elif label in _FIGURES:
-        block = {"type": "figure", "text": item.caption_text(doc) or ""}
+        caption = item.caption_text(doc) or ""
+        description = _picture_description(item)
+        block = {"type": "figure", "text": "\n\n".join(t for t in (caption, description) if t)}
+        if classification := _picture_class(item):
+            block["metadata"] = {"classification": classification}
     elif label in _SAME:
         block = {"type": label, "text": getattr(item, "text", "") or ""}
+        language = getattr(getattr(item, "code_language", None), "value", None)
+        if label == "code" and language and str(language).lower() != "unknown":
+            block["metadata"] = {"language": str(language)}
     elif label in _PARAGRAPHS:
         block = {"type": "paragraph", "text": getattr(item, "text", "") or ""}
     elif hasattr(item, "text"):
@@ -81,7 +128,11 @@ def _block(item: Any, doc: Any, sizes: dict[int, tuple[float, float]]) -> dict[s
         return None  # groups and other structural nodes carry no text of their own
     if block["type"] != "figure" and not block["text"].strip():
         return None
-    block.update(_location(item, sizes))
+    location = _location(item, sizes)
+    extra = location.pop("metadata", None)
+    block.update(location)
+    if extra:
+        block["metadata"] = {**block.get("metadata", {}), **extra}
     return block
 
 

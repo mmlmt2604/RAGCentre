@@ -48,10 +48,15 @@ def _store_spec(st: VectorStoreType) -> ProviderTypeSpec:
         label=st.label,
         description=st.description,
         config_model=st.config_model,
-        fingerprint_fields=(),
+        # A store's fingerprint is its provider id (see manager.fingerprint_for), so these fields
+        # do not enter it. Listing them here makes ProviderManager.update treat them as permanent
+        # (409 immutable_field) and the API/UI report them as fixed after creation.
+        fingerprint_fields=st.immutable_fields,
         secret_keys=st.secret_keys,
         factory=factory,
         capabilities=st.capabilities,
+        captured_fields=st.captured_fields,
+        info_protocol=st.info_protocol,
     )
 
 

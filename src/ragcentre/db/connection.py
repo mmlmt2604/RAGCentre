@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import sqlite3
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -35,14 +36,32 @@ class Database:
         self._closed = False
 
     def connect(self) -> sqlite3.Connection:
-        """Open a new connection with the standard settings."""
+        """Open a new connection with the standard settings.
+
+        A fresh database is created and its pragmas applied by the first connection to touch it;
+        other connections opening at the same moment can see a transient ``database is locked``
+        before any transaction begins. Retry the idempotent setup a few times with backoff, then
+        let the real error surface.
+        """
         conn = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False, timeout=5.0)
         conn.row_factory = sqlite3.Row
-        for pragma in PRAGMAS:
-            conn.execute(pragma)
-        if self._setup is not None:
-            self._setup(conn)
-        return conn
+        last: BaseException | None = None
+        for attempt in range(5):
+            if attempt:
+                time.sleep(0.02 * attempt)  # 20, 40, 60, 80 ms
+            try:
+                for pragma in PRAGMAS:
+                    conn.execute(pragma)
+                if self._setup is not None:
+                    self._setup(conn)
+                return conn
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                    conn.close()
+                    raise
+                last = exc
+        conn.close()
+        raise last  # type: ignore[misc]
 
     @property
     def conn(self) -> sqlite3.Connection:

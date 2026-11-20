@@ -23,7 +23,7 @@ from typing import Annotated, Any, NoReturn
 import typer
 
 from ragcentre.client import ApiError, Client, Unreachable
-from ragcentre.logs import configure_logging
+from ragcentre.logs import configure_logging, redact, register_secret
 from ragcentre.settings import Settings
 
 app = typer.Typer(
@@ -39,11 +39,15 @@ pipeline_app = typer.Typer(
     help="Pipelines: how a corpus is parsed, chunked, embedded and indexed.", no_args_is_help=True
 )
 eval_app = typer.Typer(help="Evaluation datasets and runs.", no_args_is_help=True)
+parser_app = typer.Typer(help="Check parser and OCR services.", no_args_is_help=True)
+store_app = typer.Typer(help="Check vector stores against live data.", no_args_is_help=True)
 app.add_typer(provider_app, name="provider")
 app.add_typer(corpus_app, name="corpus")
 app.add_typer(docs_app, name="docs")
 app.add_typer(pipeline_app, name="pipeline")
 app.add_typer(eval_app, name="eval")
+app.add_typer(parser_app, name="parser")
+app.add_typer(store_app, name="store")
 
 log = logging.getLogger("ragcentre")
 
@@ -73,7 +77,7 @@ def _main(
 
 
 def _fail(message: str, code: int = 1) -> NoReturn:
-    typer.echo(f"error: {message}", err=True)
+    typer.echo(f"error: {redact(message)}", err=True)
     raise typer.Exit(code)
 
 
@@ -237,11 +241,17 @@ def provider_list() -> None:
 
 
 @provider_app.command("test")
-def provider_test(name: Annotated[str, typer.Argument(help="Provider name or id.")]) -> None:
+def provider_test(
+    name: Annotated[str, typer.Argument(help="Provider name or id.")],
+    deep: Annotated[
+        bool,
+        typer.Option("--deep", help="For a parser: parse a sample document; for a vector store: check live data."),
+    ] = False,
+) -> None:
     """Check that a provider is reachable and working."""
     with _api() as api:
         p = api.provider(name)
-        result = api.post(f"/providers/{p['id']}/test")
+        result = api.post(f"/providers/{p['id']}/test", params={"deep": "true"} if deep else None)
 
     def human() -> None:
         status = "ok" if result["ok"] else "FAILED"
@@ -252,6 +262,191 @@ def provider_test(name: Annotated[str, typer.Argument(help="Provider name or id.
             s = result["service"]
             typer.echo(f"  service: {s['name']} {s['version']}")
         if result.get("message"):
+            typer.echo(f"  {result['message']}")
+        for finding in (result.get("check") or {}).get("findings", []):
+            if finding["level"] != "info":
+                typer.echo(f"  {finding['level']}: {finding['check']}: {finding['message']}")
+                if finding.get("lost"):
+                    typer.echo(f"      loses: {finding['lost']}")
+
+    _emit(result, human)
+    if not result["ok"]:
+        raise typer.Exit(1)
+
+
+@parser_app.command("check")
+def parser_check(
+    base_url: Annotated[str, typer.Argument(help="The service's base URL, e.g. http://127.0.0.1:8701.")],
+    file: Annotated[
+        Path | None, typer.Option("--file", help="Parse this file instead of the built-in two-page sample PDF.")
+    ] = None,
+    api_key_env: Annotated[
+        str | None, typer.Option("--api-key-env", help="Environment variable holding the service's bearer token.")
+    ] = None,
+    api_key: Annotated[
+        str | None,
+        typer.Option("--api-key", help="The bearer token itself (it shows in shell history: prefer --api-key-env)."),
+    ] = None,
+    job_timeout: Annotated[float, typer.Option("--job-timeout", help="Seconds to wait for an async job.")] = 600.0,
+    request_timeout: Annotated[float, typer.Option("--timeout", help="Seconds to wait for each request.")] = 600.0,
+    probe_errors: Annotated[
+        bool,
+        typer.Option("--probe-errors/--no-probe-errors", help="Also send an unreadable file to see how errors look."),
+    ] = True,
+) -> None:
+    """Check that a service speaks ragcentre.parser/v1 and see which RAGCentre features its output feeds.
+
+    Needs no running RAGCentre. Exits 1 when the service cannot be used as it is; warnings name the
+    feature each problem costs."""
+    import os
+
+    import httpx
+
+    from ragcentre.providers.parsers.check import check_parser
+
+    if api_key_env is not None:
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            _fail(f"environment variable {api_key_env} is not set")
+    upload = None
+    if file is not None:
+        if not file.is_file():
+            _fail(f"{file} is not a file")
+        upload = (file.name, file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    with httpx.Client(timeout=httpx.Timeout(request_timeout, connect=10.0), headers=headers) as client:
+        report = check_parser(client, base_url, file=upload, job_timeout=job_timeout, probe_errors=probe_errors)
+
+    def human() -> None:
+        marks = {"error": "FAIL", "warn": "warn", "info": "ok  "}
+        for finding in report.findings:
+            typer.echo(f"{marks[finding.level]}  {finding.check}: {finding.message}")
+            if finding.lost:
+                typer.echo(f"      loses: {finding.lost}")
+        warnings = sum(f.level == "warn" for f in report.findings)
+        verdict = "usable" if report.ok else "NOT usable"
+        typer.echo(f"{report.base_url}: {verdict}, {warnings} warning(s), {report.seconds:.1f} s")
+
+    _emit(report.as_dict(), human)
+    if not report.ok:
+        raise typer.Exit(1)
+
+
+def _store_env_secrets(type_: str, keys: Sequence[str]) -> dict[str, str]:
+    """Read each secret from ``RAGCENTRE_<TYPE>_<KEY>`` (uppercased), never from the command line."""
+    import os
+
+    secrets: dict[str, str] = {}
+    for key in keys:
+        env_var = f"RAGCENTRE_{type_.upper()}_{key.upper()}"
+        value = os.environ.get(env_var)
+        if value:
+            register_secret(value)
+            secrets[key] = value
+    return secrets
+
+
+def _print_store_check(name: str, check: dict[str, Any]) -> None:
+    shown = [f for f in check["findings"] if f["level"] != "info"]
+    typer.echo(
+        f"{name}: {'usable' if check['ok'] else 'NOT usable'} — {check['records']} records on "
+        f"{check['collection']}, {len(check['metrics'])} metric(s), {check['seconds']:.1f} s"
+    )
+    for finding in shown:
+        typer.echo(f"  {finding['level']}: {finding['check']}: {finding['message']}")
+        if finding.get("lost"):
+            typer.echo(f"      loses: {finding['lost']}")
+    if not shown:
+        typer.echo("  all checks passed.")
+
+
+@store_app.command("list")
+def store_list(
+    markdown: Annotated[
+        bool, typer.Option("--markdown", help="Print the README's Markdown table of the built-in stores.")
+    ] = False,
+) -> None:
+    """List the vector store types, their extras and what each one guarantees.
+
+    The figures are each type's best case; an instance can report less (``store check`` shows what a
+    live store gives). ``--markdown`` prints the table that the README embeds, which a test keeps in
+    step with the registry."""
+    from ragcentre.stores import docs
+
+    if markdown:
+        typer.echo(docs.markdown_table())
+        return
+    headers, rows = docs.plain_rows()
+    data = [dict(zip((h.lower().replace(" ", "_") for h in headers), row, strict=True)) for row in rows]
+    _emit(data, lambda: _table(headers, rows))
+
+
+@store_app.command("check")
+def store_check(
+    provider: Annotated[str | None, typer.Argument(help="Registered provider name or id.")] = None,
+    type_: Annotated[
+        str | None, typer.Option("--type", help="Store type to check directly, e.g. sqlite_vec or qdrant.")
+    ] = None,
+    config: Annotated[
+        str | None, typer.Option("--config", help="Store config as JSON, with --type (default {}).")
+    ] = None,
+) -> None:
+    """Check a vector store against live data and see which guarantees it gives.
+
+    With a provider name, the running server runs the check (like ``provider test --deep``). With
+    ``--type`` it builds the store directly, with no server, and reads each secret from the
+    environment as ``RAGCENTRE_<TYPE>_<KEY>`` (uppercased) — never from the command line. Either way
+    it writes to a temporary collection, always removes it, and exits 1 when the store is not usable."""
+    if (provider is None) == (type_ is None):
+        _fail("give either a provider name, or --type (with --config)")
+
+    if type_ is not None:
+        from ragcentre.stores.check import check_store
+        from ragcentre.stores.registry import vector_store_types
+
+        try:
+            raw = json.loads(config or "{}")
+        except ValueError as exc:
+            _fail(f"--config is not valid JSON: {exc}")
+        if not isinstance(raw, dict):
+            _fail("--config must be a JSON object")
+        types = vector_store_types()
+        if type_ not in types:
+            _fail(f"unknown store type {type_!r}. Installed types: {', '.join(sorted(types))}.")
+        t = types[type_]
+        try:
+            model = t.config_model.model_validate(raw)
+        except Exception as exc:
+            _fail(f"invalid {type_} config: {exc}")
+        try:
+            store = t.factory(model, _store_env_secrets(type_, t.secret_keys), _settings().data_dir)
+        except Exception as exc:
+            _fail(f"could not build {type_}: {exc}")
+        try:
+            report = check_store(store, store_type=type_).as_dict()
+            for finding in report["findings"]:
+                finding["message"] = redact(finding["message"])
+        finally:
+            store.close()
+        _emit(report, lambda: _print_store_check(report["store_type"], report))
+        if not report["ok"]:
+            raise typer.Exit(1)
+        return
+
+    assert provider is not None
+    with _api() as api:
+        p = api.provider(provider)
+        if p.get("kind") != "vector_store":
+            _fail(f"provider {p['name']!r} is not a vector_store")
+        result = api.post(f"/providers/{p['id']}/test", params={"deep": "true"})
+
+    def human() -> None:
+        status = "ok" if result["ok"] else "FAILED"
+        typer.echo(f"{p['name']}: {status} in {result['latency_ms']:.0f} ms")
+        check = result.get("check")
+        if check:
+            _print_store_check(p["name"], check)
+        elif result.get("message"):
             typer.echo(f"  {result['message']}")
 
     _emit(result, human)

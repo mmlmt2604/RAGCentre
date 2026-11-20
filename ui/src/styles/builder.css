@@ -264,6 +264,37 @@
   width: 100%;
   max-width: 980px;
 }
+.route--schema {
+  grid-template-columns: 20px minmax(120px, 1fr) minmax(160px, 1.2fr) auto;
+}
+.route--schema > .opts {
+  grid-column: 2 / -1;
+}
+.opts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.opts__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.opts__title {
+  font-weight: 600;
+}
+.opts__note {
+  color: var(--text-3);
+  flex: 1;
+}
+.opt {
+  position: relative;
+}
+.opt__reset {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
 .route__n {
   padding-top: 26px;
   color: var(--text-3);

@@ -28,6 +28,7 @@ from ragcentre.hashing import new_id, provider_fp
 from ragcentre.logs import redact, register_secret
 from ragcentre.providers.base import KINDS, BuildEnv, InfoService, ProviderTypeSpec, ServiceInfo
 from ragcentre.providers.registry import get_type, provider_types
+from ragcentre.stores.base import StoreError
 from ragcentre.timeutil import now_iso
 
 if TYPE_CHECKING:
@@ -171,6 +172,10 @@ class ProviderManager:
             info = self._capture_info(spec, provider_id, name, model)
             stored["service_name"] = info.name
             stored["service_version"] = info.version
+            if "capabilities" in spec.captured_fields:
+                stored["capabilities"] = info.capabilities
+            if "options_schema" in spec.captured_fields and info.options_schema is not None:
+                stored["options_schema"] = info.options_schema
         if self.by_name(name) is not None:
             raise Conflict(f"A provider named {name!r} already exists.")
         now = now_iso()
@@ -190,12 +195,14 @@ class ProviderManager:
     def _capture_info(self, spec: ProviderTypeSpec, provider_id: str, name: str, model: BaseModel) -> ServiceInfo:
         """Call ``/info`` (without credentials) to pin the service name and version."""
         env = self._env(provider_id, name, model)
-        service = spec.factory(model, {}, env)
+        service = None
         try:
+            service = spec.factory(model, {}, env)
             info = cast(InfoService, service).info()
-        except ExecutionError as exc:
+        except (ExecutionError, StoreError) as exc:
+            message = exc.message if isinstance(exc, ExecutionError) else str(exc)
             raise ProviderFailed(
-                f"Could not read {name}'s /info to pin its version: {exc.message}",
+                redact(f"Could not read {name}'s /info to pin its version: {message}"),
                 details={"provider": name},
             ) from None
         finally:
@@ -203,6 +210,18 @@ class ProviderManager:
             if close is not None:
                 close()
         return info
+
+    def _store_options_schema(self, row: ProviderRow, schema: dict[str, Any] | None) -> None:
+        """Refresh the options schema captured from the service. It is not part of the fingerprint:
+        it only drives pipeline validation and the UI's option form."""
+        config = {k: v for k, v in row.config.items() if k != "options_schema"}
+        if schema is not None:
+            config["options_schema"] = schema
+        with self.db.write() as conn:
+            conn.execute(
+                "UPDATE providers SET config = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(config), now_iso(), row.id),
+            )
 
     def update(self, provider_id: str, patch: Mapping[str, Any]) -> ProviderRow:
         row = self.get(provider_id)
@@ -351,7 +370,7 @@ class ProviderManager:
 
     # ---- health check -------------------------------------------------------------------------
 
-    def test(self, provider_id: str) -> dict[str, Any]:
+    def test(self, provider_id: str, *, deep: bool = False) -> dict[str, Any]:
         row = self.get(provider_id)
         result: dict[str, Any] = {
             "ok": False,
@@ -369,6 +388,27 @@ class ProviderManager:
                 info = cast(Any, inst).info(fresh=True)
                 result["service"] = {"name": info.name, "version": info.version, "mime_types": info.mime_types}
                 pinned = str(row.config.get("service_version", ""))
+                if row.kind == "vector_store" and not pinned:
+                    # HTTP stores created before metadata capture have no version to compare.
+                    # Pin the first successful handshake instead of reporting drift from "".
+                    with self.db.write() as conn:
+                        conn.execute(
+                            "UPDATE providers SET config = json_set(config, '$.service_name', ?, "
+                            "'$.service_version', ?, '$.capabilities', json(?)) WHERE id = ? AND updated_at = ?",
+                            (info.name, info.version, json.dumps(info.capabilities), row.id, row.updated_at),
+                        )
+                    pinned = info.version
+                if "options_schema" in spec.captured_fields and info.options_schema != row.config.get("options_schema"):
+                    self._store_options_schema(row, info.options_schema)  # the service's options changed
+                if "capabilities" in spec.captured_fields and info.capabilities != row.config.get("capabilities"):
+                    with self.db.write() as conn:
+                        conn.execute(
+                            "UPDATE providers SET config = json_set(config, '$.capabilities', json(?)) "
+                            "WHERE id = ? AND updated_at = ?",
+                            (json.dumps(info.capabilities), row.id, row.updated_at),
+                        )
+                if row.kind == "vector_store":
+                    inst.healthcheck()
                 if info.version != pinned:
                     result["version_drift"] = {"pinned": pinned, "current": info.version}
                     result["message"] = (
@@ -386,6 +426,30 @@ class ProviderManager:
             elif row.kind == "vector_store":
                 inst.healthcheck()
             result["ok"] = result["version_drift"] is None
+            if deep and row.kind == "parser" and row.type == "http":
+                # Parse a sample document and look at the IR, not just /info.
+                from ragcentre.providers.parsers.check import check_parser
+
+                report = check_parser(cast(Any, inst).client, cast(Any, inst).base_url)
+                for finding in report.findings:
+                    finding.message = redact(finding.message)
+                result["check"] = report.as_dict()  # only a deep test has this key
+                result["ok"] = bool(result["ok"] and report.ok)
+                if not report.ok and result["message"] is None:
+                    errors = [f.message for f in report.findings if f.level == "error"]
+                    result["message"] = redact("; ".join(errors))[:500]
+            elif deep and row.kind == "vector_store":
+                # Write, query, filter and delete against a temporary collection, not just healthcheck.
+                from ragcentre.stores.check import check_store
+
+                store_report = check_store(cast("VectorStore", inst), store_type=row.type)
+                for store_finding in store_report.findings:
+                    store_finding.message = redact(store_finding.message)
+                result["check"] = store_report.as_dict()  # only a deep test has this key
+                result["ok"] = bool(result["ok"] and store_report.ok)
+                if not store_report.ok and result["message"] is None:
+                    errors = [f.message for f in store_report.findings if f.level == "error"]
+                    result["message"] = redact("; ".join(errors))[:500]
         except ExecutionError as exc:
             result["message"] = redact(exc.message)
         except Exception as exc:

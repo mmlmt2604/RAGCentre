@@ -124,6 +124,45 @@ describe("providers (UI-1)", () => {
     expect(within(drift).getByText("2.14.0")).toBeInTheDocument();
   });
 
+  it("shows and refreshes the connected store's reported capabilities on its detail page", async () => {
+    const user = userEvent.setup();
+    const { uuidFrom } = await import("../../mocks/hash");
+    const id = uuidFrom("provider:qdrant-main");
+    const { state } = renderApp(`/providers/${id}`);
+    state.providers.find((p) => p.id === id)!.config.capabilities = {
+      ...providerTypes.find((t) => t.kind === "vector_store" && t.type === "qdrant")!.capabilities!,
+      consistency: "eventual", filter_exact: false, max_dim: 128,
+    };
+    const caps = await screen.findByLabelText("Store capabilities");
+    expect(within(caps).getByText("eventual")).toBeInTheDocument();
+    expect(within(caps).getByText(/Filtered search is not exact/)).toBeInTheDocument();
+    expect(within(caps).getByText(/limited to 128 dimensions/)).toBeInTheDocument();
+    state.providers.find((p) => p.id === id)!.config.capabilities = {
+      ...providerTypes.find((t) => t.kind === "vector_store" && t.type === "qdrant")!.capabilities!,
+      max_dim: 64,
+    };
+    await user.click(screen.getByRole("button", { name: "Test connection" }));
+    expect(await within(caps).findByText(/limited to 64 dimensions/)).toBeInTheDocument();
+    expect(within(caps).queryByText(/Filtered search is not exact/)).toBeNull();
+  });
+
+  it("runs a deep test on a vector store and shows its findings", async () => {
+    const user = userEvent.setup();
+    const { uuidFrom } = await import("../../mocks/hash");
+    renderApp(`/providers/${uuidFrom("provider:local-sqlite")}`);
+    await user.click(await screen.findByRole("button", { name: "Test with live data" }));
+    expect(await screen.findByText("Connection works")).toBeInTheDocument();
+    expect(await screen.findByText(/Nothing to fix\./)).toBeInTheDocument();
+    expect(screen.getByText("rc_check_ab12cd34")).toBeInTheDocument();
+  });
+
+  it("offers no live-data test for providers that are not vector stores", async () => {
+    const { uuidFrom } = await import("../../mocks/hash");
+    renderApp(`/providers/${uuidFrom("provider:bge-m3")}`);
+    await screen.findByRole("button", { name: "Test connection" });
+    expect(screen.queryByRole("button", { name: "Test with live data" })).toBeNull();
+  });
+
   it("explains why an in-use provider cannot be deleted", async () => {
     const user = userEvent.setup();
     const { uuidFrom } = await import("../../mocks/hash");
@@ -148,5 +187,28 @@ describe("providers (UI-1)", () => {
     expect(await screen.findByRole("heading", { name: "New provider from bge-m3" })).toBeInTheDocument();
     expect(screen.getByLabelText(/^Name/)).toHaveValue("bge-m3-2");
     expect(screen.getByLabelText(/^Model/)).toHaveValue("BAAI/bge-m3");
+  });
+
+  it("shows the selected store type's capabilities with warnings and marks set-once fields", async () => {
+    const user = userEvent.setup();
+    renderApp("/providers/new?kind=vector_store", "ready");
+    await user.click(await screen.findByRole("radio", { name: typeOptionName("Pinecone") }));
+    const caps = screen.getByLabelText("Store capabilities");
+    expect(within(caps).getByText("eventual")).toBeInTheDocument();
+    expect(within(caps).getByText(/Filtered search is not exact/)).toBeInTheDocument();
+    expect(within(caps).getByText(/Eventually consistent/)).toBeInTheDocument();
+    expect(within(caps).getByText(/limited to 20,000 dimensions/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: typeOptionName("SQLite") }));
+    const plain = screen.getByLabelText("Store capabilities");
+    expect(within(plain).getByText("no known limit")).toBeInTheDocument();
+    expect(within(plain).queryByText(/Eventually consistent/)).toBeNull();
+    expect(within(plain).queryByText(/Filtered search is not exact/)).toBeNull();
+    expect(within(plain).queryByText(/Set once/)).toBeNull();
+
+    await user.click(screen.getByRole("radio", { name: typeOptionName("PostgreSQL") }));
+    expect(within(screen.getByLabelText("Store capabilities")).getByText(/Set once: vector_type, hnsw_m/)).toBeInTheDocument();
+    const once = screen.getByRole("heading", { name: /Set once, when created/ }).closest("section")!;
+    expect(within(once).getByLabelText(/vector_type/)).toBeInTheDocument();
   });
 });

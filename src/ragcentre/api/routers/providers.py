@@ -51,6 +51,10 @@ def list_provider_types(params: PageParams = Depends(page_params)) -> api.Page[a
                 max_batch=spec.capabilities.max_batch,
                 multi_vector=spec.capabilities.multi_vector,
                 native_hybrid=spec.capabilities.native_hybrid,
+                max_dim=spec.capabilities.max_dim,
+                consistency=spec.capabilities.consistency,
+                filter_exact=spec.capabilities.filter_exact,
+                max_collections=spec.capabilities.max_collections,
             )
         items.append(
             api.ProviderType(
@@ -99,9 +103,11 @@ def delete_provider(provider_id: str, ctx: AppContext = Depends(get_ctx)) -> Res
     return Response(status_code=204)
 
 
-@router.post("/providers/{provider_id}/test", response_model=api.ProviderTestResult)
-def test_provider(provider_id: str, ctx: AppContext = Depends(get_ctx)) -> api.ProviderTestResult:
-    return api.ProviderTestResult.model_validate(ctx.providers.test(provider_id))
+@router.post("/providers/{provider_id}/test", response_model=api.ProviderTestResult, response_model_exclude_unset=True)
+def test_provider(provider_id: str, deep: bool = False, ctx: AppContext = Depends(get_ctx)) -> api.ProviderTestResult:
+    """Check that a provider works. With ``deep=true`` a parser service also parses a sample
+    document and reports which RAGCentre features its output feeds."""
+    return api.ProviderTestResult.model_validate(ctx.providers.test(provider_id, deep=deep))
 
 
 @router.put("/providers/{provider_id}/secrets/{key}", response_model=api.Provider)

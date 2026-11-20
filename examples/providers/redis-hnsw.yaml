@@ -1,0 +1,12 @@
+# Redis 8 (or Redis Stack) with the search module. Needs `pip install "ragcentre[redis]"`.
+# `algorithm` is set once: flat is exact, hnsw is approximate and scales further.
+name: redis-hnsw
+kind: vector_store
+type: redis
+config:
+  url: redis://localhost:6379/0
+  algorithm: hnsw
+  ef_runtime: 100
+  prefix: rc_
+secrets:
+  password: {env: REDIS_PASSWORD}
