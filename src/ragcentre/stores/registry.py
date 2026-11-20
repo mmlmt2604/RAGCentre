@@ -26,6 +26,7 @@ BUILTIN = {
     "pgvector": "ragcentre.stores.pgvector:STORE_TYPE",
     "chroma": "ragcentre.stores.chroma:STORE_TYPE",
     "lancedb": "ragcentre.stores.lancedb:STORE_TYPE",
+    "redis": "ragcentre.stores.redis:STORE_TYPE",
     "http": "ragcentre.stores.http:STORE_TYPE",
 }
 
