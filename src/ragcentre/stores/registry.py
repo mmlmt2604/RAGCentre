@@ -27,6 +27,7 @@ BUILTIN = {
     "chroma": "ragcentre.stores.chroma:STORE_TYPE",
     "lancedb": "ragcentre.stores.lancedb:STORE_TYPE",
     "redis": "ragcentre.stores.redis:STORE_TYPE",
+    "weaviate": "ragcentre.stores.weaviate:STORE_TYPE",
     "http": "ragcentre.stores.http:STORE_TYPE",
 }
 

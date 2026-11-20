@@ -38,6 +38,9 @@ lancedb = [
 redis = [
     "redis>=8.1.0",
 ]
+weaviate = [
+    "weaviate-client>=4.24.1",
+]
 
 [project.entry-points."ragcentre.provider_types"]
 parser_builtin_text = "ragcentre.providers.parsers.builtin_text:SPEC"
@@ -61,6 +64,7 @@ pgvector = "ragcentre.stores.pgvector:STORE_TYPE"
 chroma = "ragcentre.stores.chroma:STORE_TYPE"
 lancedb = "ragcentre.stores.lancedb:STORE_TYPE"
 redis = "ragcentre.stores.redis:STORE_TYPE"
+weaviate = "ragcentre.stores.weaviate:STORE_TYPE"
 
 [build-system]
 requires = ["hatchling"]

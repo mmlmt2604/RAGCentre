@@ -50,6 +50,16 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 2s --health-timeout 2s --health-retries 30
+      weaviate:
+        image: cr.weaviate.io/semitechnologies/weaviate:1.36.2
+        env:
+          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+          DEFAULT_VECTORIZER_MODULE: none
+          ENABLE_MODULES: ""
+          CLUSTER_HOSTNAME: node1
+        ports:
+          - 58080:8080
+          - 50051:50051
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -59,8 +69,10 @@ jobs:
         run: uv run mypy
       - name: Wait for Chroma
         run: curl -sf --retry 30 --retry-connrefused --retry-delay 2 http://localhost:58000/api/v2/heartbeat
+      - name: Wait for Weaviate
+        run: curl -sf --retry 30 --retry-connrefused --retry-delay 2 http://localhost:58080/v1/.well-known/ready
       - name: Store tests
-        run: uv run pytest tests/test_m2_sqlite_vec.py tests/test_m9_qdrant.py tests/test_m9_chroma.py tests/test_m9_chroma_server.py tests/test_vs_lancedb.py tests/test_vs_redis.py tests/test_m9_pgvector.py tests/test_m9_optional_extras.py tests/test_no_ml_imports.py
+        run: uv run pytest tests/test_m2_sqlite_vec.py tests/test_m9_qdrant.py tests/test_m9_chroma.py tests/test_m9_chroma_server.py tests/test_vs_lancedb.py tests/test_vs_redis.py tests/test_vs_weaviate.py tests/test_m9_pgvector.py tests/test_m9_optional_extras.py tests/test_no_ml_imports.py
 
   docling-shim:
     # The example parser service's tests. They need docling-core (the document model), not
