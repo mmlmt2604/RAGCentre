@@ -102,7 +102,7 @@ def test_client_module_is_not_shadowed_by_the_store_module() -> None:
 
     client = importlib.import_module("opensearchpy")
     assert hasattr(client, "OpenSearch")
-    assert "ragcentre" not in str(client.__file__)
+    assert Path(client.__file__).resolve() != Path(os_module.__file__).resolve()
     assert os_module.__name__ == "ragcentre.stores.opensearch"
 
 

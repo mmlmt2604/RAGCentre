@@ -386,7 +386,8 @@ def test_import_name_is_the_client_not_this_module() -> None:
 
     client = importlib.import_module("pinecone")
     assert client is not ours
-    assert Path(client.__file__ or "").parent.name == "pinecone" and "ragcentre" not in str(client.__file__)
+    assert Path(client.__file__ or "").parent.name == "pinecone"
+    assert Path(client.__file__).resolve() != Path(ours.__file__).resolve()
     assert hasattr(client, "Pinecone") and hasattr(client, "NotFoundError")
 
 

@@ -1,4 +1,4 @@
-"""Tests for the shim. They need docling-core (the document model) but not Docling's models."""
+"""Tests for the shim. Conversion needs docling-core; local pipeline options also need the local extra."""
 
 from __future__ import annotations
 
@@ -294,6 +294,7 @@ def pipeline_of(converter: Any) -> Any:
 
 
 def test_options_reach_the_pipeline() -> None:
+    pytest.importorskip("docling", reason="needs the docling-shim local extra")
     from docling.datamodel import pipeline_options as po
 
     from docling_shim.app import DoclingConverter
@@ -337,6 +338,7 @@ def test_options_reach_the_pipeline() -> None:
     ],
 )
 def test_every_ocr_engine_builds(engine: str, class_name: str) -> None:
+    pytest.importorskip("docling", reason="needs the docling-shim local extra")
     from docling_shim.app import DoclingConverter
 
     pipeline = pipeline_of(DoclingConverter()._converter(all_options(ocr_engine=engine)))
@@ -344,6 +346,7 @@ def test_every_ocr_engine_builds(engine: str, class_name: str) -> None:
 
 
 def test_converters_are_cached_per_pipeline_options_but_not_per_page_window() -> None:
+    pytest.importorskip("docling", reason="needs the docling-shim local extra")
     from docling_shim.app import DoclingConverter
 
     converter = DoclingConverter()

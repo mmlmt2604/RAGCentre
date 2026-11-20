@@ -288,7 +288,7 @@ def test_client_module_is_not_shadowed_by_the_store_module() -> None:
         pytest.skip("the 'elasticsearch' extra is not installed")
     client = importlib.import_module("elasticsearch")
     assert hasattr(client, "Elasticsearch")
-    assert "ragcentre" not in str(client.__file__)
+    assert Path(client.__file__).resolve() != Path(es_module.__file__).resolve()
     assert es_module.__name__ == "ragcentre.stores.elasticsearch"
 
 

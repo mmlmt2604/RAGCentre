@@ -1,6 +1,6 @@
 [project]
 name = "ragcentre"
-version = "0.0.1"
+version = "0.0.2"
 description = "A small self-hosted retrieval service for building, comparing and evaluating RAG pipelines."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -117,7 +117,8 @@ packages = ["ragcentre"]
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["sqlite_vec", "sqlite_vec.*"]
+# Optional clients may be absent in the backend CI job; installed clients are still checked.
+module = ["sqlite_vec", "sqlite_vec.*", "redis", "redis.*", "pinecone", "pinecone.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

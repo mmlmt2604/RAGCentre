@@ -100,13 +100,20 @@ jobs:
       - name: Start Milvus and Pinecone Local
         run: docker compose -f tests/docker-compose.yml up -d --wait milvus pinecone
       - name: Wait for Pinecone Local
-        run: curl -sf --retry 30 --retry-connrefused --retry-delay 2 -H 'Api-Key: local-key' -H 'X-Pinecone-Api-Version: 2025-01' "$RAGCENTRE_TEST_PINECONE_URL/indexes"
+        run: |
+          curl -sf --retry 30 --retry-connrefused --retry-delay 2 -H 'Api-Key: local-key' -H 'X-Pinecone-Api-Version: 2025-01' "$RAGCENTRE_TEST_PINECONE_URL/indexes"
       - name: Wait for Elasticsearch and OpenSearch
         run: |
           curl -sf --retry 60 --retry-connrefused --retry-delay 2 "http://localhost:59200/_cluster/health?wait_for_status=yellow&timeout=1s"
           curl -sf --retry 60 --retry-connrefused --retry-delay 2 "http://localhost:59201/_cluster/health?wait_for_status=yellow&timeout=1s"
       - name: Store tests
         run: uv run pytest tests/test_m2_sqlite_vec.py tests/test_m9_qdrant.py tests/test_m9_chroma.py tests/test_m9_chroma_server.py tests/test_vs_lancedb.py tests/test_vs_redis.py tests/test_vs_weaviate.py tests/test_vs_elasticsearch.py tests/test_vs_opensearch.py tests/test_vs_milvus.py tests/test_vs_pinecone.py tests/test_vs_mongodb.py tests/test_m9_pgvector.py tests/test_m9_optional_extras.py tests/test_no_ml_imports.py
+      - name: Service logs
+        if: failure()
+        run: docker compose -f tests/docker-compose.yml logs --tail 100 milvus pinecone
+      - name: Stop services
+        if: always()
+        run: docker compose -f tests/docker-compose.yml down
 
   docling-shim:
     # The example parser service's tests. They need docling-core (the document model), not
@@ -122,7 +129,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - name: Tests
-        run: uv run --isolated --no-project --with docling-core --with fastapi --with python-multipart --with httpx --with pytest pytest
+        run: uv run --isolated --no-project --with ../shimkit --with docling-core --with fastapi --with python-multipart --with httpx --with pytest pytest
 
   parser-shims:
     # The tests of shimkit and of the MinerU, PaddleOCR, Surya, EasyOCR and docTR example parser
