@@ -47,6 +47,9 @@ elasticsearch = [
 opensearch = [
     "opensearch-py>=2.8.0",
 ]
+milvus = [
+    "pymilvus[milvus-lite]>=3.0.3",
+]
 
 [project.entry-points."ragcentre.provider_types"]
 parser_builtin_text = "ragcentre.providers.parsers.builtin_text:SPEC"
@@ -73,6 +76,7 @@ redis = "ragcentre.stores.redis:STORE_TYPE"
 weaviate = "ragcentre.stores.weaviate:STORE_TYPE"
 elasticsearch = "ragcentre.stores.elasticsearch:STORE_TYPE"
 opensearch = "ragcentre.stores.opensearch:STORE_TYPE"
+milvus = "ragcentre.stores.milvus:STORE_TYPE"
 
 [build-system]
 requires = ["hatchling"]

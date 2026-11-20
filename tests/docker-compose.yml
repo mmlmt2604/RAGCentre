@@ -84,3 +84,29 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+
+  milvus:
+    image: milvusdb/milvus:v3.0.6
+    # Standalone with the embedded etcd and local storage: one container, no MinIO.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        printf 'listen-client-urls: http://0.0.0.0:2379\nadvertise-client-urls: http://0.0.0.0:2379\nquota-backend-bytes: 4294967296\nauto-compaction-mode: revision\nauto-compaction-retention: "1000"\n' > /milvus/configs/embedEtcd.yaml
+        exec milvus run standalone
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE  # without it the embedded etcd refuses to start (exit 134)
+    ports:
+      - "127.0.0.1:59530:19530"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s

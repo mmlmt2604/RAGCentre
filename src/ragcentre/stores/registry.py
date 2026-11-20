@@ -30,6 +30,7 @@ BUILTIN = {
     "weaviate": "ragcentre.stores.weaviate:STORE_TYPE",
     "elasticsearch": "ragcentre.stores.elasticsearch:STORE_TYPE",
     "opensearch": "ragcentre.stores.opensearch:STORE_TYPE",
+    "milvus": "ragcentre.stores.milvus:STORE_TYPE",
     "http": "ragcentre.stores.http:STORE_TYPE",
 }
 
