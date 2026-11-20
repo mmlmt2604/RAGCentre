@@ -364,23 +364,26 @@ def test_catalog_never_holds_connection_details(fake: Any) -> None:
 
 def test_connect_applies_password_secret_and_never_echoes_it() -> None:
     pytest.importorskip("redis")
-    url = "redis://user:urlpass@127.0.0.1:1/0"
-    store = RedisStore.connect(url=url, password="s3cret-pw")
+    # Generate dummy credentials at runtime so secret scanners do not flag static URL passwords.
+    url_password = uuid.uuid4().hex
+    password = uuid.uuid4().hex
+    url = f"redis://user:{url_password}@127.0.0.1:1/0"
+    store = RedisStore.connect(url=url, password=password)
     try:
         kwargs = store._client.connection_pool.connection_kwargs
-        assert kwargs["password"] == "s3cret-pw" and kwargs["username"] == "user"  # the secret wins
+        assert kwargs["password"] == password and kwargs["username"] == "user"  # the secret wins
         assert kwargs["protocol"] == 3
         with pytest.raises(StoreError) as err:
             store.healthcheck()  # nothing listens on port 1
-        assert "s3cret-pw" not in str(err.value) and "urlpass" not in str(err.value)
+        assert password not in str(err.value) and url_password not in str(err.value)
     finally:
         store.close()
     with pytest.raises(StoreError) as bad:
-        RedisStore.connect(url="redis://:urlpass@127.0.0.1:1/0?protocol=2")
-    assert "urlpass" not in str(bad.value)
+        RedisStore.connect(url=f"redis://:{url_password}@127.0.0.1:1/0?protocol=2")
+    assert url_password not in str(bad.value)
     with pytest.raises(StoreError) as bad_url:
-        RedisStore.connect(url="notaredisurl://:urlpass@host")
-    assert "urlpass" not in str(bad_url.value)
+        RedisStore.connect(url=f"notaredisurl://:{url_password}@host")
+    assert url_password not in str(bad_url.value)
 
 
 def test_authentication_failures_get_a_hint() -> None:
