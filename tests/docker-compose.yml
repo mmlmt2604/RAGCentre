@@ -87,13 +87,7 @@ services:
 
   milvus:
     image: milvusdb/milvus:v3.0.6
-    # Standalone with the embedded etcd and local storage: one container, no MinIO.
-    entrypoint:
-      - bash
-      - -c
-      - |
-        printf 'listen-client-urls: http://0.0.0.0:2379\nadvertise-client-urls: http://0.0.0.0:2379\nquota-backend-bytes: 4294967296\nauto-compaction-mode: revision\nauto-compaction-retention: "1000"\n' > /milvus/configs/embedEtcd.yaml
-        exec milvus run standalone
+    command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
     environment:
@@ -102,6 +96,8 @@ services:
       ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
       COMMON_STORAGETYPE: local
       DEPLOY_MODE: STANDALONE  # without it the embedded etcd refuses to start (exit 134)
+    volumes:
+      - ./milvus-embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
     ports:
       - "127.0.0.1:59530:19530"
     healthcheck:

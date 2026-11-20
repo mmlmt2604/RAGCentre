@@ -1,0 +1,11 @@
+# Milvus server or Zilliz Cloud. Install the milvus extra.
+name: milvus-main
+kind: vector_store
+type: milvus
+config:
+  uri: http://localhost:59530
+  index_type: HNSW
+  prefix: ragcentre_
+# Remove this block for an anonymous development server.
+secrets:
+  token: {env: MILVUS_TOKEN}

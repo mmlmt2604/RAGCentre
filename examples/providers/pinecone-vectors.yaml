@@ -1,0 +1,10 @@
+# Install the pinecone extra. Create a dense index with your embedder's dimension and metric.
+# Each RAGCentre collection uses a namespace in this index.
+name: pinecone-main
+kind: vector_store
+type: pinecone
+config:
+  index_name: ragcentre
+  prefix: rc_
+secrets:
+  api_key: {env: PINECONE_API_KEY}

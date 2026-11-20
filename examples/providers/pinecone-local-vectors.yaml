@@ -1,0 +1,11 @@
+# Install the pinecone extra and start the Pinecone Local test service.
+# Create a dense index named ragcentre in the emulator before registering this provider.
+name: pinecone-local
+kind: vector_store
+type: pinecone
+config:
+  controller_host: http://localhost:55080
+  index_name: ragcentre
+  prefix: local_
+secrets:
+  api_key: {env: PINECONE_API_KEY}

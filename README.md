@@ -148,6 +148,8 @@ filtered result counts even when scan limits are reached. Quantized Elasticsearc
 stay within ±2⁵³, where its search index preserves numeric comparisons. Milvus coordinates schema
 changes across worker processes on one host; separate hosts must use separate prefixes or serialize
 schema changes externally. Back up Pinecone's local collection catalog with the RAGCentre data directory.
+The [Milvus, Weaviate and Pinecone guide](docs/vector-database-integrations.md) covers deployment,
+collection ownership, configuration examples and validation.
 
 To add a store, follow the [adapter guide](docs/protocols/vector-store-adapter-guide.md): publish a
 `VectorStoreType` through the `ragcentre.vector_stores` entry point and pass
