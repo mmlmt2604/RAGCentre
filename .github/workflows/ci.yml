@@ -95,7 +95,7 @@ jobs:
           curl -sf --retry 60 --retry-connrefused --retry-delay 2 "http://localhost:59200/_cluster/health?wait_for_status=yellow&timeout=1s"
           curl -sf --retry 60 --retry-connrefused --retry-delay 2 "http://localhost:59201/_cluster/health?wait_for_status=yellow&timeout=1s"
       - name: Store tests
-        run: uv run pytest tests/test_m2_sqlite_vec.py tests/test_m9_qdrant.py tests/test_m9_chroma.py tests/test_m9_chroma_server.py tests/test_vs_lancedb.py tests/test_vs_redis.py tests/test_vs_weaviate.py tests/test_vs_elasticsearch.py tests/test_vs_opensearch.py tests/test_vs_milvus.py tests/test_m9_pgvector.py tests/test_m9_optional_extras.py tests/test_no_ml_imports.py
+        run: uv run pytest tests/test_m2_sqlite_vec.py tests/test_m9_qdrant.py tests/test_m9_chroma.py tests/test_m9_chroma_server.py tests/test_vs_lancedb.py tests/test_vs_redis.py tests/test_vs_weaviate.py tests/test_vs_elasticsearch.py tests/test_vs_opensearch.py tests/test_vs_milvus.py tests/test_vs_pinecone.py tests/test_m9_pgvector.py tests/test_m9_optional_extras.py tests/test_no_ml_imports.py
 
   docling-shim:
     # The example parser service's tests. They need docling-core (the document model), not

@@ -50,6 +50,9 @@ opensearch = [
 milvus = [
     "pymilvus[milvus-lite]>=3.0.3",
 ]
+pinecone = [
+    "pinecone>=10.3.0,<11",
+]
 
 [project.entry-points."ragcentre.provider_types"]
 parser_builtin_text = "ragcentre.providers.parsers.builtin_text:SPEC"
@@ -77,6 +80,7 @@ weaviate = "ragcentre.stores.weaviate:STORE_TYPE"
 elasticsearch = "ragcentre.stores.elasticsearch:STORE_TYPE"
 opensearch = "ragcentre.stores.opensearch:STORE_TYPE"
 milvus = "ragcentre.stores.milvus:STORE_TYPE"
+pinecone = "ragcentre.stores.pinecone:STORE_TYPE"
 
 [build-system]
 requires = ["hatchling"]
@@ -115,7 +119,10 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-markers = ["integration: needs external services (Docker)"]
+markers = [
+    "integration: needs external services (Docker)",
+    "cloud: needs a hosted service and credentials (opt-in)",
+]
 filterwarnings = [
     "error::pytest.PytestUnraisableExceptionWarning",
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",

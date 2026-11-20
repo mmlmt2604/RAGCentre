@@ -110,3 +110,15 @@ services:
       timeout: 5s
       retries: 12
       start_period: 40s
+
+  # Pinecone Local (emulator, optional). Each index listens on its own port counted up from PORT and the
+  # client is told localhost:<port>, so host ports must equal container ports. No healthcheck: the image has
+  # no shell, wget or curl; wait from outside with `curl -sf http://localhost:55080/indexes`.
+  # Run the tests with RAGCENTRE_TEST_PINECONE_URL=http://localhost:55080.
+  pinecone:
+    image: ghcr.io/pinecone-io/pinecone-local:latest
+    environment:
+      PORT: "55080"
+      PINECONE_HOST: localhost
+    ports:
+      - "127.0.0.1:55080-55100:55080-55100"
