@@ -5,8 +5,10 @@ A **shim** is a small web service that puts your OCR or document-parsing engine 
 an ordered list of blocks (headings, paragraphs, tables...) with pages and positions. This guide
 shows the shortest way to write one, what RAGCentre does with what you return, and how to check it.
 
-`examples/` has four complete shims (Docling, MinerU, PaddleOCR, Surya) to read next to this guide.
-All of them are built on `examples/shimkit`, the same helper this guide uses.
+`examples/` has six complete shims (Docling, MinerU, PaddleOCR, Surya, EasyOCR, docTR) to read next to
+this guide. All of them are built on `examples/shimkit`, the same helper this guide uses. If your
+engine returns only text lines, as EasyOCR and docTR do, `shimkit.lines_to_ir` groups them into
+paragraphs and can guess headings, and `shimkit.render_pages` turns a PDF into page images.
 
 ## 1. A shim in forty lines
 

@@ -1,6 +1,6 @@
-"""The MinerU, PaddleOCR and Surya shims' output is valid Document IR.
+"""The MinerU, PaddleOCR, Surya, EasyOCR and docTR shims' output is valid Document IR.
 
-The shims (examples/mineru_shim, paddleocr_shim, surya_shim) cannot share an environment with
+The shims (examples/mineru_shim, paddleocr_shim, surya_shim, easyocr_shim, doctr_shim) cannot share an environment with
 ragcentre (each engine pins its own dependencies), so their tests write the IR for a sample
 document, the two-page "Pump Manual", to a golden file, and this test validates those files with
 RAGCentre's own IR validation and chunking. tests/test_m10_docling_shim_golden.py does the same for
@@ -24,6 +24,9 @@ GOLDENS = [
     pytest.param("mineru_shim", BASIC | {"list_item"}, id="mineru"),
     pytest.param("paddleocr_shim", BASIC, id="paddleocr"),
     pytest.param("surya_shim", BASIC | {"list_item"}, id="surya"),
+    # EasyOCR and docTR read lines only: paragraphs, and headings guessed from text height.
+    pytest.param("easyocr_shim", {"heading", "paragraph"}, id="easyocr"),
+    pytest.param("doctr_shim", {"heading", "paragraph"}, id="doctr"),
 ]
 
 

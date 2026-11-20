@@ -3,8 +3,9 @@
 A parser service turns an uploaded file into a **Document IR**: an ordered list of text blocks
 with their structure, pages and positions. Write one to plug any parser or OCR system into
 RAGCentre. `examples/docling_shim/` is a complete example, and `examples/mineru_shim/`,
-`examples/paddleocr_shim/` and `examples/surya_shim/` are three more (MinerU, PaddleOCR and Surya),
-built on the shared helpers in `examples/shimkit/`. [`parser-shim-guide.md`](parser-shim-guide.md)
+`examples/paddleocr_shim/`, `examples/surya_shim/`, `examples/easyocr_shim/` and `examples/doctr_shim/`
+are five more (MinerU, PaddleOCR, Surya, EasyOCR and docTR), built on the shared helpers in
+`examples/shimkit/`. [`parser-shim-guide.md`](parser-shim-guide.md)
 walks through writing one, and `ragcentre parser check <url>` tells you whether yours is usable and
 which RAGCentre features its output feeds.
 

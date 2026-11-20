@@ -1,0 +1,10 @@
+# The example EasyOCR parser service in examples/easyocr_shim (ragcentre.parser/v1).
+# Start the service first: RAGCentre reads its /info when the provider is created.
+name: easyocr
+kind: parser
+type: http
+config:
+  # With `docker compose --profile easyocr up`, RAGCentre reaches it as http://easyocr:8705 instead.
+  base_url: http://127.0.0.1:8705
+  timeout_seconds: 600
+  max_concurrency: 1

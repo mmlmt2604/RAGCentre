@@ -1,0 +1,10 @@
+# The example docTR parser service in examples/doctr_shim (ragcentre.parser/v1).
+# Start the service first: RAGCentre reads its /info when the provider is created.
+name: doctr
+kind: parser
+type: http
+config:
+  # With `docker compose --profile doctr up`, RAGCentre reaches it as http://doctr:8706 instead.
+  base_url: http://127.0.0.1:8706
+  timeout_seconds: 600
+  max_concurrency: 1

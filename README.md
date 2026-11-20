@@ -37,7 +37,7 @@ Office documents and images:
 docker compose --profile docling up --build     # RAGCentre, and Docling on http://docling:8701
 ```
 
-The other profiles are `mineru`, `paddleocr` and `surya`. Register the parser with the `base_url`
+The other profiles are `mineru`, `paddleocr`, `surya`, `easyocr` and `doctr`. Register the parser with the `base_url`
 shown (see [`examples/providers/`](examples/providers/)); each service's README has the details.
 
 ## Concepts
@@ -96,7 +96,9 @@ Run `ragcentre COMMAND --help` for details.
   [`surya_shim/`](examples/surya_shim/) do the same for MinerU, PaddleOCR and Surya, on a small
   shared package, [`shimkit/`](examples/shimkit/). Each can run its engine in-process or call a server
   you already run (docling-serve, a MinerU API server, PaddleX serving, a Surya inference server), takes
-  typed options, and parses long documents as background jobs.
+  typed options, and parses long documents as background jobs. For plain OCR of scans and photos,
+  [`easyocr_shim/`](examples/easyocr_shim/) and [`doctr_shim/`](examples/doctr_shim/) wrap EasyOCR and
+  docTR, which read text lines only; the shims group the lines into paragraphs and can guess headings.
   [`docs/protocols/parser-shim-guide.md`](docs/protocols/parser-shim-guide.md) shows how to plug in
   another engine, and `ragcentre parser check <url>` tells you whether a service is usable and which
   RAGCentre features its output feeds.
@@ -160,6 +162,7 @@ docker compose -f tests/docker-compose.yml down
 ```
 
 The parser shims describe how each engine maps to the Document IR in their own READMEs:
-[`mineru_shim`](examples/mineru_shim/), [`paddleocr_shim`](examples/paddleocr_shim/) and
-[`surya_shim`](examples/surya_shim/). Working plans and design notes are kept locally, not in the
+[`mineru_shim`](examples/mineru_shim/), [`paddleocr_shim`](examples/paddleocr_shim/),
+[`surya_shim`](examples/surya_shim/), [`easyocr_shim`](examples/easyocr_shim/) and
+[`doctr_shim`](examples/doctr_shim/). Working plans and design notes are kept locally, not in the
 repository.

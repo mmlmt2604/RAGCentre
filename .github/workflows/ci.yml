@@ -66,9 +66,11 @@ jobs:
         run: uv run --isolated --no-project --with docling-core --with fastapi --with python-multipart --with httpx --with pytest pytest
 
   parser-shims:
-    # The tests of shimkit and of the MinerU, PaddleOCR and Surya example parser services. They need
-    # none of the engines or their models (the conversion works on plain dicts), and run outside the
-    # ragcentre environment because each engine pins its own dependencies.
+    # The tests of shimkit and of the MinerU, PaddleOCR, Surya, EasyOCR and docTR example parser
+    # services. They need none of the engines or their models (the conversion works on plain dicts),
+    # and run outside the ragcentre environment because each engine pins its own dependencies. The
+    # EasyOCR and docTR shims (and shimkit's page rendering) render real pages, so they also get
+    # Pillow, pypdfium2 and numpy.
     runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.13"
@@ -76,10 +78,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {dir: shimkit, shimkit: "."}
+          - {dir: shimkit, shimkit: ".", extra: "--with pillow --with pypdfium2"}
           - {dir: mineru_shim, shimkit: ../shimkit}
           - {dir: paddleocr_shim, shimkit: ../shimkit}
           - {dir: surya_shim, shimkit: ../shimkit}
+          - {dir: easyocr_shim, shimkit: ../shimkit, extra: "--with pillow --with pypdfium2 --with numpy"}
+          - {dir: doctr_shim, shimkit: ../shimkit, extra: "--with pillow --with pypdfium2 --with numpy"}
     defaults:
       run:
         working-directory: examples/${{ matrix.dir }}
@@ -87,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - name: Tests
-        run: uv run --isolated --no-project --with ${{ matrix.shimkit }} --with fastapi --with python-multipart --with httpx --with pytest pytest
+        run: uv run --isolated --no-project --with ${{ matrix.shimkit }} --with fastapi --with python-multipart --with httpx --with pytest ${{ matrix.extra }} pytest
 
   ui:
     # The web UI: lint, types, unit tests, the API contract check, the production build, and the
