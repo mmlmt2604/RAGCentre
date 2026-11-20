@@ -68,6 +68,31 @@ def test_finding_timings_are_milliseconds(tmp_path: Path) -> None:
         store.close()
 
 
+def test_eventual_store_is_not_polled_before_the_first_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from ragcentre.stores import check as check_module
+
+    class Eventual(SqliteVecStore):
+        def __init__(self, path: Path) -> None:
+            super().__init__(path)
+            self.capabilities = Capabilities(
+                metrics=frozenset({"cosine", "l2"}), max_batch=1000, consistency="eventual"
+            )
+
+    monkeypatch.setattr(check_module, "SETTLE_TIMEOUT", 2.0)
+    store = Eventual(tmp_path / "vectors.db")
+    try:
+        t0 = time.monotonic()
+        report = check_store(store, store_type="sqlite_vec")
+        elapsed = time.monotonic() - t0
+        assert report.ok, report.as_dict()
+        # Waiting for 50 records before writing any would cost the full 2 s per metric.
+        assert elapsed < 1.5, elapsed
+    finally:
+        store.close()
+
+
 def test_check_passes_clean_on_qdrant_memory() -> None:
     pytest.importorskip("qdrant_client")
     from ragcentre.stores.qdrant import QdrantStore

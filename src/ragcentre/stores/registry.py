@@ -32,6 +32,7 @@ BUILTIN = {
     "opensearch": "ragcentre.stores.opensearch:STORE_TYPE",
     "milvus": "ragcentre.stores.milvus:STORE_TYPE",
     "pinecone": "ragcentre.stores.pinecone:STORE_TYPE",
+    "mongodb": "ragcentre.stores.mongodb:STORE_TYPE",
     "http": "ragcentre.stores.http:STORE_TYPE",
 }
 

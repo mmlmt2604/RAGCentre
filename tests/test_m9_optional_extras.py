@@ -9,7 +9,7 @@ import sys
 SCRIPT = r"""
 import importlib, importlib.abc, pkgutil, sys
 
-BLOCKED = ("qdrant_client", "chromadb", "psycopg", "pgvector", "lancedb", "redis", "weaviate", "elasticsearch", "opensearchpy")
+BLOCKED = ("qdrant_client", "chromadb", "psycopg", "pgvector", "lancedb", "redis", "weaviate", "elasticsearch", "opensearchpy", "pymilvus", "pinecone", "pymongo")
 
 class Block(importlib.abc.MetaPathFinder):
     def find_spec(self, name, path=None, target=None):
@@ -32,7 +32,10 @@ assert {"sqlite_vec", "qdrant", "pgvector", "chroma"} <= set(types), sorted(type
 for name, config, secrets in [("qdrant", {"path": ":memory:"}, {}), ("pgvector", {}, {"dsn": "postgresql://x"}),
                               ("chroma", {}, {}), ("lancedb", {"uri": "lance-test"}, {}),
                               ("redis", {"url": "redis://x:6379/0"}, {}), ("weaviate", {"url": "http://x:8080"}, {}),
-                              ("elasticsearch", {"url": "http://x:9200"}, {}), ("opensearch", {"url": "http://x:9200"}, {})]:
+                              ("elasticsearch", {"url": "http://x:9200"}, {}), ("opensearch", {"url": "http://x:9200"}, {}),
+                              ("milvus", {"uri": "http://x:19530"}, {}),
+                              ("pinecone", {"index_name": "x"}, {"api_key": "k"}),
+                              ("mongodb", {}, {"uri": "mongodb://x:27017"})]:
     assert get_type("vector_store", name) is not None
     t = types[name]
     try:
@@ -48,7 +51,7 @@ def test_stores_without_extras() -> None:
     out = subprocess.run([sys.executable, "-c", SCRIPT], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     lines = dict(line.split(": ", 1) for line in out.stdout.strip().splitlines())
-    assert set(lines) == {"qdrant", "pgvector", "chroma", "lancedb", "redis", "weaviate", "elasticsearch", "opensearch"}
+    assert set(lines) == {"qdrant", "pgvector", "chroma", "lancedb", "redis", "weaviate", "elasticsearch", "opensearch", "milvus", "pinecone", "mongodb"}
     for extra, message in lines.items():
         assert f"'{extra}' extra" in message and f"ragcentre[{extra}]" in message, message
         assert "pip" not in message and "install " not in message.replace("installed", "")

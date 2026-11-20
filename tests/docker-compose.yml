@@ -122,3 +122,18 @@ services:
       PINECONE_HOST: localhost
     ports:
       - "127.0.0.1:55080-55100:55080-55100"
+
+  # MongoDB Atlas Local: mongod + mongot (the search process), single-node replica set, no auth.
+  # The image has its own healthcheck (`runner healthcheck`); this one polls it faster. The image has no curl.
+  # Run the tests with
+  #   RAGCENTRE_TEST_MONGODB_URI='mongodb://127.0.0.1:57017/?directConnection=true'
+  mongodb:
+    image: mongodb/mongodb-atlas-local:9.0.8
+    ports:
+      - "127.0.0.1:57017:27017"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/runner", "healthcheck"]
+      interval: 5s
+      timeout: 10s
+      start_period: 20s
+      retries: 30

@@ -203,7 +203,8 @@ def _check_metric(
     spec = CollectionSpec(name=name, dim=dim, metric=metric, fields=dict(SCHEMA_FIELDS))
     if not _run(report, "create", f"collection {name} (metric {metric}): yes", lambda: store.ensure_collection(spec)):
         return
-    _settle(store, name, len(records))
+    # No settle here: nothing has been written yet, so waiting for ``len(records)`` would only
+    # burn the whole timeout on an eventually consistent store.
     if not _run(report, "upsert", f"wrote {len(records)} records: yes", lambda: upsert_batched(store, name, records)):
         return
     _settle(store, name, len(records))
