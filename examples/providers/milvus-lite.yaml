@@ -1,0 +1,10 @@
+# Milvus Lite: a single local file, no server. Needs `pip install "ragcentre[milvus]"`.
+# For a Milvus server use uri: http://localhost:19530; for Zilliz Cloud use its endpoint and the
+# `token` secret. index_type (FLAT is exact, HNSW is approximate), hnsw_m and hnsw_ef_construction
+# are set once.
+name: milvus-lite
+kind: vector_store
+type: milvus
+config:
+  uri: milvus.db
+  index_type: FLAT

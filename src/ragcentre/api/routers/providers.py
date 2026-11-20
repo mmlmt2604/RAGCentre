@@ -51,6 +51,10 @@ def list_provider_types(params: PageParams = Depends(page_params)) -> api.Page[a
                 max_batch=spec.capabilities.max_batch,
                 multi_vector=spec.capabilities.multi_vector,
                 native_hybrid=spec.capabilities.native_hybrid,
+                max_dim=spec.capabilities.max_dim,
+                consistency=spec.capabilities.consistency,
+                filter_exact=spec.capabilities.filter_exact,
+                max_collections=spec.capabilities.max_collections,
             )
         items.append(
             api.ProviderType(

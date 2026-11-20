@@ -41,22 +41,27 @@ export const providerTypes: ProviderType[] = [
   {
     kind: "vector_store", type: "sqlite_vec", label: "SQLite (sqlite-vec)", description: "Zero-setup local store; exact search, best under ~100k vectors.",
     config_schema: obj({ path: str("Database file", { default: "data/vectors.db" }) }), fingerprint_fields: [], secret_keys: [],
-    capabilities: { metrics: ["cosine", "l2"], max_batch: 1000, multi_vector: false, native_hybrid: false },
+    capabilities: { metrics: ["cosine", "l2"], max_batch: 1000, multi_vector: false, native_hybrid: false, max_dim: null, consistency: "immediate", filter_exact: true, max_collections: null },
   },
   {
     kind: "vector_store", type: "qdrant", label: "Qdrant", description: "Qdrant server or embedded local mode.",
     config_schema: obj({ url: str("Server URL", { format: "uri" }), path: str("Local path instead of a server") }), fingerprint_fields: [], secret_keys: ["api_key"],
-    capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 256, multi_vector: true, native_hybrid: false },
+    capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 256, multi_vector: true, native_hybrid: false, max_dim: null, consistency: "immediate", filter_exact: true, max_collections: null },
   },
   {
     kind: "vector_store", type: "pgvector", label: "PostgreSQL (pgvector)", description: "Tables in your Postgres with an HNSW index.",
-    config_schema: obj({ schema: str("Schema", { default: "ragcentre" }) }), fingerprint_fields: [], secret_keys: ["dsn"],
-    capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 500, multi_vector: false, native_hybrid: false },
+    config_schema: obj({ schema: str("Schema", { default: "ragcentre" }), vector_type: str("Vector type", { default: "auto" }), hnsw_m: int("HNSW m") }), fingerprint_fields: ["vector_type", "hnsw_m"], secret_keys: ["dsn"],
+    capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 500, multi_vector: false, native_hybrid: false, max_dim: 16000, consistency: "immediate", filter_exact: true, max_collections: null },
   },
   {
     kind: "vector_store", type: "chroma", label: "Chroma", description: "Chroma server or persistent local client.",
     config_schema: obj({ host: str("Host"), port: int("Port", { default: 8000 }), path: str("Local path instead of a server") }), fingerprint_fields: [], secret_keys: [],
-    capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 1000, multi_vector: false, native_hybrid: false },
+    capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 1000, multi_vector: false, native_hybrid: false, max_dim: null, consistency: "immediate", filter_exact: true, max_collections: null },
+  },
+  {
+    kind: "vector_store", type: "pinecone", label: "Pinecone", description: "Managed serverless index; eventually consistent.",
+    config_schema: obj({ index_name: str("Index name"), prefix: str("Namespace prefix") }, ["index_name"]), fingerprint_fields: [], secret_keys: ["api_key"],
+    capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 1000, multi_vector: false, native_hybrid: false, max_dim: 20000, consistency: "eventual", filter_exact: false, max_collections: null },
   },
 ];
 

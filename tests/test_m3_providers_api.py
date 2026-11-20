@@ -35,8 +35,16 @@ def test_provider_types(client: TestClient) -> None:
         ("vector_store", "sqlite_vec"),
     }
     sv = items[("vector_store", "sqlite_vec")]
-    assert sv["capabilities"] == {"metrics": ["cosine", "l2"], "max_batch": 1000, "multi_vector": False,
-                                  "native_hybrid": False}  # fmt: skip
+    assert sv["capabilities"] == {
+        "metrics": ["cosine", "l2"],
+        "max_batch": 1000,
+        "multi_vector": False,
+        "native_hybrid": False,
+        "max_dim": None,
+        "consistency": "immediate",
+        "filter_exact": True,
+        "max_collections": None,
+    }
     oa = items[("embedder", "openai_compatible")]
     assert oa["fingerprint_fields"] == [
         "model",

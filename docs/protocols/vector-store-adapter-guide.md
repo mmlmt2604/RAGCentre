@@ -292,3 +292,11 @@ Import optional vendor libraries in the factory/constructor via `require_extra(.
 extra then gives a clear `StoreUnavailable`. RAGCentre never installs packages itself. Publish
 your tested client requirements with your package, and verify signatures and score transforms
 against the installed client and a real server or emulator before claiming compatibility.
+
+## Stores shipped
+
+The built-in stores, with their extras, metrics, guarantees and a config example, are in the
+README's [Vector stores](../../README.md#vector-stores) table. It is generated from the registry
+(`ragcentre store list --markdown`), so your `VectorStoreType` capabilities show up there the same
+way; a built-in store also needs an entry in `ragcentre/stores/docs.py` and an example provider
+file in `examples/providers/`. `ragcentre store check` verifies a live store against what it claims.

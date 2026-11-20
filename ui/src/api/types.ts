@@ -18,13 +18,19 @@ export interface Health {
 // ---------- Providers ----------
 export type ProviderKind = "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
 
+export interface StoreCapabilities {
+  metrics: Metric[]; max_batch: number; multi_vector: boolean; native_hybrid: boolean;
+  max_dim: number | null; consistency: "immediate" | "eventual";
+  filter_exact: boolean;                     // false: a filtered search may return fewer than k matches
+  max_collections: number | null;
+}
+
 export interface ProviderType {
   kind: ProviderKind; type: string; label: string; description: string;
   config_schema: Record<string, unknown>;    // JSON Schema for `config`
   fingerprint_fields: string[];              // keys of config that are permanent once created
   secret_keys: string[];                     // e.g. ["api_key"]
-  capabilities: { metrics: Metric[]; max_batch: number;
-                  multi_vector: boolean; native_hybrid: boolean } | null;  // vector stores only
+  capabilities: StoreCapabilities | null;    // vector stores only; the type's best case
 }
 
 export interface Provider {

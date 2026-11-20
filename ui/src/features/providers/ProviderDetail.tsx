@@ -26,6 +26,7 @@ import { duration, plural } from "../../lib/format";
 import { useToast } from "../../lib/toast";
 import { KIND_LABEL } from "./model";
 import { SecretInput, type SecretDraft } from "./SecretInput";
+import { StoreCapabilitiesPanel } from "./StoreCapabilities";
 
 export function ProviderDetail() {
   const { providerId = "" } = useParams();
@@ -125,17 +126,20 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
 
       <TestResultView result={test.data} error={test.error} />
 
+      {type.capabilities ? <StoreCapabilitiesPanel caps={type.capabilities} immutable={[]} /> : null}
+
       {operational.length ? <SettingsForm p={p} fields={operational} /> : null}
 
       {locked.length || serverSet.length ? (
         <section className="prov-section" aria-labelledby="perm-title">
           <h2 id="perm-title">
-            <Lock size={14} strokeWidth={2} aria-hidden /> Permanent settings
+            <Lock size={14} strokeWidth={2} aria-hidden /> {p.kind === "vector_store" ? "Set once" : "Permanent settings"}
           </h2>
           <LockedSettings items={[...locked, ...serverSet]}>
             <p className="prov-perm__why">
-              These settings decide what {p.name} produces, so they are part of its fingerprint and cannot change. Pipelines that used it would otherwise mix
-              results from two different services.{" "}
+              {p.kind === "vector_store"
+                ? `These settings shape the index ${p.name} builds, so they are set once and cannot change. Changing one would leave existing indexes inconsistent with the store.`
+                : `These settings decide what ${p.name} produces, so they are part of its fingerprint and cannot change. Pipelines that used it would otherwise mix results from two different services.`}{" "}
               {p.builtin ? null : (
                 <Link to={`/providers/new?from=${p.id}`} className="inline-link">
                   Create a new provider from this one

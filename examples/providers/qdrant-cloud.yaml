@@ -1,0 +1,13 @@
+# Qdrant Cloud, or any Qdrant server. Needs `pip install "ragcentre[qdrant]"`.
+# The API key is read from the environment when the provider is used; it is never stored here.
+# hnsw_m, hnsw_ef_construction and quantization shape the index and are set once. A shared cluster
+# often restricts a role to a name prefix, hence `prefix`.
+name: qdrant-cloud
+kind: vector_store
+type: qdrant
+config:
+  url: https://YOUR-CLUSTER-ID.REGION.cloud.qdrant.io:6333
+  prefix: rc_
+  quantization: scalar
+secrets:
+  api_key: {env: QDRANT_API_KEY}

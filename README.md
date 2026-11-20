@@ -45,8 +45,8 @@ shown (see [`examples/providers/`](examples/providers/)); each service's README 
 - **Provider**: a configured parser, chunker, embedder, reranker or vector store. Built in:
   `builtin_text` (Markdown and plain text), `builtin_hash` (a lexical embedder for demos and
   tests) and `sqlite_vec`. Over HTTP: any parser or chunker speaking RAGCentre's protocols, any
-  OpenAI-compatible embeddings server, and Cohere/Jina-style rerankers. Optional vector stores:
-  Qdrant, PostgreSQL with pgvector, and Chroma.
+  OpenAI-compatible embeddings server, and Cohere/Jina-style rerankers. Vector stores: see
+  [Vector stores](#vector-stores).
 - **Corpus**: a set of documents with a typed metadata schema for filtering.
 - **Pipeline**: parse → chunk → embed → index (vector and/or full-text), plus retrieval settings
   (fusion, reranking, neighbour expansion). See [`examples/pipelines/`](examples/pipelines/).
@@ -104,14 +104,48 @@ Run `ragcentre COMMAND --help` for details.
 - [`docs/protocols/embedder-v1.md`](docs/protocols/embedder-v1.md): OpenAI-compatible embeddings.
 - [`docs/protocols/reranker-v1.md`](docs/protocols/reranker-v1.md): Cohere/Jina-style reranking.
 
-Third-party vector stores can be added as Python packages through the `ragcentre.vector_stores`
-entry point; `ragcentre.testing.vector_store_contract` is the test suite an adapter must pass.
+### Vector stores
 
-### Optional vector stores
+`sqlite_vec` works out of the box. Every other store needs its optional extra
+(`pip install "ragcentre[qdrant]"`, and so on); RAGCentre does not install them, and using a store
+whose extra is missing fails with an error naming it. Secrets (API keys, connection strings) are
+never written in a provider file: reference an environment variable (`secrets: {api_key: {env: NAME}}`)
+or set a stored value with `ragcentre provider set-secret`. Each store has an example provider file
+under [`examples/providers/`](examples/providers/), registered with `ragcentre provider add -f FILE`.
 
-`sqlite_vec` works out of the box. The `qdrant`, `pgvector` and `chroma` stores need their
-optional extras (`ragcentre[qdrant]`, `ragcentre[pgvector]`, `ragcentre[chroma]`); RAGCentre does
-not install them, and using a store whose extra is missing fails with an error naming it.
+<!-- vector-stores:start -->
+| Type | Install | Metrics | Exact filters | Consistency | Max dim | Max batch | Config example | Details |
+|---|---|---|---|---|---|---|---|---|
+| `sqlite_vec` | built in | cosine, l2 | yes | immediate | none known | 1,000 | `{"prefix": "staging_"}` | [example](examples/providers/sqlite-vec-prefixed.yaml) |
+| `qdrant` | `ragcentre[qdrant]` | cosine, dot, l2 | yes | immediate | none known | 256 | `{"url": "https://HOST:6333", "quantization": "scalar"}` | [example](examples/providers/qdrant-cloud.yaml) |
+| `pgvector` | `ragcentre[pgvector]` | cosine, dot, l2 | yes | immediate | 16,000 | 500 | `{"vector_type": "halfvec", "hnsw_m": 16}` | [example](examples/providers/pgvector-halfvec.yaml) |
+| `chroma` | `ragcentre[chroma]` | cosine, dot, l2 | yes | immediate | none known | 1,000 | `{"mode": "http", "host": "localhost", "port": 8000}` | [example](examples/providers/chroma-http.yaml) |
+| `lancedb` | `ragcentre[lancedb]` | cosine, dot, l2 | yes | immediate | none known | 1,000 | `{"uri": "lancedb", "index_type": "IVF_FLAT"}` | [example](examples/providers/lancedb-local.yaml) |
+| `redis` | `ragcentre[redis]` | cosine, dot, l2 | yes | immediate | none known | 256 | `{"url": "redis://localhost:6379/0", "algorithm": "hnsw"}` | [example](examples/providers/redis-hnsw.yaml) |
+| `weaviate` | `ragcentre[weaviate]` | cosine, dot, l2 | yes | immediate | 65,535 | 256 | `{"url": "http://localhost:8080"}` | [example](examples/providers/weaviate.yaml) |
+| `elasticsearch` | `ragcentre[elasticsearch]` | cosine, dot, l2 | yes | immediate | 4,096 | 500 | `{"url": "https://localhost:9200", "index_options": "hnsw"}` | [example](examples/providers/elasticsearch.yaml) |
+| `opensearch` | `ragcentre[opensearch]` | cosine, dot, l2 | yes | immediate | 16,000 | 500 | `{"url": "https://localhost:9200", "engine": "faiss"}` | [example](examples/providers/opensearch.yaml) |
+| `milvus` | `ragcentre[milvus]` | cosine, dot, l2 | yes | immediate | 32,768 | 256 | `{"uri": "milvus.db", "index_type": "FLAT"}` | [example](examples/providers/milvus-lite.yaml) |
+| `pinecone` | `ragcentre[pinecone]` | cosine, dot, l2 | **no** | **eventual** | 20,000 | 1,000 | `{"index_name": "ragcentre"}` | [example](examples/providers/pinecone.yaml) |
+| `mongodb` | `ragcentre[mongodb]` | cosine, l2 | **no** | **eventual** | 8,192 | 500 | `{"database": "ragcentre", "exact": false}` | [example](examples/providers/mongodb-atlas.yaml) |
+| `http` | built in | cosine, dot, l2 | yes | immediate | none known | 1,000 | `{"url": "http://127.0.0.1:8702"}` | [example](examples/providers/http-vector-store.yaml), [protocol](docs/protocols/vector-store-v1.md) |
+
+The guarantees are each type's best case. An instance can report less: `http` reads them from the service's `/info`, Pinecone's depend on the index, Chroma Cloud takes 300 records per write, LanceDB Cloud (`db://`) is eventually consistent without exact filters, and MongoDB with `exact: true` filters exactly. `ragcentre store check` shows what a live store gives. Filters are exact when a filtered search returns `k` matches whenever `k` exist; “eventual” consistency means a write may not be searchable at once.
+<!-- vector-stores:end -->
+
+This table is generated from the store registry (`ragcentre store list --markdown`), and a test
+fails when it drifts. `ragcentre store list` shows the same facts in the terminal, and
+`ragcentre store check` writes to a temporary collection on a live store and reports which
+guarantees it really gives. The web UI shows a type's guarantees and warnings when you create a
+provider.
+
+To add a store, follow the [adapter guide](docs/protocols/vector-store-adapter-guide.md): publish a
+`VectorStoreType` through the `ragcentre.vector_stores` entry point and pass
+`ragcentre.testing.vector_store_contract`. A service in any language can also speak the
+[`ragcentre.vector_store/v1`](docs/protocols/vector-store-v1.md) HTTP protocol (see the
+[shim guide](docs/protocols/vector-store-shim-guide.md) and the reference shim in
+[`examples/vector_store_shims/memory/`](examples/vector_store_shims/memory/)) and register as an
+`http` store.
 
 ## Web UI
 
