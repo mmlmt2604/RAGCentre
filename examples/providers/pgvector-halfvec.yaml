@@ -1,0 +1,14 @@
+# PostgreSQL with the pgvector extension. Needs `pip install "ragcentre[pgvector]"`.
+# `halfvec` stores 16-bit floats, so HNSW indexes work up to 4000 dimensions (plain `vector` stops
+# at 2000). vector_type, hnsw_m and hnsw_ef_construction are set once. The connection string is a
+# secret read from the environment, e.g. postgresql://user:password@host:5432/dbname
+name: pgvector-halfvec
+kind: vector_store
+type: pgvector
+config:
+  schema: ragcentre
+  vector_type: halfvec
+  hnsw_m: 16
+  hnsw_ef_construction: 64
+secrets:
+  dsn: {env: RAGCENTRE_PGVECTOR_DSN}

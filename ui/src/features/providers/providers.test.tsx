@@ -166,4 +166,27 @@ describe("providers (UI-1)", () => {
     expect(screen.getByLabelText(/^Name/)).toHaveValue("bge-m3-2");
     expect(screen.getByLabelText(/^Model/)).toHaveValue("BAAI/bge-m3");
   });
+
+  it("shows the selected store type's capabilities with warnings and marks set-once fields", async () => {
+    const user = userEvent.setup();
+    renderApp("/providers/new?kind=vector_store", "ready");
+    await user.click(await screen.findByRole("radio", { name: typeOptionName("Pinecone") }));
+    const caps = screen.getByLabelText("Store capabilities");
+    expect(within(caps).getByText("eventual")).toBeInTheDocument();
+    expect(within(caps).getByText(/Filtered search is not exact/)).toBeInTheDocument();
+    expect(within(caps).getByText(/Eventually consistent/)).toBeInTheDocument();
+    expect(within(caps).getByText(/limited to 20,000 dimensions/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: typeOptionName("SQLite") }));
+    const plain = screen.getByLabelText("Store capabilities");
+    expect(within(plain).getByText("no known limit")).toBeInTheDocument();
+    expect(within(plain).queryByText(/Eventually consistent/)).toBeNull();
+    expect(within(plain).queryByText(/Filtered search is not exact/)).toBeNull();
+    expect(within(plain).queryByText(/Set once/)).toBeNull();
+
+    await user.click(screen.getByRole("radio", { name: typeOptionName("PostgreSQL") }));
+    expect(within(screen.getByLabelText("Store capabilities")).getByText(/Set once: vector_type, hnsw_m/)).toBeInTheDocument();
+    const once = screen.getByRole("heading", { name: /Set once, when created/ }).closest("section")!;
+    expect(within(once).getByLabelText(/vector_type/)).toBeInTheDocument();
+  });
 });

@@ -1,0 +1,9 @@
+# A service speaking ragcentre.vector_store/v1 (docs/protocols/vector-store-v1.md), here the
+# in-memory reference shim in examples/vector_store_shims/memory/ (run it on port 8702). Its
+# capabilities are read from the service's /info when the provider is created. Needs no extra.
+name: shim-store
+kind: vector_store
+type: http
+config:
+  url: http://127.0.0.1:8702
+  timeout: 30

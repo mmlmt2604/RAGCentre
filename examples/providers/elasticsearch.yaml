@@ -1,0 +1,13 @@
+# Elasticsearch 8.x or 9.x. Needs `pip install "ragcentre[elasticsearch]"`.
+# index_options is set once: `hnsw` is full precision, the int8_/int4_/bbq_ variants quantise to save
+# memory at some cost in recall. Use `cloud_id` instead of `url` for Elastic Cloud. For password
+# authentication set `username` and the `password` secret instead of `api_key`.
+name: elasticsearch
+kind: vector_store
+type: elasticsearch
+config:
+  url: https://localhost:9200
+  index_options: hnsw
+  num_candidates_factor: 10
+secrets:
+  api_key: {env: ELASTICSEARCH_API_KEY}

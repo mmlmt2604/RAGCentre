@@ -1,0 +1,11 @@
+# A Chroma server (docker run -p 8000:8000 chromadb/chroma). Needs `pip install "ragcentre[chroma]"`.
+# Use mode: local for a directory in the data dir, or mode: cloud (with tenant, database and the
+# api_key secret) for Chroma Cloud. hnsw_max_neighbors and hnsw_ef_construction are set once.
+name: chroma-server
+kind: vector_store
+type: chroma
+config:
+  mode: http
+  host: localhost
+  port: 8000
+  ssl: false

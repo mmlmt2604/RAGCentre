@@ -58,6 +58,10 @@ class StoreCapabilities(ResponseModel):
     max_batch: int
     multi_vector: bool
     native_hybrid: bool
+    max_dim: int | None
+    consistency: Literal["immediate", "eventual"]
+    filter_exact: bool
+    max_collections: int | None
 
 
 class ProviderType(ResponseModel):

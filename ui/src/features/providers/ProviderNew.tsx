@@ -14,6 +14,7 @@ import { nextStep } from "../../lib/errors";
 import { useToast } from "../../lib/toast";
 import { KIND_LABEL, KINDS } from "./model";
 import { SecretInput, type SecretDraft } from "./SecretInput";
+import { StoreCapabilitiesPanel } from "./StoreCapabilities";
 
 /** Suggest an unused name for a copy: "bge-m3" -> "bge-m3-2". */
 function copyName(name: string, taken: Set<string>): string {
@@ -95,6 +96,7 @@ export function ProviderNew() {
                   ))}
                 </div>
               )}
+              {type?.capabilities ? <StoreCapabilitiesPanel caps={type.capabilities} immutable={type.fingerprint_fields} /> : null}
             </section>
           ) : null}
         </>
@@ -157,6 +159,7 @@ function ProviderForm({
   const [secrets, setSecrets] = useState<Record<string, SecretDraft>>(() => Object.fromEntries(type.secret_keys.map((k) => [k, { mode: "env", value: "" }])));
   const [apiError, setApiError] = useState<ApiError | null>(null);
   const capturesInfo = type.fingerprint_fields.includes("service_version");
+  const isStore = type.kind === "vector_store";
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -203,11 +206,12 @@ function ProviderForm({
       {permanent.length || capturesInfo ? (
         <section className="prov-step prov-perm" aria-labelledby="step-perm">
           <h2 id="step-perm" className="prov-step__title">
-            <Lock size={14} strokeWidth={2} aria-hidden /> Permanent once created
+            <Lock size={14} strokeWidth={2} aria-hidden /> {isStore ? "Set once, when created" : "Permanent once created"}
           </h2>
           <p className="prov-perm__why">
-            These settings change what the provider produces, so they are part of its fingerprint. To change them later you create a new provider, and pipelines
-            built on the old one keep their results.
+            {isStore
+              ? "These settings shape the index the store builds. To change them later you create a new provider, which builds a new index; pipelines built on the old one keep their results."
+              : "These settings change what the provider produces, so they are part of its fingerprint. To change them later you create a new provider, and pipelines built on the old one keep their results."}
           </p>
           {permanent.length ? (
             <ConfigFields fields={permanent} values={values} errors={errors} onChange={(k, v) => setValues((x) => ({ ...x, [k]: v }))} disabled={pending} />

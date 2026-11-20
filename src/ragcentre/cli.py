@@ -358,6 +358,27 @@ def _print_store_check(name: str, check: dict[str, Any]) -> None:
         typer.echo("  all checks passed.")
 
 
+@store_app.command("list")
+def store_list(
+    markdown: Annotated[
+        bool, typer.Option("--markdown", help="Print the README's Markdown table of the built-in stores.")
+    ] = False,
+) -> None:
+    """List the vector store types, their extras and what each one guarantees.
+
+    The figures are each type's best case; an instance can report less (``store check`` shows what a
+    live store gives). ``--markdown`` prints the table that the README embeds, which a test keeps in
+    step with the registry."""
+    from ragcentre.stores import docs
+
+    if markdown:
+        typer.echo(docs.markdown_table())
+        return
+    headers, rows = docs.plain_rows()
+    data = [dict(zip((h.lower().replace(" ", "_") for h in headers), row, strict=True)) for row in rows]
+    _emit(data, lambda: _table(headers, rows))
+
+
 @store_app.command("check")
 def store_check(
     provider: Annotated[str | None, typer.Argument(help="Registered provider name or id.")] = None,

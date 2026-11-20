@@ -1755,8 +1755,19 @@ export interface components {
         };
         /** StoreCapabilities */
         StoreCapabilities: {
+            /**
+             * Consistency
+             * @enum {string}
+             */
+            consistency: "immediate" | "eventual";
+            /** Filter Exact */
+            filter_exact: boolean;
             /** Max Batch */
             max_batch: number;
+            /** Max Collections */
+            max_collections: number | null;
+            /** Max Dim */
+            max_dim: number | null;
             /** Metrics */
             metrics: ("cosine" | "l2" | "dot")[];
             /** Multi Vector */

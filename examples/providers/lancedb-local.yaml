@@ -1,0 +1,11 @@
+# LanceDB in a local directory (a relative path lands in the data dir). Needs
+# `pip install "ragcentre[lancedb]"`. The uri may also be s3://, gs://, az:// or db://NAME (LanceDB
+# Cloud, with the api_key secret). Search is exact until a collection reaches ann_index_min_rows,
+# then an ANN index of index_type is built; both are set once.
+name: lancedb-local
+kind: vector_store
+type: lancedb
+config:
+  uri: lancedb
+  ann_index_min_rows: 50000
+  index_type: IVF_FLAT

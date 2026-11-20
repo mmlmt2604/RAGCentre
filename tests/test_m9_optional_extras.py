@@ -51,7 +51,19 @@ def test_stores_without_extras() -> None:
     out = subprocess.run([sys.executable, "-c", SCRIPT], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     lines = dict(line.split(": ", 1) for line in out.stdout.strip().splitlines())
-    assert set(lines) == {"qdrant", "pgvector", "chroma", "lancedb", "redis", "weaviate", "elasticsearch", "opensearch", "milvus", "pinecone", "mongodb"}
+    assert set(lines) == {
+        "qdrant",
+        "pgvector",
+        "chroma",
+        "lancedb",
+        "redis",
+        "weaviate",
+        "elasticsearch",
+        "opensearch",
+        "milvus",
+        "pinecone",
+        "mongodb",
+    }
     for extra, message in lines.items():
         assert f"'{extra}' extra" in message and f"ragcentre[{extra}]" in message, message
         assert "pip" not in message and "install " not in message.replace("installed", "")
