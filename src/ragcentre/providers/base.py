@@ -184,6 +184,7 @@ def classify_response(resp: httpx.Response, provider: str) -> ExecutionError | N
         retryable=retryable,
         retry_after=retry_after,
         provider=provider,
+        upstream_status=status,
     )
 
 
@@ -194,7 +195,13 @@ def classify_exception(exc: Exception, provider: str, url: str) -> ExecutionErro
         message = f"{provider}: could not connect to {url}: {exc}"
     else:  # pragma: no cover - defensive
         message = f"{provider}: request to {url} failed: {exc}"
-    return ExecutionError(ErrorCode.PROVIDER_ERROR.value, redact(message), retryable=True, provider=provider)
+    return ExecutionError(
+        ErrorCode.PROVIDER_ERROR.value,
+        redact(message),
+        retryable=True,
+        provider=provider,
+        upstream_code="timeout" if isinstance(exc, httpx.TimeoutException) else "unreachable",
+    )
 
 
 def invalid_response(provider: str, detail: str) -> ExecutionError:

@@ -393,6 +393,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ocr-services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ocr Services
+         * @description The OCR shims that are registered or were found, with their readiness. Poll it: each call
+         *     starts the looks and checks that are due and returns what is known so far.
+         */
+        get: operations["get_ocr_services_v1_ocr_services_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ocr-services/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Ocr Services
+         * @description Look at every known address now.
+         */
+        post: operations["scan_ocr_services_v1_ocr_services_scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/pipelines/{pipeline_id}": {
         parameters: {
             query?: never;
@@ -530,6 +571,26 @@ export interface paths {
         head?: never;
         /** Patch Provider */
         patch: operations["patch_provider_v1_providers__provider_id__patch"];
+        trace?: never;
+    };
+    "/v1/providers/{provider_id}/ocr-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Ocr
+         * @description Start reading a scanned test page with this parser. Poll ``GET /ocr-services`` for the result.
+         */
+        post: operations["check_ocr_v1_providers__provider_id__ocr_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/providers/{provider_id}/secrets/{key}": {
@@ -1226,6 +1287,71 @@ export interface components {
             pipeline_id: string;
             /** Pipeline Name */
             pipeline_name: string;
+        };
+        /** OcrService */
+        OcrService: {
+            /** Base Url */
+            base_url: string;
+            /** Busy */
+            busy: boolean;
+            /** Check Seconds */
+            check_seconds: number | null;
+            /** Checked At */
+            checked_at: string | null;
+            /** Detail */
+            detail: string | null;
+            /** Id */
+            id: string;
+            /** Message */
+            message: string;
+            /** Name */
+            name: string | null;
+            /** Provider Id */
+            provider_id: string | null;
+            /** Provider Name */
+            provider_name: string | null;
+            /** Rechecking */
+            rechecking: boolean;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "looking" | "detected" | "checking" | "ready" | "failed" | "engine_down" | "needs_key" | "changed" | "offline" | "no_ocr";
+            steps: components["schemas"]["OcrSteps"];
+            /** Suggested Name */
+            suggested_name: string | null;
+            /** Version */
+            version: string | null;
+        };
+        /** OcrStatus */
+        OcrStatus: {
+            /** Discovery Enabled */
+            discovery_enabled: boolean;
+            /** Scanning */
+            scanning: boolean;
+            /** Services */
+            services: components["schemas"]["OcrService"][];
+        };
+        /**
+         * OcrSteps
+         * @description The three facts behind a state. ``ready`` is all three ``ok``.
+         */
+        OcrSteps: {
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "ok" | "failed" | "running" | "unknown";
+            /**
+             * Shim
+             * @enum {string}
+             */
+            shim: "ok" | "failed" | "running" | "unknown";
+            /**
+             * Text
+             * @enum {string}
+             */
+            text: "ok" | "failed" | "running" | "unknown";
         };
         /** Page[Corpus] */
         Page_Corpus_: {
@@ -2890,6 +3016,46 @@ export interface operations {
             };
         };
     };
+    get_ocr_services_v1_ocr_services_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrStatus"];
+                };
+            };
+        };
+    };
+    scan_ocr_services_v1_ocr_services_scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrStatus"];
+                };
+            };
+        };
+    };
     get_v1_pipelines__pipeline_id__get: {
         parameters: {
             query?: never;
@@ -3226,6 +3392,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Provider"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_ocr_v1_providers__provider_id__ocr_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OcrStatus"];
                 };
             };
             /** @description Validation Error */

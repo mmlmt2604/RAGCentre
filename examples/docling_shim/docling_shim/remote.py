@@ -66,6 +66,8 @@ class DoclingServeConverter:
     ) -> None:
         self.url = url.rstrip("/")
         headers = {"X-Api-Key": api_key} if api_key else {}
+        self.reachable = True
+        self._last_version: str | None = None
         self.client = client or httpx.Client(timeout=httpx.Timeout(timeout, connect=10.0), headers=headers)
 
     @classmethod
@@ -78,15 +80,27 @@ class DoclingServeConverter:
         )
 
     def server_version(self) -> str:
-        """The server's Docling version, or ``remote`` when it does not say."""
+        """The server's Docling version, or ``remote`` when it does not say.
+
+        While the server is down this is the last version it reported, with ``reachable`` false:
+        an outage is not a version change. The timeouts are shorter than RAGCentre's for ``/info``."""
         try:
-            body = self.client.get(f"{self.url}/version", timeout=5.0).json()
+            resp = self.client.get(f"{self.url}/version", timeout=httpx.Timeout(1.5, connect=1.0))
+            self.reachable = resp.status_code < 500
+            if not self.reachable:
+                return self._last_version or "remote"
+            body = resp.json()
             found = body.get("docling") or body.get("docling-serve") if isinstance(body, dict) else None
             if isinstance(found, dict):
                 found = found.get("version")
-            return str(found) if found else "remote"
-        except (httpx.HTTPError, ValueError):
-            return "remote"
+            if found:
+                self._last_version = str(found)
+            return self._last_version or "remote"
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            self.reachable = False
+            return self._last_version or "remote"
+        except (httpx.HTTPError, ValueError):  # slow (a server at work) or not JSON: not an outage
+            return self._last_version or "remote"
 
     def __call__(self, content: bytes, filename: str, options: dict[str, Any]) -> DoclingDocument:
         try:

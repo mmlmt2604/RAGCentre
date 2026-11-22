@@ -53,6 +53,22 @@ export interface ProviderTestResult {
   version_drift: { pinned: string; current: string } | null;
   check?: ParserCheck | StoreCheck | null;   // only a deep test (`?deep=true`)
 }
+export type OcrState = "looking" | "detected" | "checking" | "ready" | "failed" | "engine_down" | "needs_key" | "changed" | "offline" | "no_ocr";
+export type OcrStep = "ok" | "failed" | "running" | "unknown";
+export interface OcrService {
+  id: string;
+  provider_id: UUID | null;                  // null: found, not added yet
+  provider_name: string | null;
+  suggested_name: string | null;             // a free provider name, for one that was found
+  base_url: string; name: string | null; version: string | null;
+  state: OcrState;                           // "ready" only after a scanned page's text was read back
+  steps: { shim: OcrStep; engine: OcrStep; text: OcrStep };
+  busy: boolean;                             // slow to answer, as an engine at work is
+  rechecking: boolean;                       // a test is running and `state` is still the last result
+  message: string; detail: string | null;
+  checked_at: ISODate | null; check_seconds: number | null;
+}
+export interface OcrStatus { services: OcrService[]; scanning: boolean; discovery_enabled: boolean }
 export interface ParserFinding { level: "error" | "warn" | "info"; check: string; message: string; lost: string | null }
 export interface ParserCheck { ok: boolean; blocks: number; pages: number; seconds: number; findings: ParserFinding[] }
 export interface StoreFinding { level: "error" | "warn" | "info"; check: string; message: string; ms: number; lost: string | null }

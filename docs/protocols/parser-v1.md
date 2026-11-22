@@ -50,6 +50,16 @@ RAGCentre's provider type for this protocol is `parser/http`.
   service without a schema accepts any options. A service that publishes a schema should reject
   options it does not list with `400 invalid_options`.
 
+- `engine` (optional): what the shim knows about its engine, `{"state": "ready", "instance_id": "…"}`.
+  `state` is `idle` (no parse yet), `loading`, `ready`, `error` (the last parse failed with a 5xx) or
+  `unreachable` (a remote engine does not answer). `instance_id` changes when the shim restarts, so
+  RAGCentre tests it again. Put no error text or addresses here, because `/info` is open. shimkit sends
+  it; pass `engine_check` to `create_app` for a remote engine. A report never makes a parser "ready":
+  only a scanned page that was read does.
+- `/info` must stay cheap and must not load the engine: RAGCentre's UI polls it every few seconds. Keep
+  it under 3 seconds, and keep `version` the same while a remote engine is down (an outage is not a
+  version change).
+
 RAGCentre calls `/info` without credentials when the provider is created, and again (with
 credentials, cached for five minutes) before parsing. If the reported version differs from the
 pinned one, parsing fails with `provider_version_drift`, unless the provider's `on_version_drift`

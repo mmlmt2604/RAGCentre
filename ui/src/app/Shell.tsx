@@ -4,6 +4,8 @@ import { lazy, Suspense, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useMatch, useParams } from "react-router";
 import { useCorpus, useHealth } from "../api/hooks";
 import { StatusIndicator } from "../components/Status";
+import { OcrBarStatus } from "../features/ocr/OcrBarStatus";
+import { OcrWatcher } from "../features/ocr/OcrWatcher";
 import { count } from "../lib/format";
 import { useTheme, type ThemePref } from "../lib/theme";
 import { TokenPrompt } from "./TokenPrompt";
@@ -77,11 +79,12 @@ function StatusBar() {
         <span className="shell-status__dot" aria-hidden />
         {connected ? "Connected" : health.isError ? "Disconnected" : "Connecting…"}
       </span>
+      <OcrBarStatus />
       {health.data ? (
         <>
-          <span>{count(health.data.workers)} workers</span>
-          <span>v{health.data.version}</span>
-          {health.data.auth_required ? <span>Token auth</span> : null}
+          <span className="shell-status__fact">{count(health.data.workers)} workers</span>
+          <span className="shell-status__fact">v{health.data.version}</span>
+          {health.data.auth_required ? <span className="shell-status__fact">Token auth</span> : null}
         </>
       ) : null}
       <span className="shell-status__spacer" />
@@ -147,6 +150,7 @@ export function Shell() {
       </div>
       <StatusBar />
       <TokenPrompt />
+      <OcrWatcher />
     </div>
   );
 }

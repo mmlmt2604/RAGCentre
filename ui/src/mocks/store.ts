@@ -9,6 +9,7 @@ import type {
   EvalRun,
   EvalSummary,
   MetadataSchema,
+  OcrState,
   PipelineConfig,
   PipelineNode,
   PipelineProblem,
@@ -99,7 +100,9 @@ export interface MockState {
   /** RAGCENTRE_MAX_UPLOAD_MB, in bytes. */
   maxUploadBytes: number;
   /** Simulated provider service conditions, by provider name: down (with the error) or a newer version. */
-  serviceFaults: Record<string, { down?: string; version?: string }>;
+  serviceFaults: Record<string, { down?: string; version?: string; ocr?: OcrState }>;
+  /** URLs where a parser shim answers, whether or not it is a provider. */
+  runningShims: string[];
   /** Runs started or finished per tick of the ingestion simulator. */
   throughput: number;
 }
@@ -126,6 +129,7 @@ export function emptyState(): MockState {
     secretStorage: true,
     maxUploadBytes: 200 * 1024 * 1024,
     serviceFaults: {},
+    runningShims: [],
     throughput: 60,
   };
 }

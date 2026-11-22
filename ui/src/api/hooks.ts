@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
-import { request, upload } from "./client";
+import { ApiError, request, upload } from "./client";
 import type {
   Chunk,
   GcReport,
@@ -15,6 +15,7 @@ import type {
   Health,
   MetadataSchema,
   NodeRun,
+  OcrStatus,
   Page,
   Pipeline,
   PipelineConfig,
@@ -31,6 +32,8 @@ import type {
 } from "./types";
 
 const POLL_MS = 2000;
+const OCR_POLL_MS = 3000;
+const OCR_BUSY_POLL_MS = 1000;
 
 /** Poll every 2 s while `busy(data)` is true; TanStack pauses polling when the tab is hidden. */
 function pollWhile<T>(busy: (data: T) => boolean) {
@@ -51,6 +54,7 @@ export const keys = {
   providers: ["providers"] as const,
   provider: (id: string) => ["providers", id] as const,
   providerTypes: ["provider-types"] as const,
+  ocr: ["ocr-services"] as const,
   nodeRuns: (params: Record<string, string | undefined>) => ["node-runs", params] as const,
   documents: (corpusId: string, params: Record<string, string | undefined>) => ["corpora", corpusId, "documents", params] as const,
   document: (id: string) => ["documents", id] as const,
@@ -108,6 +112,36 @@ export function usePipelineStatus(id: string | undefined) {
 
 export function useProviders() {
   return useQuery({ queryKey: keys.providers, queryFn: () => request<Page<Provider>>("/providers", { query: { limit: 500 } }) });
+}
+
+/** OCR shims and their readiness. Polls while the tab is visible, faster while a test runs. */
+export function useOcr() {
+  return useQuery({
+    queryKey: keys.ocr,
+    queryFn: () => request<OcrStatus>("/ocr-services"),
+    retry: false,
+    refetchInterval: ({ state }) => {
+      if (state.error instanceof ApiError && state.error.status === 401) return false; // the token prompt takes over
+      const busy = state.data?.scanning || state.data?.services.some((s) => s.state === "checking" || s.state === "looking" || s.rechecking);
+      return busy ? OCR_BUSY_POLL_MS : OCR_POLL_MS;
+    },
+  });
+}
+
+export function useOcrScan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<OcrStatus>("/ocr-services/scan", { method: "POST" }),
+    onSuccess: (status) => qc.setQueryData(keys.ocr, status),
+  });
+}
+
+export function useOcrCheck(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<OcrStatus>(`/providers/${id}/ocr-check`, { method: "POST" }),
+    onSuccess: (status) => qc.setQueryData(keys.ocr, status),
+  });
 }
 
 export function useProvider(id: string | undefined) {
@@ -247,6 +281,7 @@ function useInvalidateProviders() {
   return (p?: Provider) => {
     if (p) qc.setQueryData(keys.provider(p.id), p);
     void qc.invalidateQueries({ queryKey: keys.providers });
+    void qc.invalidateQueries({ queryKey: keys.ocr });
   };
 }
 
@@ -273,6 +308,7 @@ export function useDeleteProvider() {
     onSuccess: (_, id) => {
       qc.removeQueries({ queryKey: keys.provider(id) });
       void qc.invalidateQueries({ queryKey: keys.providers });
+      void qc.invalidateQueries({ queryKey: keys.ocr });
     },
   });
 }

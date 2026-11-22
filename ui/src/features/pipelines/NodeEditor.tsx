@@ -1,9 +1,13 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
+import { useOcr } from "../../api/hooks";
 import type { PipelineConfig, PipelineNode, Provider, ProviderType } from "../../api/types";
 import { Button, IconButton } from "../../components/Button";
 import { Checkbox, Field, Select, TextInput } from "../../components/Field";
 import { NumberInput } from "../../components/NumberInput";
+import { OcrServiceStatus } from "../ocr/OcrIndicator";
+import { isProblem, ocrLabel } from "../ocr/model";
 import { INPUT_TYPE } from "./graph";
 import { NODE_LABEL } from "./model";
 import { optionSpecs } from "./optionsSchema";
@@ -24,14 +28,26 @@ const DEFAULTS: Record<string, Record<string, number | boolean>> = {
   http: {},
 };
 
-function ProviderSelect({ kind, value, onChange, providers, label, error }: { kind: Provider["kind"]; value: string; onChange: (v: string) => void; providers: Provider[]; label: string; error?: string }) {
+interface ProviderSelectProps {
+  kind: Provider["kind"];
+  value: string;
+  onChange: (v: string) => void;
+  providers: Provider[];
+  label: string;
+  error?: string;
+  /** Replaces the default hint. */
+  note?: ReactNode;
+  optionLabel?: (p: Provider) => string;
+}
+
+function ProviderSelect({ kind, value, onChange, providers, label, error, note, optionLabel }: ProviderSelectProps) {
   const options = providers.filter((p) => p.kind === kind);
   return (
     <Field
       label={label}
       error={error ?? null}
       hint={
-        <>
+        note ?? <>
           Only {kind.replace("_", " ")} providers are listed.{" "}
           <Link to={`/providers/new?kind=${kind}`} className="inline-link" target="_blank" rel="noreferrer">
             Add one
@@ -44,7 +60,7 @@ function ProviderSelect({ kind, value, onChange, providers, label, error }: { ki
           <option value="">Choose…</option>
           {options.map((p) => (
             <option key={p.id} value={p.name}>
-              {p.name} ({p.type})
+              {optionLabel ? optionLabel(p) : `${p.name} (${p.type})`}
             </option>
           ))}
           {value && !options.some((p) => p.name === value) ? <option value={value}>{value} (not found)</option> : null}
@@ -52,6 +68,32 @@ function ProviderSelect({ kind, value, onChange, providers, label, error }: { ki
       )}
     </Field>
   );
+}
+
+/** The parser picker: each option carries its OCR status, and the hint explains the selected one. */
+function ParserSelect(props: Omit<ProviderSelectProps, "kind" | "note" | "optionLabel">) {
+  const ocr = useOcr();
+  const services = ocr.data?.services ?? [];
+  const selected = services.find((s) => s.provider_name && s.provider_name === props.value);
+  const found = services.filter((s) => !s.provider_id && s.state === "detected").length;
+  const note = selected ? (
+    <span className="ocr-hint">
+      <OcrServiceStatus service={selected} />
+      {isProblem(selected.state) ? <span>{selected.message}</span> : null}
+    </span>
+  ) : found ? (
+    <>
+      {found === 1 ? "An OCR shim is running but not added. " : `${found} OCR shims are running but not added. `}
+      <Link to="/providers" className="inline-link" target="_blank" rel="noreferrer">
+        Add and test
+      </Link>
+    </>
+  ) : null;
+  const optionLabel = (p: Provider) => {
+    const service = services.find((s) => s.provider_id === p.id);
+    return service ? `${p.name} (${p.type}, ${ocrLabel(service)})` : `${p.name} (${p.type})`;
+  };
+  return <ProviderSelect {...props} kind="parser" note={note} optionLabel={optionLabel} />;
 }
 
 function JsonOptions({ value, onChange, label, error }: { value: Record<string, unknown> | undefined; onChange: (v: Record<string, unknown> | undefined) => void; label: string; error?: string }) {
@@ -164,7 +206,7 @@ export function NodeEditor({
                 <Field label="MIME pattern" error={errAt(`routes[${i}].mime`) ?? null}>
                   {(a11y) => <TextInput {...a11y} mono value={r.mime} onChange={(e) => set({ mime: e.target.value })} placeholder="text/*" />}
                 </Field>
-                <ProviderSelect kind="parser" label="Parser" value={r.provider} onChange={(v) => set({ provider: v })} providers={providers} error={errAt(`routes[${i}].provider`)} />
+                <ParserSelect label="Parser" value={r.provider} onChange={(v) => set({ provider: v })} providers={providers} error={errAt(`routes[${i}].provider`)} />
                 {specs ? null : <JsonOptions label="Options" value={r.options} onChange={(v) => set({ options: v })} error={errAt(`routes[${i}].options`)} />}
                 <span className="route__actions">
                   <IconButton icon={ArrowUp} label={`Move route ${i + 1} up`} disabled={i === 0} onClick={() => move(-1)} />

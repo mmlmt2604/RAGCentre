@@ -177,6 +177,55 @@ class ProviderTestResult(ResponseModel):
     check: ParserCheck | StoreCheck | None = None
 
 
+# ---------- OCR services ----------
+
+OcrState = Literal[
+    "looking",
+    "detected",
+    "checking",
+    "ready",
+    "failed",
+    "engine_down",
+    "needs_key",
+    "changed",
+    "offline",
+    "no_ocr",
+]
+OcrStep = Literal["ok", "failed", "running", "unknown"]
+
+
+class OcrSteps(ResponseModel):
+    """The three facts behind a state. ``ready`` is all three ``ok``."""
+
+    shim: OcrStep
+    engine: OcrStep
+    text: OcrStep
+
+
+class OcrService(ResponseModel):
+    id: str
+    provider_id: str | None  # null: found, not added yet
+    provider_name: str | None
+    suggested_name: str | None  # a free provider name, for one that was found
+    base_url: str
+    name: str | None
+    version: str | None
+    state: OcrState
+    steps: OcrSteps
+    busy: bool  # it accepts connections but is slow to answer, as an engine at work is
+    rechecking: bool  # a test is running and ``state`` is still the last result
+    message: str
+    detail: str | None
+    checked_at: str | None
+    check_seconds: float | None
+
+
+class OcrStatus(ResponseModel):
+    services: list[OcrService]
+    scanning: bool  # some address has not been looked at yet
+    discovery_enabled: bool
+
+
 # ---------- Corpora ----------
 
 RunState = Literal["pending", "running", "succeeded", "failed", "blocked"]

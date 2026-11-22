@@ -232,6 +232,46 @@ def test_remote_version_without_a_version_endpoint(monkeypatch: pytest.MonkeyPat
     assert client.get("/info").json()["version"] == "0.3.0+docling-serve.remote"
 
 
+@pytest.mark.parametrize("outage", ["refused", "502"])
+def test_remote_outage_is_not_a_version_change(monkeypatch: pytest.MonkeyPatch, outage: str) -> None:
+    import httpx
+
+    up = [True]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if up[0]:
+            return httpx.Response(200, json={"docling": "2.150.1"})
+        if outage == "502":
+            return httpx.Response(502, text="bad gateway")
+        raise httpx.ConnectError("down", request=request)
+
+    client = remote_client(handler, monkeypatch)
+    before = client.get("/info").json()
+    assert before["engine"]["state"] != "unreachable"
+    up[0] = False
+    down = client.get("/info").json()
+    assert down["version"] == before["version"] and down["engine"]["state"] == "unreachable"
+    up[0] = True
+    assert client.get("/info").json()["engine"]["state"] != "unreachable"
+
+
+def test_a_busy_remote_server_is_not_an_outage(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    busy = [False]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if busy[0]:
+            raise httpx.ReadTimeout("busy", request=request)
+        return httpx.Response(200, json={"docling": "2.150.1"})
+
+    client = remote_client(handler, monkeypatch)
+    before = client.get("/info").json()
+    busy[0] = True
+    during = client.get("/info").json()
+    assert during["version"] == before["version"] and during["engine"]["state"] != "unreachable"
+
+
 @pytest.mark.parametrize(
     ("status", "expected"),
     [(415, 415), (422, 422), (401, 502), (500, 503), (429, 503)],

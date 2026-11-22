@@ -215,6 +215,7 @@ def create_app(converter: Converter | None = None) -> FastAPI:
         options=OPTIONS,
         api_key_env="DOCLING_SHIM_API_KEY",
         parse=parse,
+        engine_check=(lambda: remote.reachable) if remote is not None else None,
         jobs=True,  # a scanned PDF can take longer than one request may last
     )
 

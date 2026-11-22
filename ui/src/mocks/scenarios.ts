@@ -25,6 +25,7 @@ export function buildScenario(name: ScenarioName): MockState {
     // A fresh install: no RAGCENTRE_SECRET_KEY yet, so only environment-variable secrets work.
     state.providers = [builtinText()];
     state.secretStorage = false;
+    state.runningShims = ["http://docling:8701"];
     return state;
   }
 

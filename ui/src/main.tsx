@@ -14,6 +14,7 @@ import "./styles/builder.css";
 import "./styles/query.css";
 import "./styles/eval.css";
 import "./styles/ops.css";
+import "./styles/ocr.css";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";

@@ -178,6 +178,55 @@ class JobTable:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
 
+# --- engine report ----------------------------------------------------------------------------
+
+
+class EngineReport:
+    """``/info``'s optional ``engine`` object: what this process knows about its engine.
+
+    ``idle`` (no parse yet), ``loading`` (the first parse), ``ready`` (a parse returned), ``error``
+    (the last parse failed with a 5xx), or ``unreachable`` (``check`` says a remote engine is down).
+    ``instance_id`` changes when the shim restarts. ``/info`` is open, so no error text is included.
+    """
+
+    def __init__(self, check: Callable[[], bool] | None = None) -> None:
+        self.instance_id = uuid.uuid4().hex
+        self._check = check
+        self._state = "idle"
+        self._lock = threading.Lock()
+
+    @contextmanager
+    def track(self) -> Iterator[None]:
+        with self._lock:
+            before = self._state
+            if before == "idle":
+                self._state = "loading"
+        try:
+            yield
+        except ShimError as exc:
+            self._set("error" if exc.status >= 500 else before)  # a 4xx is the document's fault
+            raise
+        except Exception:
+            self._set(before)
+            raise
+        self._set("ready")
+
+    def _set(self, state: str) -> None:
+        with self._lock:
+            self._state = state
+
+    def as_dict(self) -> dict[str, str]:
+        state = self._state
+        if self._check is not None:
+            try:
+                reachable = self._check()
+            except Exception:
+                reachable = False
+            if not reachable:
+                state = "unreachable"
+        return {"state": state, "instance_id": self.instance_id}
+
+
 # --- app --------------------------------------------------------------------------------------
 
 
@@ -204,6 +253,7 @@ def create_app(
     options: Sequence[Option] | None = None,
     strict_options: bool = True,
     jobs: bool = False,
+    engine_check: Callable[[], bool] | None = None,
     job_workers: int = 2,
     job_ttl: float = JOB_TTL_SECONDS,
 ) -> FastAPI:
@@ -214,6 +264,9 @@ def create_app(
     ``api_key_env`` is set, every request except ``GET /info`` must carry
         ``Authorization: Bearer <value>``. ``shutdown`` runs when the server stops (to release an
         engine's child processes).
+
+    ``/info`` also reports ``engine`` (see :class:`EngineReport`). Pass ``engine_check`` when the
+    engine runs elsewhere: it is called on every ``/info`` after ``version`` and must be quick.
 
     ``options`` declares the route options (see ``shimkit.options``): ``/info`` reports them as
     ``options_schema``, and a request with an option that is not declared is a ``400
@@ -235,10 +288,13 @@ def create_app(
     advertised = {**capabilities, **({"async": True} if jobs else {})}
     declared = list(options) if options is not None else None
 
+    engine = EngineReport(engine_check)
+
     def run_parse(content: bytes, filename: str, opts: dict[str, Any]) -> dict[str, Any]:
         if lock is None:
-            return parse(content, filename, opts)
-        with lock:
+            with engine.track():
+                return parse(content, filename, opts)
+        with lock, engine.track():
             return parse(content, filename, opts)
 
     @asynccontextmanager
@@ -269,6 +325,7 @@ def create_app(
             "version": version(),
             "mime_types": list(mime_types),
             "capabilities": dict(advertised),
+            "engine": engine.as_dict(),
         }
         if declared is not None:
             body["options_schema"] = options_schema(declared)

@@ -13,7 +13,14 @@ services:
       - "127.0.0.1:8700:8700"
     volumes:
       - ragcentre-data:/data
+    extra_hosts:
+      # Lets RAGCentre find and call a parser that runs on this machine outside Compose (Linux needs this line).
+      - "host.docker.internal:host-gateway"
     environment:
+      # Where to look for parser shims: auto, off, or URLs (auto,http://gpu-box:8701 keeps both).
+      RAGCENTRE_DISCOVERY_URLS: ${RAGCENTRE_DISCOVERY_URLS:-auto}
+      # How often a working OCR engine is re-tested while the UI is open, in seconds (0: never).
+      RAGCENTRE_OCR_RECHECK_SECONDS: ${RAGCENTRE_OCR_RECHECK_SECONDS:-600}
       # Set a token before exposing the port beyond this machine.
       RAGCENTRE_API_TOKEN: ${RAGCENTRE_API_TOKEN:-}
       # Fernet key for storing provider secrets in the database (optional).
