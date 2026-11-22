@@ -35,7 +35,7 @@ from shimkit import create_app as create_shim_app
 from docling_shim.convert import to_ir
 from docling_shim.remote import DoclingServeConverter
 
-SHIM_VERSION = "0.3.0"
+SHIM_VERSION = "0.3.1"
 NAME = "docling-shim"
 MIME_TYPES = [
     "application/pdf",

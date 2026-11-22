@@ -115,7 +115,7 @@ def test_service_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(create_app(fake_converter(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == PROTOCOL and info["name"] == "docling-shim"
-    assert info["version"].startswith("0.3.0+docling.")
+    assert info["version"].startswith("0.3.1+docling.")
     assert "application/pdf" in info["mime_types"]
     resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
                        data={"options": json.dumps({"ocr": False})})  # fmt: skip
@@ -222,14 +222,14 @@ def test_remote_matches_the_in_process_golden(monkeypatch: pytest.MonkeyPatch) -
     for expected in ('name="files"', 'name="to_formats"\r\n\r\njson', 'name="do_ocr"\r\n\r\nfalse',
                      'name="do_pdf_heading_hierarchy"\r\n\r\ntrue'):  # fmt: skip
         assert expected in body, expected
-    assert client.get("/info").json()["version"] == "0.3.0+docling-serve.2.150.1"
+    assert client.get("/info").json()["version"] == "0.3.1+docling-serve.2.150.1"
 
 
 def test_remote_version_without_a_version_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
 
     client = remote_client(lambda request: httpx.Response(404), monkeypatch)
-    assert client.get("/info").json()["version"] == "0.3.0+docling-serve.remote"
+    assert client.get("/info").json()["version"] == "0.3.1+docling-serve.remote"
 
 
 @pytest.mark.parametrize("outage", ["refused", "502"])

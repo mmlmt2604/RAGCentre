@@ -1,6 +1,6 @@
 [project]
 name = "docling-shim"
-version = "0.3.0"
+version = "0.3.1"
 description = "Example ragcentre.parser/v1 service that parses documents with Docling."
 requires-python = ">=3.11"
 dependencies = [
@@ -14,7 +14,9 @@ dependencies = [
 
 [project.optional-dependencies]
 # Docling itself (PyTorch and its models). Leave it out to use only a remote docling-serve.
-local = ["docling>=2.40"]
+# `rapidocr` adds onnxruntime. Without it Docling falls back to RapidOCR on PyTorch, whose weights
+# are not in the wheel and would be downloaded into site-packages on the first scan.
+local = ["docling[rapidocr]>=2.40"]
 
 [dependency-groups]
 dev = [
