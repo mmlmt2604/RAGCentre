@@ -113,13 +113,13 @@ def diff(pipeline_id: str, against: str, ctx: AppContext = Depends(get_ctx)) -> 
 
 @router.post("/pipelines/{pipeline_id}/retry-failed", response_model=api.RetryResult)
 def retry_failed(pipeline_id: str, ctx: AppContext = Depends(get_ctx)) -> api.RetryResult:
-    get_pipeline(ctx, pipeline_id)
+    pipeline = get_pipeline(ctx, pipeline_id)
     from ragcentre.timeutil import now_iso
 
     cur = ctx.db.execute(
         "UPDATE node_runs SET status='pending', attempt=0, error_code=NULL, error_message=NULL, run_after=? "
-        "WHERE node_fp IN (SELECT node_fp FROM pipeline_nodes WHERE pipeline_id = ?) AND status = 'failed'",
-        (now_iso(), pipeline_id),
+        "WHERE corpus_id = ? AND node_fp IN (SELECT node_fp FROM pipeline_nodes WHERE pipeline_id = ?) AND status = 'failed'",
+        (now_iso(), pipeline["corpus_id"], pipeline_id),
     )
     return api.RetryResult(retried=cur.rowcount)
 

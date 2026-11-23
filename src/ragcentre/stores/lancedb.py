@@ -62,6 +62,7 @@ from ragcentre.stores.base import (
 )
 from ragcentre.stores.catalog import CatalogEntry, reconcile
 from ragcentre.stores.filter_datafusion import compile_datafusion, string_literal
+from ragcentre.stores.paths import store_path
 from ragcentre.stores.registry import VectorStoreType
 
 log = logging.getLogger("ragcentre.stores.lancedb")
@@ -475,7 +476,7 @@ class LanceDBConfig(BaseModel):
     uri: str | None = Field(
         default=None,
         description="Local directory, object-store URI (s3://, gs://, az://) or LanceDB Cloud (db://name). "
-        "Default: a 'lancedb' directory in the data dir. A relative path is placed in the data dir.",
+        "Default: 'lancedb' under the data directory's stores folder.",
     )
     region: str | None = Field(default=None, description="Cloud region (db://) or object-store region")
     ann_index_min_rows: int | None = Field(
@@ -498,16 +499,19 @@ class LanceDBConfig(BaseModel):
     @field_validator("uri")
     @classmethod
     def _check_uri(cls, v: str | None) -> str | None:
-        if v is not None and not v.strip():
-            raise ValueError("uri must not be empty")
+        if v is not None:
+            if not v.strip():
+                raise ValueError("uri must not be empty")
+            if "://" in v and v.split("://", 1)[0] not in {"db", "s3", "gs", "az"}:
+                raise ValueError("use a relative path or a db://, s3://, gs:// or az:// URI")
         return v
 
 
 def _factory(config: BaseModel, secrets: dict[str, str], data_dir: Path) -> LanceDBStore:
     assert isinstance(config, LanceDBConfig)
     uri = config.uri if config.uri is not None else "lancedb"
-    if "://" not in uri and not Path(uri).is_absolute():
-        uri = str(data_dir / uri)
+    if "://" not in uri:
+        uri = str(store_path(data_dir, config.uri, "lancedb"))
     return LanceDBStore.connect(
         uri,
         api_key=secrets.get("api_key") or None,

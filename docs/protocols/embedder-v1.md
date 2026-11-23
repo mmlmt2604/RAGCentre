@@ -61,7 +61,7 @@ With an `api_key` secret, RAGCentre sends `Authorization: Bearer <api_key>`. Kee
 files by referencing an environment variable:
 
 ```sh
-uv run ragcentre provider set-secret openai-small api_key --env OPENAI_API_KEY
+uv run ragcentre provider set-secret openai-small api_key --env RAGCENTRE_PROVIDER_OPENAI_API_KEY
 ```
 
 ## Provider configuration

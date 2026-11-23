@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from ragcentre.errors import Conflict, ErrorCode, GuardError, InvalidPipeline, NotFound
 from ragcentre.hashing import collection_name, new_id
+from ragcentre.locks import index_catalog_lock
 from ragcentre.pipeline.graph import Resolution, resolve_pipeline
 from ragcentre.timeutil import now_iso
 
@@ -34,6 +35,46 @@ def create_fts_table(conn: sqlite3.Connection, physical_name: str, tokenizer: st
         f"USING fts5(chunk_id UNINDEXED, document_id UNINDEXED, body, tokenize='{tokenizer}')"
     )
 
+    if sqlite3.sqlite_version_info >= (3, 42, 0):
+        enable_fts_secure_delete(conn, physical_name)
+
+
+def enable_fts_secure_delete(conn: sqlite3.Connection, physical_name: str) -> None:
+    table = fts_table(physical_name)
+    if not all(c.isascii() and (c.isalnum() or c == "_") for c in table):
+        raise ValueError("Invalid FTS table name")
+    enabled = conn.execute(f'SELECT v FROM "{table}_config" WHERE k = ?', ("secure-delete",)).fetchone()
+    if enabled is None or enabled[0] != 1:
+        conn.execute(f'INSERT INTO "{table}" ("{table}", rank) VALUES (?, ?)', ("secure-delete", 1))
+        conn.execute(f'INSERT INTO "{table}" ("{table}") VALUES (?)', ("rebuild",))
+
+
+def rebuild_broken_indexes(ctx: AppContext) -> int:
+    """Move quarantined indexes to isolated collections and queue their ingestion again."""
+    with index_catalog_lock(ctx.settings.data_dir), ctx.db.write() as conn:
+        indexes = conn.execute(
+            "SELECT i.*, n.resolved FROM indexes i JOIN nodes n ON n.fingerprint = i.node_fp WHERE i.broken = 1"
+        ).fetchall()
+        for index in indexes:
+            physical = collection_name(index["corpus_id"], index["node_fp"])
+            if index["kind"] == "fts":
+                create_fts_table(conn, physical, json.loads(index["resolved"])["runtime"]["tokenizer"])
+            conn.execute("DELETE FROM index_records WHERE index_id = ?", (index["id"],))
+            conn.execute(
+                "UPDATE indexes SET physical_name = ?, dim = NULL, broken = 0 WHERE id = ?", (physical, index["id"])
+            )
+            conn.execute(
+                "UPDATE node_runs SET status='pending', attempt=attempt+1, run_after=?, worker_id=NULL, "
+                "lease_expires_at=NULL, error_code=NULL, error_message=NULL WHERE corpus_id=? AND node_fp=? "
+                "AND document_id IN (SELECT id FROM documents WHERE status='active')",
+                (now_iso(), index["corpus_id"], index["node_fp"]),
+            )
+        for name in {ix["physical_name"] for ix in indexes if ix["kind"] == "fts"}:
+            if not conn.execute("SELECT 1 FROM indexes WHERE kind='fts' AND physical_name=?", (name,)).fetchone():
+                table = fts_table(name)
+                conn.execute(f'DROP TABLE IF EXISTS "{table}"')
+        return len(indexes)
+
 
 def active_node_fps(conn: sqlite3.Connection, corpus_id: str) -> list[str]:
     rows = conn.execute(
@@ -49,7 +90,8 @@ def existing_pipeline_names(conn: sqlite3.Connection, corpus_id: str) -> set[str
 
 
 def resolve_for_corpus(ctx: AppContext, corpus_id: str, raw: Any) -> Resolution:
-    names = existing_pipeline_names(ctx.db.conn, corpus_id)
+    with ctx.db.connection() as conn:
+        names = existing_pipeline_names(conn, corpus_id)
     return resolve_pipeline(raw, ctx.providers.by_name, names)
 
 
@@ -175,7 +217,7 @@ def create_pipeline(ctx: AppContext, corpus_id: str, raw: Any) -> str:
     pipeline_id = new_id()
     now = now_iso()
     try:
-        with ctx.db.write() as conn:
+        with index_catalog_lock(ctx.settings.data_dir), ctx.db.write() as conn:
             conn.execute(
                 "INSERT INTO pipelines (id, corpus_id, name, config, resolved, fingerprint, archived, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, 0, ?)",

@@ -106,7 +106,7 @@ def test_gc_blobs_respect_references_and_grace(ctx: AppContext, client: TestClie
     doc = ctx.db.one("SELECT content_sha256 FROM documents WHERE corpus_id = ?", (cid,))
     assert ctx.blobs.exists(doc["content_sha256"])  # referenced blobs are never collected
     assert ctx.db.scalar("SELECT COUNT(*) FROM parse_cache") > 0
-    assert all(ctx.blobs.exists(r[0]) for r in ctx.db.conn.execute("SELECT blob_sha256 FROM parse_cache"))
+    assert all(ctx.blobs.exists(r[0]) for r in ctx.db.all("SELECT blob_sha256 FROM parse_cache"))
 
 
 def test_gc_skips_nodes_with_running_runs(ctx: AppContext, client: TestClient) -> None:

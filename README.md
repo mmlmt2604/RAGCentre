@@ -28,7 +28,11 @@ Or with Docker (builds the web UI; data lives in the `ragcentre-data` volume):
 docker compose up --build       # http://localhost:8700
 ```
 
-Set `RAGCENTRE_API_TOKEN` before exposing the port beyond localhost.
+Export `RAGCENTRE_API_TOKEN` before starting Compose. For a non-loopback bind, `ragcentre serve`
+requires a token unless you explicitly pass `--allow-no-token`.
+
+When a token is configured, `/v1/docs` and `/v1/openapi.json` require an Authorization header.
+To read the schema, run `curl -H "Authorization: Bearer $RAGCENTRE_API_TOKEN" http://127.0.0.1:8700/v1/openapi.json`.
 
 The example parser services are Compose profiles, so one command also gives you a parser for PDFs,
 Office documents and images:
@@ -82,11 +86,36 @@ Run `ragcentre COMMAND --help` for details.
 | `RAGCENTRE_DATA_DIR` | `./data` | Database, blobs, embedding cache and the default vector store |
 | `RAGCENTRE_HOST` / `RAGCENTRE_PORT` | `127.0.0.1` / `8700` | Where `serve` listens |
 | `RAGCENTRE_WORKERS` | `4` | Ingestion worker threads |
-| `RAGCENTRE_API_TOKEN` | unset | When set, every request needs `Authorization: Bearer <token>` |
+| `RAGCENTRE_API_TOKEN` | unset | When set, API requests need `Authorization: Bearer <token>` except `GET /v1/health` |
 | `RAGCENTRE_SECRET_KEY` | unset | Fernet key for storing provider secrets; without it only environment-variable references are allowed |
-| `RAGCENTRE_MAX_UPLOAD_MB` | `200` | Upload size limit |
+| `RAGCENTRE_SECRET_ENV_PREFIXES` | `RAGCENTRE_PROVIDER_` | Comma-separated prefixes allowed for provider secret references |
+| `RAGCENTRE_EGRESS_ALLOW` | unset | Optional comma-separated provider hostnames, IP addresses or CIDRs |
+| `RAGCENTRE_MAX_UPLOAD_MB` | `200` | Request body size limit, including multipart overhead |
 | `RAGCENTRE_MAX_ATTEMPTS` | `5` | Attempts before a retryable failure becomes permanent |
 | `RAGCENTRE_LOG_LEVEL` | `INFO` | JSON logs on standard error |
+
+## Security upgrade
+
+Back up the data directory before opening it with schema version 3. To roll back to an older
+binary, restore that backup.
+
+- Set existing provider secrets again after upgrading. The server binds each secret to the
+  provider's destination and clears it when the destination changes. Use environment variables
+  such as `RAGCENTRE_PROVIDER_OPENAI_API_KEY`, or configure dedicated prefixes for your deployment.
+  The API token and encryption key cannot be referenced as provider secrets.
+- The built-in HTTP transport blocks link-local and known cloud metadata addresses at connect time
+  and disables redirects and environment proxies. SDK-backed stores are subject to configuration
+  checks for explicit endpoints. Enforce the same restrictions with network egress controls for
+  SDK-resolved endpoints and OCR services that make their own upstream connections.
+- Use relative local store paths under `<data dir>/stores/`. Move existing stores configured
+  with a path into that directory and update the provider configuration. Existing stores in the
+  default locations are recognized automatically.
+- Run `ragcentre rebuild-broken-indexes` against the data directory if an index is flagged with a
+  legacy name collision. Start the ingestion workers to repopulate it. Old vector collections are
+  left for retirement by the store administrator after verifying the rebuild.
+- Run ingestion workers to process deletions and old content purges. SQLite 3.42 or later is
+  required for FTS secure deletion. Configure retention separately for backups and external
+  services.
 
 ## Writing your own services
 

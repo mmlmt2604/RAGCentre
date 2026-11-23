@@ -7,4 +7,4 @@ config:
   index_name: ragcentre
   prefix: rc_
 secrets:
-  api_key: {env: PINECONE_API_KEY}
+  api_key: {env: RAGCENTRE_PROVIDER_PINECONE_API_KEY}

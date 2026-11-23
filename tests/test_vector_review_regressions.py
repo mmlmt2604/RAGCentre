@@ -62,8 +62,6 @@ def test_http_provider_captures_and_refreshes_info(
     ctx: AppContext,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from ragcentre.stores import http as module
-
     body = {**INFO, "capabilities": dict(INFO["capabilities"])}
     auth: list[str | None] = []
 
@@ -73,8 +71,9 @@ def test_http_provider_captures_and_refreshes_info(
             return httpx.Response(200, json=body)
         return httpx.Response(200, json={})
 
-    real_client = httpx.Client
-    monkeypatch.setattr(module.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(
+        ctx, "http_client_factory", lambda **kw: httpx.Client(transport=httpx.MockTransport(handler), **kw)
+    )
     made = client.post(
         "/v1/providers",
         json={
@@ -100,8 +99,10 @@ def test_http_provider_captures_and_refreshes_info(
     refreshed = client.get(url).json()
     assert refreshed["config"]["service_version"] == "1.0"
     assert refreshed["fingerprint"] == row["fingerprint"]
-    monkeypatch.setenv("REVIEW_VECTOR_TOKEN", "review-private-token")
-    assert client.put(f"{url}/secrets/api_key", json={"env": "REVIEW_VECTOR_TOKEN"}).status_code == 200
+    monkeypatch.setenv("RAGCENTRE_PROVIDER_REVIEW_VECTOR_TOKEN", "review-private-token")
+    assert (
+        client.put(f"{url}/secrets/api_key", json={"env": "RAGCENTRE_PROVIDER_REVIEW_VECTOR_TOKEN"}).status_code == 200
+    )
     body["capabilities"] = {**body["capabilities"], "max_dim": 64}
     result = client.post(f"{url}/test")
     assert result.json()["ok"] is True, result.text
@@ -113,14 +114,15 @@ def test_http_provider_captures_and_refreshes_info(
     assert client.post(f"{url}/test").json()["version_drift"] == {"pinned": "1.0", "current": "2.0"}
 
 
-def test_http_provider_unreachable_at_creation(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    from ragcentre.stores import http as module
-
+def test_http_provider_unreachable_at_creation(
+    client: TestClient, ctx: AppContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("unreachable", request=request)
 
-    real_client = httpx.Client
-    monkeypatch.setattr(module.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(
+        ctx, "http_client_factory", lambda **kw: httpx.Client(transport=httpx.MockTransport(handler), **kw)
+    )
     result = client.post(
         "/v1/providers",
         json={
@@ -146,15 +148,22 @@ def test_deep_test_redacts_every_finding(
         "/v1/providers", json={"name": "redact-vectors", "kind": "vector_store", "type": "pgvector", "config": {}}
     )
     provider_id = made.json()["id"]
-    monkeypatch.setenv("REVIEW_PG_DSN", secret)
-    assert client.put(f"/v1/providers/{provider_id}/secrets/dsn", json={"env": "REVIEW_PG_DSN"}).status_code == 200
+    monkeypatch.setenv("RAGCENTRE_PROVIDER_REVIEW_PG_DSN", secret)
+    assert (
+        client.put(
+            f"/v1/providers/{provider_id}/secrets/dsn", json={"env": "RAGCENTRE_PROVIDER_REVIEW_PG_DSN"}
+        ).status_code
+        == 200
+    )
     ctx.providers._resolve_secrets(provider_id)
 
     class Fake:
         def healthcheck(self) -> None:
             pass
 
-    monkeypatch.setattr(ctx.providers, "instance", lambda _id: Fake())
+    from contextlib import nullcontext
+
+    monkeypatch.setattr(ctx.providers, "lease", lambda _id: nullcontext(Fake()))
     report = CheckReport("pgvector")
     report.add("error", "query", f"connection failed: {secret}")
     report.add("warn", "drop", f"cleanup failed: {secret}")

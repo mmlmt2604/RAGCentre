@@ -44,6 +44,7 @@ from ragcentre.stores.base import (
     check_spec,
     require_extra,
 )
+from ragcentre.stores.paths import store_path
 from ragcentre.stores.registry import VectorStoreType
 
 if TYPE_CHECKING:
@@ -475,8 +476,8 @@ class QdrantConfig(BaseModel):
 def _factory(config: BaseModel, secrets: dict[str, str], data_dir: Path) -> QdrantStore:
     assert isinstance(config, QdrantConfig)
     path = config.path
-    if path is not None and path != ":memory:" and not Path(path).is_absolute():
-        path = str(data_dir / path)
+    if path is not None and path != ":memory:":
+        path = str(store_path(data_dir, path, "qdrant"))
     return QdrantStore.connect(
         url=config.url,
         path=path,

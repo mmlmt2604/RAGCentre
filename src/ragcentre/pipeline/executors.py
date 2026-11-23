@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
 from ragcentre.chunking import run_strategy
@@ -61,8 +62,8 @@ class _ParseJob:
     """Remembers the async job of one parse in ``parse_jobs`` (keyed by the parse cache key), so a
     worker that restarts, or a retry after a timeout, resumes polling instead of submitting again."""
 
-    def __init__(self, ctx: AppContext, cache_key: str, provider_id: str) -> None:
-        self.ctx, self.cache_key, self.provider_id = ctx, cache_key, provider_id
+    def __init__(self, ctx: AppContext, cache_key: str, provider_id: str, claim: Any) -> None:
+        self.ctx, self.cache_key, self.provider_id, self.claim = ctx, cache_key, provider_id, claim
 
     def get(self) -> str | None:
         row = self.ctx.db.one(
@@ -72,6 +73,8 @@ class _ParseJob:
 
     def save(self, job_id: str) -> None:
         with self.ctx.db.write() as conn:
+            if not is_current(self.ctx, self.claim):
+                return
             conn.execute(
                 "INSERT OR REPLACE INTO parse_jobs (cache_key, provider_id, job_id, created_at) "
                 "VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
@@ -80,12 +83,17 @@ class _ParseJob:
 
     def clear(self) -> None:
         with self.ctx.db.write() as conn:
-            conn.execute("DELETE FROM parse_jobs WHERE cache_key = ?", (self.cache_key,))
+            if is_current(self.ctx, self.claim):
+                conn.execute("DELETE FROM parse_jobs WHERE cache_key = ?", (self.cache_key,))
 
 
 def execute_parse(ctx: AppContext, claim: Any) -> dict[str, Any]:
     started = time.perf_counter()
-    doc = _doc(ctx, claim.document_id)
+    with document_lock(ctx.settings.data_dir, claim.document_id):
+        if not is_current(ctx, claim):
+            return {"duration_ms": 0.0}
+        doc = _doc(ctx, claim.document_id)
+        content = ctx.blobs.get(doc["content_sha256"])
     node = _node(ctx, claim.node_fp)
     route = _parse_route(node, str(doc["mime_type"]))
     if route is None:
@@ -95,44 +103,46 @@ def execute_parse(ctx: AppContext, claim: Any) -> dict[str, Any]:
             provider=doc.get("filename"),
         )
     provider_id = route["provider_id"]
-    content = ctx.blobs.get(doc["content_sha256"])
     cache_key = parse_cache_key(route["provider_fp"], route["options"], doc["content_sha256"])
     row = ctx.db.one("SELECT blob_sha256 FROM parse_cache WHERE cache_key = ?", (cache_key,))
     if row is not None:
         stats: dict[str, Any] = {"duration_ms": round((time.perf_counter() - started) * 1000, 2), "cache_hit": True}
         return stats
-    parser = ctx.providers.instance(provider_id)
-    provider = ctx.providers.get(provider_id)
-    if provider.type == "http":
-        info = parser.info()
-        pinned = str(provider.config.get("service_version", ""))
-        if info.version != pinned and provider.config.get("on_version_drift", "fail") == "fail":
-            raise ExecutionError(
-                ErrorCode.PROVIDER_VERSION_DRIFT.value,
-                f"{provider.name} now reports version {info.version}; it was pinned at {pinned} when created.",
-                provider=provider.name,
+    with ctx.providers.lease(provider_id) as parser:
+        provider = ctx.providers.get(provider_id)
+        if provider.type == "http":
+            info = parser.info()
+            pinned = str(provider.config.get("service_version", ""))
+            if info.version != pinned and provider.config.get("on_version_drift", "fail") == "fail":
+                raise ExecutionError(
+                    ErrorCode.PROVIDER_VERSION_DRIFT.value,
+                    f"{provider.name} now reports version {info.version}; it was pinned at {pinned} when created.",
+                    provider=provider.name,
+                )
+        if provider.type == "http":
+            raw = parser.parse(
+                content,
+                str(doc["filename"]),
+                str(doc["mime_type"]),
+                route["options"],
+                job=_ParseJob(ctx, cache_key, provider_id, claim),
             )
-    if provider.type == "http":
-        raw = parser.parse(
-            content,
-            str(doc["filename"]),
-            str(doc["mime_type"]),
-            route["options"],
-            job=_ParseJob(ctx, cache_key, provider_id),
-        )
-    else:
-        raw = parser.parse(content, str(doc["filename"]), str(doc["mime_type"]), route["options"])
+        else:
+            raw = parser.parse(content, str(doc["filename"]), str(doc["mime_type"]), route["options"])
     try:
         ir = normalise_ir(raw)
     except IRError as exc:
         raise invalid_response(provider.name, str(exc)) from None
     # Nothing reads page images after parsing (the UI strips them, chunk providers never see them),
     # and they can be megabytes per page, so the cache blob does not keep them.
-    blob = ctx.blobs.put_json_gz(ir.without_page_images())
     with ctx.db.write() as conn:
+        if not is_current(ctx, claim):
+            return {"duration_ms": 0.0}
+        blob = ctx.blobs.put_json_gz(ir.without_page_images())
         conn.execute(
-            "INSERT OR REPLACE INTO parse_cache (cache_key, blob_sha256, created_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
-            (cache_key, blob),
+            "INSERT OR REPLACE INTO parse_cache (cache_key, blob_sha256, content_sha256, created_at) "
+            "VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+            (cache_key, blob, doc["content_sha256"]),
         )
     return {
         "duration_ms": round((time.perf_counter() - started) * 1000, 2),
@@ -169,17 +179,18 @@ def execute_chunk(ctx: AppContext, claim: Any) -> dict[str, Any]:
     parse_fp = node["resolved"]["upstream"][0]
     raw_ir = _parse_blob(ctx, parse_fp, claim.document_id)
     ir = normalise_ir(raw_ir)
-    provider = None
-    if runtime.get("provider_id"):
-        provider = ctx.providers.instance(runtime["provider_id"])
-        row = ctx.providers.get(runtime["provider_id"])
-        if (
-            row.type == "http"
-            and provider.info().version != row.config["service_version"]
-            and row.config.get("on_version_drift", "fail") == "fail"
-        ):
-            raise ExecutionError("provider_version_drift", f"{row.name} reports a different service version")
-    chunks = run_strategy(runtime["strategy"], ir, runtime["options"], provider)
+    provider_id = runtime.get("provider_id")
+    lease = ctx.providers.lease(provider_id) if provider_id else nullcontext()
+    with lease as provider:
+        if provider is not None:
+            row = ctx.providers.get(provider_id)
+            if (
+                row.type == "http"
+                and provider.info().version != row.config["service_version"]
+                and row.config.get("on_version_drift", "fail") == "fail"
+            ):
+                raise ExecutionError("provider_version_drift", f"{row.name} reports a different service version")
+        chunks = run_strategy(runtime["strategy"], ir, runtime["options"], provider)
     with ctx.db.write() as conn:
         if not is_current(ctx, claim):
             return {"duration_ms": 0.0}
@@ -190,7 +201,7 @@ def execute_chunk(ctx: AppContext, claim: Any) -> dict[str, Any]:
             cid = chunk_id(claim.node_fp, claim.document_id, chunk.ordinal)
             conn.execute(
                 "INSERT INTO chunks (id, chunk_node_fp, document_id, ordinal, text, context, page_start, page_end, "
-                "heading_path, block_ids, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "heading_path, block_ids, metadata, doc_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     cid,
                     claim.node_fp,
@@ -203,6 +214,7 @@ def execute_chunk(ctx: AppContext, claim: Any) -> dict[str, Any]:
                     json.dumps(chunk.heading_path),
                     json.dumps(chunk.block_ids),
                     json.dumps(chunk.metadata),
+                    claim.doc_revision,
                 ),
             )
     stats: dict[str, Any] = {"duration_ms": round((time.perf_counter() - started) * 1000, 2), "n_chunks": len(chunks)}
@@ -267,11 +279,12 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
     )
     if index_row is None:
         raise ExecutionError("index_missing", f"index for node {claim.node_fp} does not exist")
-    store = ctx.providers.store(store_provider_id)
+    if index_row["broken"]:
+        raise ExecutionError("index_mismatch", "This index shares a legacy collection and must be rebuilt.")
     from ragcentre.stores.base import CollectionSpec, DimensionLimitExceeded
 
     physical = index_row["physical_name"]
-    with document_lock(ctx.settings.data_dir, claim.document_id):
+    with document_lock(ctx.settings.data_dir, claim.document_id), ctx.providers.lease(store_provider_id) as store:
         if not is_current(ctx, claim):
             return {"duration_ms": 0.0}
         # Ensure the physical collection before recording its dimension; retries also repair
@@ -295,6 +308,12 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
         }
         new_ids = {r.id for r in records}
         if records:
+            # Record intent first so deletion can clean up a partially applied external write.
+            with ctx.db.write() as conn:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO index_records (index_id, document_id, record_id, doc_revision) VALUES (?, ?, ?, ?)",
+                    [(index_row["id"], claim.document_id, rid, claim.doc_revision) for rid in new_ids],
+                )
             upsert_batched(store, physical, records)
         if previous - new_ids:
             delete_batched(store, physical, list(previous - new_ids))
@@ -303,8 +322,8 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
                 "DELETE FROM index_records WHERE index_id = ? AND document_id = ?", (index_row["id"], claim.document_id)
             )
             conn.executemany(
-                "INSERT INTO index_records (index_id, document_id, record_id) VALUES (?, ?, ?)",
-                [(index_row["id"], claim.document_id, rid) for rid in new_ids],
+                "INSERT INTO index_records (index_id, document_id, record_id, doc_revision) VALUES (?, ?, ?, ?)",
+                [(index_row["id"], claim.document_id, rid, claim.doc_revision) for rid in new_ids],
             )
     return {"duration_ms": round((time.perf_counter() - started) * 1000, 2), "n_records": len(records)}
 
@@ -319,6 +338,8 @@ def execute_index_fts(ctx: AppContext, claim: Any) -> dict[str, Any]:
     )
     if index_row is None:
         raise ExecutionError("index_missing", f"index for node {claim.node_fp} does not exist")
+    if index_row["broken"]:
+        raise ExecutionError("index_mismatch", "This index shares a legacy collection and must be rebuilt.")
     table = f"fts_{index_row['physical_name']}"
     with ctx.db.write() as conn:
         if not is_current(ctx, claim):
@@ -332,8 +353,8 @@ def execute_index_fts(ctx: AppContext, claim: Any) -> dict[str, Any]:
             "DELETE FROM index_records WHERE index_id = ? AND document_id = ?", (index_row["id"], claim.document_id)
         )
         conn.executemany(
-            "INSERT OR REPLACE INTO index_records (index_id, document_id, record_id) VALUES (?, ?, ?)",
-            [(index_row["id"], claim.document_id, c["id"]) for c in chunks],
+            "INSERT OR REPLACE INTO index_records (index_id, document_id, record_id, doc_revision) VALUES (?, ?, ?, ?)",
+            [(index_row["id"], claim.document_id, c["id"], claim.doc_revision) for c in chunks],
         )
     return {"duration_ms": round((time.perf_counter() - started) * 1000, 2), "n_records": len(chunks)}
 

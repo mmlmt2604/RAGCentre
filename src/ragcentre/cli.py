@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import mimetypes
@@ -151,6 +152,7 @@ def serve(
     host: Annotated[str | None, typer.Option(help="Bind address (default RAGCENTRE_HOST or 127.0.0.1).")] = None,
     port: Annotated[int | None, typer.Option(help="Port (default RAGCENTRE_PORT or 8700).")] = None,
     workers: Annotated[int | None, typer.Option(help="Worker threads (default RAGCENTRE_WORKERS or 4).")] = None,
+    allow_no_token: Annotated[bool, typer.Option(help="Allow a non-loopback bind without an API token.")] = False,
 ) -> None:
     """Run the API server and the ingestion workers."""
     import uvicorn
@@ -159,6 +161,13 @@ def serve(
     from ragcentre.context import open_context
 
     settings = _settings(host=host, port=port, workers=workers)
+    if not settings.api_token and not allow_no_token:
+        try:
+            is_loopback = ipaddress.ip_address(settings.host).is_loopback
+        except ValueError:
+            is_loopback = settings.host.lower() == "localhost"
+        if not is_loopback:
+            raise typer.BadParameter("Set RAGCENTRE_API_TOKEN or pass --allow-no-token.", param_hint="--host")
     configure_logging(settings.log_level)
     ctx = open_context(settings)
     try:
@@ -167,6 +176,19 @@ def serve(
         log.info("serving", extra={"host": settings.host, "port": settings.port, "workers": settings.workers})
         config = uvicorn.Config(api, host=settings.host, port=settings.port, log_level=settings.log_level.lower())
         uvicorn.Server(config).run()
+    finally:
+        ctx.close()
+
+
+@app.command("rebuild-broken-indexes")
+def rebuild_broken_indexes_command() -> None:
+    """Rebuild quarantined legacy indexes in the configured data directory."""
+    from ragcentre.context import open_context
+    from ragcentre.pipeline.planner import rebuild_broken_indexes
+
+    ctx = open_context(_settings())
+    try:
+        typer.echo(f"Queued {rebuild_broken_indexes(ctx)} indexes for rebuild.")
     finally:
         ctx.close()
 
@@ -585,7 +607,7 @@ def docs_add(
         meta = _typed_metadata(metadata or [], c["metadata_schema"]["fields"])
         for path in paths:
             mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-            data: dict[str, str] = {"metadata": json.dumps(meta)}
+            data: dict[str, str] = {"metadata": json.dumps(meta)} if metadata else {}
             ext = None if no_external_id else (external_id or path.name)
             if ext is not None:
                 data["external_id"] = ext

@@ -21,6 +21,7 @@ from typing import Any, Literal
 import httpx
 
 from ragcentre.models.ir import DocumentIR, IRError, normalise_ir
+from ragcentre.providers.base import response_reason
 from ragcentre.providers.parsers.sample import EXPECTED_HEADINGS, EXPECTED_ORDER, HEADER, sample_pdf
 
 PROTOCOL = "ragcentre.parser/v1"
@@ -128,7 +129,9 @@ def _fresh_client(client: httpx.Client) -> httpx.Client:
     always requests absolute URLs. The retry client is deliberately not closed: closing it would
     close the transport the caller is still using.
     """
-    return httpx.Client(headers=client.headers, timeout=client.timeout, transport=getattr(client, "_transport", None))
+    return httpx.Client(
+        headers=client.headers, timeout=client.timeout, transport=getattr(client, "_transport", None), trust_env=False
+    )
 
 
 def _send(
@@ -324,7 +327,7 @@ def _wait_for_job(
                 _send(client, "DELETE", f"{report.base_url}/jobs/{job_id}")  # optional; ignore the answer
             return raw
         if state == "failed":
-            report.add("error", "async", f"the job failed: {status.json().get('error')}")
+            report.add("error", "async", "the upstream parser job failed")
             raise _Failed
         if state != "running":
             report.add("error", "async", f"job status must be running, succeeded or failed, got {state!r}")
@@ -336,14 +339,7 @@ def _wait_for_job(
 
 
 def _error_text(resp: httpx.Response) -> str:
-    try:
-        body = resp.json()
-        err = body.get("error") if isinstance(body, dict) else None
-        if isinstance(err, dict) and err.get("message"):
-            return str(err["message"])[:200]
-    except ValueError:
-        pass
-    return resp.text[:200] or resp.reason_phrase
+    return response_reason(resp.status_code)
 
 
 # --- the IR ------------------------------------------------------------------------------------

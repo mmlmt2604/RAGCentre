@@ -9,4 +9,4 @@ config:
   grpc_port: 50051
   prefix: rc_
 secrets:
-  api_key: {env: WEAVIATE_API_KEY}
+  api_key: {env: RAGCENTRE_PROVIDER_WEAVIATE_API_KEY}

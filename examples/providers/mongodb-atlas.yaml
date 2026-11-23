@@ -11,4 +11,4 @@ config:
   exact: false
   num_candidates_factor: 20
 secrets:
-  uri: {env: MONGODB_URI}
+  uri: {env: RAGCENTRE_PROVIDER_MONGODB_URI}

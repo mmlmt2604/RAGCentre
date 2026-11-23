@@ -15,7 +15,7 @@ that looks complete is worse than an error (plan §20).
 from __future__ import annotations
 
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from typing import Any, cast
 
@@ -24,7 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ragcentre.errors import CollectionMismatch
 from ragcentre.models.filters import Filter, to_json
-from ragcentre.providers.base import ServiceInfo, parse_retry_after
+from ragcentre.providers.base import ServiceInfo, parse_retry_after, response_reason
+from ragcentre.providers.egress import checked_http_client
 from ragcentre.stores.base import (
     METRICS,
     Capabilities,
@@ -54,24 +55,15 @@ _sleep = time.sleep  # replaced in tests
 # ---- service info ---------------------------------------------------------------------------
 
 
-def _parse_error(resp: httpx.Response) -> tuple[str, str]:
-    """The ``{error: {code, message}}`` envelope, or a best effort from the body."""
+def _error_code(resp: httpx.Response) -> str | None:
+    """Read only the two protocol codes that affect control flow."""
     try:
         body = resp.json()
     except ValueError:
-        text = resp.text.strip()
-        return "", text[:300] if text else resp.reason_phrase
-    if isinstance(body, dict):
-        err = body.get("error")
-        if isinstance(err, dict):
-            code = err.get("code")
-            message = err.get("message")
-            return (code if isinstance(code, str) else ""), (str(message) if message else "")
-        if isinstance(err, str):
-            return "", err[:300]
-        if body.get("detail"):
-            return "", str(body["detail"])[:300]
-    return "", str(body)[:300]
+        return None
+    error = body.get("error") if isinstance(body, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    return code if code in ("collection_not_found", "collection_mismatch") else None
 
 
 def _json_object(resp: httpx.Response, what: str) -> dict[str, Any]:
@@ -126,8 +118,7 @@ def _read_info(client: httpx.Client) -> tuple[str, str, Capabilities]:
     except httpx.HTTPError as exc:
         raise StoreError(f"http store: could not read /info: {exc}") from exc
     if resp.status_code >= 300:
-        _, message = _parse_error(resp)
-        raise StoreError(f"http store: /info returned {resp.status_code}: {message or resp.reason_phrase}")
+        raise StoreError(f"http store: /info returned {resp.status_code}: {response_reason(resp.status_code)}")
     body = _json_object(resp, "GET /info")
     if body.get("protocol") != PROTOCOL:
         raise StoreError(f"http store: /info reports protocol {body.get('protocol')!r}; expected {PROTOCOL!r}")
@@ -163,6 +154,7 @@ class HttpStore:
         timeout: float = DEFAULT_TIMEOUT,
         api_key: str | None = None,
         client: httpx.Client | None = None,
+        http_client_factory: Callable[..., httpx.Client] = checked_http_client,
     ) -> HttpStore:
         """Build the store and read its capabilities from ``/info``.
 
@@ -171,7 +163,7 @@ class HttpStore:
         """
         own = client is None
         if client is None:
-            client = httpx.Client(
+            client = http_client_factory(
                 base_url=url.rstrip("/"), timeout=httpx.Timeout(timeout), headers={"User-Agent": "ragcentre"}
             )
         try:
@@ -188,12 +180,12 @@ class HttpStore:
     # ---- request plumbing ---------------------------------------------------------------------
 
     def _error(self, resp: httpx.Response, what: str) -> Exception:
-        code, message = _parse_error(resp)
-        text = message or resp.reason_phrase
+        code = _error_code(resp)
+        text = response_reason(resp.status_code)
         if resp.status_code == 404 and code == "collection_not_found":
-            return CollectionNotFound(message or f"collection does not exist ({what})")
+            return CollectionNotFound(f"collection does not exist ({what})")
         if resp.status_code == 409 and code == "collection_mismatch":
-            return CollectionMismatch(message or f"collection exists with a different shape ({what})")
+            return CollectionMismatch(f"collection exists with a different shape ({what})")
         return StoreError(f"http store: {what} returned {resp.status_code}: {text}")
 
     def _request(self, method: str, path: str, *, retry: bool = False, **kwargs: Any) -> httpx.Response:

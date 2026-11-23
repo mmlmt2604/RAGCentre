@@ -151,9 +151,9 @@ test('4. recover from failure: inspect real parser error, repair service, retry 
     expect(degraded.nodes.filter(n => n.node_id !== 'parse').every(n => n.counts.blocked === 1)).toBeTruthy();
     const before = await runs(pipeline.id);
     await page.goto(pipelinePath(corpus.id, pipeline.id));
-    const failure = page.getByRole('row').filter({ hasText: 'E2E parser maintenance: repair service and retry this run' });
+    const failure = page.getByRole('row').filter({ hasText: 'upstream returned 422' });
     await expect(failure).toContainText('provider_error');
-    await expect(failure).toContainText('422');
+    await expect(failure).not.toContainText('E2E parser maintenance: repair service and retry this run');
     await expect(page.getByText('1 blocked', { exact: false }).first()).toBeVisible();
     await parserControl(key, 'ok');
     await failure.getByRole('button', { name: 'Retry', exact: true }).click();

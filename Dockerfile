@@ -33,4 +33,5 @@ VOLUME /data
 EXPOSE 8700
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
   CMD python -c "import os,urllib.request as u; u.urlopen('http://127.0.0.1:%s/v1/health' % os.environ['RAGCENTRE_PORT'], timeout=2)"
+# Pass RAGCENTRE_API_TOKEN at runtime for the non-loopback bind.
 CMD ["ragcentre", "serve"]

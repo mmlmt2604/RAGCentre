@@ -741,7 +741,7 @@ def test_factory_builds_a_lite_store_inside_the_data_dir(tmp_path: Path) -> None
         assert [m.id for m in store.query("rc_milvus_0001", [1.0, 0.0], 1)] == ["a"]
     finally:
         store.close()
-    assert (tmp_path / "sub" / "dir" / "milvus.db").exists()
+    assert (tmp_path / "stores" / "sub" / "dir" / "milvus.db").exists()
 
 
 def test_lite_data_survives_reopening(tmp_path: Path) -> None:

@@ -99,7 +99,7 @@ Set `DOCTR_SHIM_API_KEY` to require `Authorization: Bearer <key>` on `/parse`, a
 same value as the provider's `api_key` secret:
 
 ```sh
-uv run ragcentre provider set-secret doctr api_key --env DOCTR_SHIM_API_KEY
+uv run ragcentre provider set-secret doctr api_key --env RAGCENTRE_PROVIDER_DOCTR_SHIM_API_KEY
 ```
 
 `GET /info` stays open: RAGCentre reads it without credentials when it creates the provider.

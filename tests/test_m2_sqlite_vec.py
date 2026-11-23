@@ -80,7 +80,7 @@ def test_registry_lists_sqlite_vec(tmp_path: Path) -> None:
     t = types["sqlite_vec"]
     store = t.factory(t.config_model.model_validate({}), {}, tmp_path)
     assert isinstance(store, SqliteVecStore)
-    assert store.path == tmp_path / "vectors.db"
+    assert store.path == tmp_path.resolve() / "stores" / "vectors.db"
     store.close()
 
 

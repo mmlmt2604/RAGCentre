@@ -97,7 +97,7 @@ Set `EASYOCR_SHIM_API_KEY` to require `Authorization: Bearer <key>` on `/parse`,
 same value as the provider's `api_key` secret:
 
 ```sh
-uv run ragcentre provider set-secret easyocr api_key --env EASYOCR_SHIM_API_KEY
+uv run ragcentre provider set-secret easyocr api_key --env RAGCENTRE_PROVIDER_EASYOCR_SHIM_API_KEY
 ```
 
 `GET /info` stays open: RAGCentre reads it without credentials when it creates the provider.

@@ -72,6 +72,7 @@ class CheckReport:
     records: int = 0
     metrics: list[Metric] = field(default_factory=list)
     seconds: float = 0.0
+    include_details: bool = True
 
     @property
     def ok(self) -> bool:
@@ -80,6 +81,11 @@ class CheckReport:
     def add(self, level: Level, check: str, message: str, seconds: float = 0.0, lost: str | None = None) -> None:
         """Record a finding. Callers pass elapsed seconds; findings store milliseconds."""
         self.findings.append(Finding(level, check, message, seconds * 1000.0, lost))
+
+    def error_message(self, exc: Exception) -> str:
+        if self.include_details:
+            return str(exc) or type(exc).__name__
+        return type(exc).__name__
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -131,13 +137,18 @@ def _expected(
 
 
 def check_store(
-    store: VectorStore, *, store_type: str | None = None, dim: int = DIM, n: int = N_RECORDS
+    store: VectorStore,
+    *,
+    store_type: str | None = None,
+    dim: int = DIM,
+    n: int = N_RECORDS,
+    include_details: bool = True,
 ) -> CheckReport:
     """Run a contract-lite check against ``store`` and return a ``CheckReport``.
 
     The temporary collection is dropped on every path (including failure). ``store_type`` labels the
     report; when omitted, the adapter class name is used."""
-    report = CheckReport(store_type=store_type or type(store).__name__)
+    report = CheckReport(store_type=store_type or type(store).__name__, include_details=include_details)
     started = time.monotonic()
     rng = random.Random(SEED)
     records = _make_records(rng, n, dim)
@@ -167,7 +178,7 @@ def _run(report: CheckReport, check: str, message: str, fn: Callable[[], None]) 
     try:
         fn()
     except Exception as exc:
-        report.add("error", check, str(exc) or type(exc).__name__, time.perf_counter() - t0)
+        report.add("error", check, report.error_message(exc), time.perf_counter() - t0)
         return False
     report.add("info", check, message, time.perf_counter() - t0)
     return True
@@ -226,7 +237,11 @@ def _count(store: VectorStore, report: CheckReport, name: str, expected: int, ch
         info = store.collection_info(name)
     except Exception as exc:
         report.add(
-            "warn", check, f"collection_info failed: {exc}", time.perf_counter() - t0, lost="index coverage counts"
+            "warn",
+            check,
+            f"collection_info failed: {report.error_message(exc)}",
+            time.perf_counter() - t0,
+            lost="index coverage counts",
         )
         return
     ms = time.perf_counter() - t0
@@ -259,7 +274,7 @@ def _verify_query(
     try:
         got = store.query(name, q, k, f)
     except Exception as exc:
-        report.add("error", check, f"query failed: {exc}", time.perf_counter() - t0)
+        report.add("error", check, f"query failed: {report.error_message(exc)}", time.perf_counter() - t0)
         return
     ms = time.perf_counter() - t0
     by_id = {r.id: r for r in records}
@@ -354,7 +369,7 @@ def _delete(store: VectorStore, report: CheckReport, name: str, records: list[Re
         _settle(store, name, expected)
         info = store.collection_info(name)
     except Exception as exc:
-        report.add("error", "delete", f"delete failed: {exc}", time.perf_counter() - t0)
+        report.add("error", "delete", f"delete failed: {report.error_message(exc)}", time.perf_counter() - t0)
         return
     ms = time.perf_counter() - t0
     if info is None or info.count != expected:
@@ -371,5 +386,5 @@ def _drop_all(store: VectorStore, report: CheckReport, created: list[str]) -> No
             store.drop_collection(coll)
             report.add("info", "drop", f"removed temporary collection {coll}: yes", time.perf_counter() - t0)
         except Exception as exc:
-            report.add("warn", "drop", f"could not drop {coll}: {exc}", time.perf_counter() - t0,
+            report.add("warn", "drop", f"could not drop {coll}: {report.error_message(exc)}", time.perf_counter() - t0,
                        lost="clean removal of temporary collections")  # fmt: skip

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import re
+from contextlib import nullcontext
 from typing import Any, Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from fastapi.responses import JSONResponse
@@ -12,13 +15,14 @@ from fastapi.responses import JSONResponse
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
 from ragcentre.context import AppContext
-from ragcentre.errors import ErrorCode, NotFound, RagError, ValidationFailed
+from ragcentre.errors import Conflict, ErrorCode, NotFound, RagError, ValidationFailed
 from ragcentre.hashing import new_id
 from ragcentre.locks import document_lock
 from ragcentre.models import api
 from ragcentre.models.ir import normalise_ir
 from ragcentre.models.metadata import validate_metadata
-from ragcentre.pipeline.planner import on_document_created, on_document_deleted, on_document_replaced
+from ragcentre.pipeline.planner import on_document_created, on_document_deleted, on_document_replaced, reset_vector_runs
+from ragcentre.pipeline.purge import release_document
 from ragcentre.timeutil import now_iso
 
 router = APIRouter(tags=["documents"])
@@ -122,8 +126,8 @@ def _out(ctx: AppContext, document_id: str) -> api.Document:
 def upload(
     corpus_id: str,
     file: UploadFile = File(...),
-    metadata: str = Form("{}"),
-    attributes: str = Form("{}"),
+    metadata: str | None = Form(None),
+    attributes: str | None = Form(None),
     external_id: str | None = Form(None),
     ctx: AppContext = Depends(get_ctx),
 ) -> JSONResponse:
@@ -141,56 +145,72 @@ def upload(
     if corpus is None:
         raise NotFound(f"Corpus {corpus_id} was not found.")
     schema = json.loads(corpus["metadata_schema"])
-    validate_metadata(meta, schema)
-    sha = ctx.blobs.put(content)
+    if metadata is not None:
+        validate_metadata(meta, schema)
     doc_id = new_id()
     now = now_iso()
-    existing = (
-        ctx.db.one(
-            "SELECT * FROM documents WHERE corpus_id = ? AND external_id = ? AND external_id IS NOT NULL",
-            (corpus_id, external_id),
-        )
-        if external_id
-        else None
+    # Serialize external-id upserts before acquiring the existing document's lock.
+    external_lock = (
+        document_lock(ctx.settings.data_dir, f"external:{corpus_id}:{external_id}")
+        if external_id is not None
+        else nullcontext()
     )
-    if existing is not None and existing["content_sha256"] != sha:
-        with document_lock(ctx.settings.data_dir, existing["id"]), ctx.db.write() as conn:
-            conn.execute(
-                "UPDATE documents SET content_sha256 = ?, filename = ?, mime_type = ?, size_bytes = ?, "
-                "updated_at = ? WHERE id = ?",
-                (
-                    sha,
-                    file.filename,
-                    _mime_type(file),
-                    len(content),
-                    now,
-                    existing["id"],
-                ),
-            )
-            on_document_replaced(conn, corpus_id, existing["id"])
-        return JSONResponse(_out(ctx, existing["id"]).model_dump(mode="json"), status_code=200)
-    if existing is not None and existing["content_sha256"] == sha:
-        return JSONResponse(_out(ctx, existing["id"]).model_dump(mode="json"), status_code=200)
-    with ctx.db.write() as conn:
-        conn.execute(
-            "INSERT INTO documents (id, corpus_id, external_id, filename, mime_type, size_bytes, content_sha256, "
-            "metadata, attributes, revision, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?)",
-            (
-                doc_id,
-                corpus_id,
-                external_id,
-                file.filename,
-                _mime_type(file),
-                len(content),
-                sha,
-                json.dumps(meta),
-                json.dumps(attrs),
-                now,
-                now,
-            ),
+    with external_lock:
+        existing_id = ctx.db.scalar(
+            "SELECT id FROM documents WHERE corpus_id = ? AND external_id = ?", (corpus_id, external_id)
         )
-        on_document_created(conn, corpus_id, doc_id)
-    return JSONResponse(_out(ctx, doc_id).model_dump(mode="json"), status_code=201)
+        with document_lock(ctx.settings.data_dir, existing_id or doc_id), ctx.db.write() as conn:
+            existing = conn.execute("SELECT * FROM documents WHERE id = ?", (existing_id,)).fetchone()
+            if existing is not None and existing["status"] != "active":
+                raise Conflict("Document is being deleted.")
+            sha = ctx.blobs.put(content)
+            if existing is not None:
+                doc_id = existing["id"]
+                changed_content = existing["content_sha256"] != sha
+                if changed_content:
+                    release_document(conn, existing)
+                if changed_content or metadata is not None or attributes is not None:
+                    conn.execute(
+                        "UPDATE documents SET content_sha256 = ?, filename = ?, mime_type = ?, size_bytes = ?, "
+                        "metadata = ?, attributes = ?, updated_at = ? WHERE id = ?",
+                        (
+                            sha,
+                            (file.filename or "document") if changed_content else existing["filename"],
+                            _mime_type(file) if changed_content else existing["mime_type"],
+                            len(content),
+                            json.dumps(meta) if metadata is not None else existing["metadata"],
+                            json.dumps(attrs) if attributes is not None else existing["attributes"],
+                            now,
+                            doc_id,
+                        ),
+                    )
+                    if changed_content:
+                        on_document_replaced(conn, corpus_id, doc_id)
+                    elif metadata is not None:
+                        reset_vector_runs(conn, corpus_id, doc_id)
+            else:
+                validate_metadata(meta, schema)
+                conn.execute(
+                    "INSERT INTO documents (id, corpus_id, external_id, filename, mime_type, size_bytes, "
+                    "content_sha256, metadata, attributes, revision, status, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?)",
+                    (
+                        doc_id,
+                        corpus_id,
+                        external_id,
+                        file.filename or "document",
+                        _mime_type(file),
+                        len(content),
+                        sha,
+                        json.dumps(meta),
+                        json.dumps(attrs),
+                        now,
+                        now,
+                    ),
+                )
+                on_document_created(conn, corpus_id, doc_id)
+            result = _out(ctx, doc_id)
+    return JSONResponse(result.model_dump(mode="json"), status_code=200 if existing is not None else 201)
 
 
 DocState = Literal["pending", "running", "succeeded", "failed"]
@@ -260,24 +280,24 @@ def get_document(document_id: str, ctx: AppContext = Depends(get_ctx)) -> api.Do
 
 @router.patch("/documents/{document_id}", response_model=api.Document)
 def patch_document(document_id: str, body: api.DocumentPatch, ctx: AppContext = Depends(get_ctx)) -> api.Document:
-    d = _get(ctx, document_id)
-    if body.metadata is not None:
-        schema = json.loads(ctx.db.scalar("SELECT metadata_schema FROM corpora WHERE id = ?", (d["corpus_id"],)))
-        validate_metadata(body.metadata, schema)
-        with document_lock(ctx.settings.data_dir, document_id), ctx.db.write() as conn:
+    with document_lock(ctx.settings.data_dir, document_id), ctx.db.write() as conn:
+        d = _get(ctx, document_id)
+        if d["status"] != "active":
+            raise Conflict("Document is being deleted.")
+        if body.metadata is not None:
+            schema = json.loads(ctx.db.scalar("SELECT metadata_schema FROM corpora WHERE id = ?", (d["corpus_id"],)))
+            validate_metadata(body.metadata, schema)
             conn.execute(
                 "UPDATE documents SET metadata = ?, updated_at = ? WHERE id = ?",
                 (json.dumps(body.metadata), now_iso(), document_id),
             )
-            from ragcentre.pipeline.planner import reset_vector_runs
-
             reset_vector_runs(conn, d["corpus_id"], document_id)
-    if body.attributes is not None:
-        ctx.db.execute(
-            "UPDATE documents SET attributes = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(body.attributes), now_iso(), document_id),
-        )
-    return _out(ctx, document_id)
+        if body.attributes is not None:
+            conn.execute(
+                "UPDATE documents SET attributes = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(body.attributes), now_iso(), document_id),
+            )
+        return _out(ctx, document_id)
 
 
 @router.delete("/documents/{document_id}", status_code=202)
@@ -294,12 +314,13 @@ def replace_content(document_id: str, file: UploadFile = File(...), ctx: AppCont
     content = file.file.read(ctx.settings.max_upload_bytes + 1)
     if len(content) > ctx.settings.max_upload_bytes:
         raise RagError("File exceeds the upload limit.", code=ErrorCode.PAYLOAD_TOO_LARGE, status=413)
-    sha = ctx.blobs.put(content)
     with document_lock(ctx.settings.data_dir, document_id), ctx.db.write() as conn:
         doc = _get(ctx, document_id)
         if doc["status"] != "active":
-            raise ValidationFailed("Document is being deleted.")
+            raise Conflict("Document is being deleted.")
+        sha = ctx.blobs.put(content)
         if doc["content_sha256"] != sha:
+            release_document(conn, doc)
             conn.execute(
                 "UPDATE documents SET content_sha256 = ?, filename = ?, mime_type = ?, size_bytes = ? WHERE id = ?",
                 (
@@ -316,71 +337,92 @@ def replace_content(document_id: str, file: UploadFile = File(...), ctx: AppCont
 
 @router.get("/documents/{document_id}/content")
 def get_content(document_id: str, ctx: AppContext = Depends(get_ctx)) -> Response:
-    d = _get(ctx, document_id)
-    content = ctx.blobs.get(d["content_sha256"])
-    from fastapi.responses import Response as FastAPIResponse
+    with document_lock(ctx.settings.data_dir, document_id):
+        d = _get(ctx, document_id)
+        if d["status"] != "active":
+            raise NotFound(f"Document {document_id} was not found.")
+        content = ctx.blobs.get(d["content_sha256"])
+    mime = d["mime_type"]
+    if not re.fullmatch(r"[a-zA-Z0-9!#$&^_.+-]+/[a-zA-Z0-9!#$&^_.+-]+", mime):
+        mime = "application/octet-stream"
+    filename = re.sub(r"[\x00-\x1f\x7f]", "", d["filename"].replace(chr(92), "/").rsplit("/", 1)[-1])
+    if filename in {"", ".", ".."}:
+        filename = "document"
+    return Response(
+        content=content,
+        media_type=mime,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}"},
+    )
 
-    return FastAPIResponse(content=content, media_type=d["mime_type"])
+
+def _document_pipeline(ctx: AppContext, document_id: str, pipeline_id: str) -> Any:
+    doc = _get(ctx, document_id)
+    if doc["status"] != "active":
+        raise NotFound(f"Document {document_id} was not found.")
+    pipeline = ctx.db.one("SELECT * FROM pipelines WHERE id = ? AND corpus_id = ?", (pipeline_id, doc["corpus_id"]))
+    if pipeline is None:
+        raise NotFound(f"Pipeline {pipeline_id} was not found in this corpus.")
+    return pipeline
 
 
 @router.get("/documents/{document_id}/parsed")
 def get_parsed(document_id: str, pipeline_id: str, ctx: AppContext = Depends(get_ctx)) -> Any:
-    _get(ctx, document_id)
-    pipeline = ctx.db.one("SELECT * FROM pipelines WHERE id = ?", (pipeline_id,))
-    if pipeline is None:
-        raise NotFound(f"Pipeline {pipeline_id} was not found.")
-    nodes = json.loads(pipeline["resolved"])["nodes"]
-    parse_node = next((n for n in nodes if n["type"] == "parse"), None)
-    if parse_node is None:
-        raise NotFound("Pipeline has no parse node.")
-    run = ctx.db.one(
-        "SELECT * FROM node_runs WHERE document_id = ? AND node_fp = ?", (document_id, parse_node["node_fp"])
-    )
-    if run is None or run["status"] != "succeeded":
-        raise NotFound("The parse run has not succeeded for this document.")
-    from ragcentre.pipeline.executors import _parse_blob
+    with document_lock(ctx.settings.data_dir, document_id), ctx.db.read():
+        pipeline = _document_pipeline(ctx, document_id, pipeline_id)
+        nodes = json.loads(pipeline["resolved"])["nodes"]
+        parse_node = next((n for n in nodes if n["type"] == "parse"), None)
+        if parse_node is None:
+            raise NotFound("Pipeline has no parse node.")
+        run = ctx.db.one(
+            "SELECT r.* FROM node_runs r JOIN documents d ON d.id = r.document_id "
+            "WHERE d.id = ? AND r.node_fp = ? AND r.doc_revision = d.revision",
+            (document_id, parse_node["node_fp"]),
+        )
+        if run is None or run["status"] != "succeeded":
+            raise NotFound("The parse run has not succeeded for this document.")
+        from ragcentre.pipeline.executors import _parse_blob
 
-    data = _parse_blob(ctx, parse_node["node_fp"], document_id)
-    ir = normalise_ir(data)
-    out = ir.model_dump(mode="json")
-    for page in out.get("pages", []):
-        page.pop("image", None)
-    return out
+        data = _parse_blob(ctx, parse_node["node_fp"], document_id)
+        ir = normalise_ir(data)
+        out = ir.model_dump(mode="json")
+        for page in out.get("pages", []):
+            page.pop("image", None)
+        return out
 
 
 @router.get("/documents/{document_id}/chunks", response_model=list[api.Chunk])
 def get_chunks(
     document_id: str, pipeline_id: str, node_id: str | None = None, ctx: AppContext = Depends(get_ctx)
 ) -> list[api.Chunk]:
-    pipeline = ctx.db.one("SELECT * FROM pipelines WHERE id = ?", (pipeline_id,))
-    if pipeline is None:
-        raise NotFound(f"Pipeline {pipeline_id} was not found.")
-    nodes = json.loads(pipeline["resolved"])["nodes"]
-    chunk_nodes = [n for n in nodes if n["type"] == "chunk"]
-    if node_id:
-        chunk_node = next((n for n in chunk_nodes if n["node_id"] == node_id), None)
-    else:
-        chunk_node = chunk_nodes[0] if len(chunk_nodes) == 1 else None
-    if chunk_node is None:
-        raise ValidationFailed("Choose a chunk node, or a pipeline with exactly one chunk node.")
-    rows = ctx.db.all(
-        "SELECT * FROM chunks WHERE document_id = ? AND chunk_node_fp = ? ORDER BY ordinal",
-        (document_id, chunk_node["node_fp"]),
-    )
-    return [
-        api.Chunk.model_validate(
-            dict(
-                id=r["id"],
-                document_id=r["document_id"],
-                ordinal=r["ordinal"],
-                text=r["text"],
-                context=r["context"],
-                page_start=r["page_start"],
-                page_end=r["page_end"],
-                heading_path=json.loads(r["heading_path"]),
-                block_ids=json.loads(r["block_ids"]),
-                char_count=len(r["text"]),
-            )
+    with document_lock(ctx.settings.data_dir, document_id), ctx.db.read():
+        pipeline = _document_pipeline(ctx, document_id, pipeline_id)
+        nodes = json.loads(pipeline["resolved"])["nodes"]
+        chunk_nodes = [n for n in nodes if n["type"] == "chunk"]
+        if node_id:
+            chunk_node = next((n for n in chunk_nodes if n["node_id"] == node_id), None)
+        else:
+            chunk_node = chunk_nodes[0] if len(chunk_nodes) == 1 else None
+        if chunk_node is None:
+            raise ValidationFailed("Choose a chunk node, or a pipeline with exactly one chunk node.")
+        rows = ctx.db.all(
+            "SELECT c.* FROM chunks c JOIN documents d ON d.id = c.document_id "
+            "WHERE d.id = ? AND c.chunk_node_fp = ? AND c.doc_revision = d.revision ORDER BY c.ordinal",
+            (document_id, chunk_node["node_fp"]),
         )
-        for r in rows
-    ]
+        return [
+            api.Chunk.model_validate(
+                dict(
+                    id=r["id"],
+                    document_id=r["document_id"],
+                    ordinal=r["ordinal"],
+                    text=r["text"],
+                    context=r["context"],
+                    page_start=r["page_start"],
+                    page_end=r["page_end"],
+                    heading_path=json.loads(r["heading_path"]),
+                    block_ids=json.loads(r["block_ids"]),
+                    char_count=len(r["text"]),
+                )
+            )
+            for r in rows
+        ]

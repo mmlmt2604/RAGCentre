@@ -85,7 +85,7 @@ def test_config_and_persistent_registry(tmp_path: Path) -> None:
     assert isinstance(store, ChromaStore)
     store.healthcheck()
     store.ensure_collection(CollectionSpec(name="rc_disk_0001", dim=2, metric="dot"))
-    assert (tmp_path / "chroma").is_dir()
+    assert (tmp_path / "stores" / "chroma").is_dir()
 
 
 # ---- V4.3: tenant/database, modes, auth header, HNSW options, prefix -------------------------
@@ -97,7 +97,7 @@ class TestChromaConfiguredContract(VectorStoreContract):
     @pytest.fixture
     def store(self, tmp_path: Path) -> Iterator[ChromaStore]:
         s = ChromaStore.persistent(
-            tmp_path / "chroma",
+            tmp_path / "stores" / "chroma",
             tenant="acme",
             database="prod",
             prefix="ragc.",
@@ -122,7 +122,7 @@ class TestChromaOptions(CollectionOptionsContract):
     options_b: ClassVar[dict[str, Any]] = {"hnsw_max_neighbors": 32, "hnsw_ef_construction": 100}
 
     def open_store(self, options: dict[str, Any], tmp_path: Path) -> ChromaStore:
-        return ChromaStore.persistent(tmp_path / "chroma", **options)
+        return ChromaStore.persistent(tmp_path / "stores" / "chroma", **options)
 
 
 class TestChromaEfConstructionOption(CollectionOptionsContract):
@@ -130,7 +130,7 @@ class TestChromaEfConstructionOption(CollectionOptionsContract):
     options_b: ClassVar[dict[str, Any]] = {"hnsw_ef_construction": 200}
 
     def open_store(self, options: dict[str, Any], tmp_path: Path) -> ChromaStore:
-        return ChromaStore.persistent(tmp_path / "chroma", **options)
+        return ChromaStore.persistent(tmp_path / "stores" / "chroma", **options)
 
 
 def test_immutable_options_are_recorded_in_collection_metadata(tmp_path: Path) -> None:
@@ -160,7 +160,7 @@ def test_unset_options_record_nothing_and_match_each_other(tmp_path: Path) -> No
 def test_collection_built_before_v4_still_opens_and_queries(tmp_path: Path) -> None:
     """A collection written by the old code path (no rc_hnsw_* keys) opens with no options set."""
     chromadb = pytest.importorskip("chromadb")
-    path = tmp_path / "chroma"
+    path = tmp_path / "stores" / "chroma"
     # Chroma caches an embedded system per path and needs identical settings, so match the adapter's.
     old = chromadb.PersistentClient(path=str(path), settings=chromadb.config.Settings(anonymized_telemetry=False))
     old.get_or_create_collection(
@@ -184,7 +184,7 @@ def test_collection_built_before_v4_still_opens_and_queries(tmp_path: Path) -> N
 
 
 def test_ef_search_is_mutable_and_applied_on_ensure(tmp_path: Path) -> None:
-    path = tmp_path / "chroma"
+    path = tmp_path / "stores" / "chroma"
     spec = CollectionSpec(name="rc_ef_0001", dim=2, metric="l2")
     ChromaStore.persistent(path, ef_search=50).ensure_collection(spec)
     ChromaStore.persistent(path, ef_search=200).ensure_collection(spec)  # no CollectionMismatch
@@ -217,7 +217,7 @@ def test_prefix_must_still_fit_chroma_naming(ephemeral: ChromaStore) -> None:
 
 
 def test_tenant_and_database_are_created_and_isolate(tmp_path: Path) -> None:
-    path = tmp_path / "chroma"
+    path = tmp_path / "stores" / "chroma"
     spec = CollectionSpec(name="rc_ten_0001", dim=2, metric="cosine")
     prod = ChromaStore.persistent(path, tenant="acme", database="prod")
     prod.ensure_collection(spec)
@@ -309,10 +309,10 @@ def test_http_mode_headers_and_tenant(
 def test_local_mode_uses_a_persistent_client(tmp_path: Path) -> None:
     store = _factory({"mode": "local"}, {}, tmp_path)
     store.ensure_collection(CollectionSpec(name="rc_loc_0001", dim=2, metric="cosine"))
-    assert (tmp_path / "chroma").is_dir()
+    assert (tmp_path / "stores" / "chroma").is_dir()
     store2 = _factory({"path": "sub/dir"}, {}, tmp_path)  # relative paths live under the data dir
     store2.healthcheck()
-    assert (tmp_path / "sub" / "dir").is_dir()
+    assert (tmp_path / "stores" / "sub" / "dir").is_dir()
 
 
 def test_config_modes_and_backward_compatible_inference() -> None:

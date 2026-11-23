@@ -10,4 +10,4 @@ config:
   index_options: hnsw
   num_candidates_factor: 10
 secrets:
-  api_key: {env: ELASTICSEARCH_API_KEY}
+  api_key: {env: RAGCENTRE_PROVIDER_ELASTICSEARCH_API_KEY}

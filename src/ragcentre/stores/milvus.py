@@ -68,6 +68,7 @@ from ragcentre.stores.base import (
 )
 from ragcentre.stores.catalog import CatalogEntry, InStoreCatalog, reconcile
 from ragcentre.stores.filter_milvus import compile_milvus, string_literal
+from ragcentre.stores.paths import store_path
 from ragcentre.stores.registry import VectorStoreType
 
 ID_FIELD = "id"
@@ -607,9 +608,7 @@ def _factory(config: BaseModel, secrets: dict[str, str], data_dir: Path) -> Milv
     assert isinstance(config, MilvusConfig)
     uri = config.uri
     if is_lite_uri(uri):
-        path = Path(uri)
-        if not path.is_absolute():
-            path = data_dir / path
+        path = store_path(data_dir, uri, "milvus.db")
         path.parent.mkdir(parents=True, exist_ok=True)
         uri = str(path)
     return MilvusStore.connect(

@@ -86,6 +86,5 @@ def parse_cache_key(parser_fp: str, options: Mapping[str, Any], content_sha256: 
 
 
 def collection_name(corpus_id: str, index_node_fp: str) -> str:
-    """``rc_{first 8 hex of corpus id}_{first 16 hex of index node_fp}`` (section 10.1)."""
-    corpus_hex = corpus_id.replace("-", "")[:8].lower()
-    return f"rc_{corpus_hex}_{index_node_fp[:16].lower()}"
+    """Derive a collection name from both complete identifiers."""
+    return f"rc_{fp([corpus_id, index_node_fp])[:24]}"

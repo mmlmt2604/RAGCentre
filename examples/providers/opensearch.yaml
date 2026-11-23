@@ -9,4 +9,4 @@ config:
   engine: faiss
   verify_certs: true
 secrets:
-  password: {env: OPENSEARCH_PASSWORD}
+  password: {env: RAGCENTRE_PROVIDER_OPENSEARCH_PASSWORD}

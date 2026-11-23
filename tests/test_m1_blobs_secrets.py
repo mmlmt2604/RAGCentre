@@ -68,7 +68,7 @@ def test_wrong_key_cannot_decrypt() -> None:
 
 def test_env_secret_and_redaction() -> None:
     box = SecretBox(None)
-    value = box.resolve("env", "MY_KEY", env={"MY_KEY": "very-secret-value"})
+    value = box.resolve("env", "RAGCENTRE_PROVIDER_MY_KEY", env={"RAGCENTRE_PROVIDER_MY_KEY": "very-secret-value"})
     assert value == "very-secret-value"
     assert redact("error: token very-secret-value rejected") == "error: token [REDACTED] rejected"
     with pytest.raises(ExecutionError):

@@ -155,12 +155,12 @@ def test_provider_secrets(server: str, tmp_path: Path) -> None:
     spec = tmp_path / "p.yaml"
     spec.write_text(
         "name: emb\nkind: embedder\ntype: openai_compatible\n"
-        "config: {base_url: 'http://127.0.0.1:9', model: m}\nsecrets:\n  api_key: {env: SOME_KEY}\n"
+        "config: {base_url: 'http://127.0.0.1:9', model: m}\nsecrets:\n  api_key: {env: RAGCENTRE_PROVIDER_SOME_KEY}\n"
     )
     ok(server, "provider", "add", "-f", str(spec))
     listed = json.loads(ok(server, "--json", "provider", "list"))
     emb = next(p for p in listed if p["name"] == "emb")
-    assert emb["secrets"]["api_key"] == {"source": "env", "set": True, "env_var": "SOME_KEY"}
+    assert emb["secrets"]["api_key"] == {"source": "env", "set": True, "env_var": "RAGCENTRE_PROVIDER_SOME_KEY"}
     inline = tmp_path / "inline.yaml"
     inline.write_text("name: e2\nkind: embedder\ntype: builtin_hash\nsecrets:\n  api_key: {value: sk-123}\n")
     code, out = run(server, "provider", "add", "-f", str(inline))

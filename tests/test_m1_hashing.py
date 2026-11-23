@@ -60,8 +60,8 @@ def test_pipeline_fp_sorts_nodes() -> None:
 
 def test_collection_name_rule() -> None:
     name = collection_name("1234abcd-0000-0000-0000-000000000000", "0123456789abcdef" * 4)
-    assert name == "rc_1234abcd_0123456789abcdef"
-    assert len(name) == 28
+    assert name.startswith("rc_") and len(name) == 27
+    assert name != collection_name("1234abcd-0000-0000-0000-000000000001", "0123456789abcdef" * 4)
 
 
 def test_vectors_pack_roundtrip() -> None:

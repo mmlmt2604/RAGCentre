@@ -40,6 +40,15 @@ def _load(target: str) -> ProviderTypeSpec:
 
 def _store_spec(st: VectorStoreType) -> ProviderTypeSpec:
     def factory(config: Any, secrets: dict[str, str], env: BuildEnv) -> Any:
+        if st.info_protocol == "ragcentre.vector_store/v1" and st.type == "http":
+            from ragcentre.stores.http import HttpStore
+
+            return HttpStore.connect(
+                url=config.url,
+                timeout=config.timeout,
+                api_key=secrets.get("api_key") or None,
+                http_client_factory=env.http,
+            )
         return st.factory(config, secrets, env.data_dir)
 
     return ProviderTypeSpec(
