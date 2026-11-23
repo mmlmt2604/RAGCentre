@@ -24,6 +24,7 @@ import { configFields, humanize, initialValues, SERVER_FIELDS, toConfig, type Fo
 import { nextStep } from "../../lib/errors";
 import { duration, plural } from "../../lib/format";
 import { useToast } from "../../lib/toast";
+import { OcrPanel } from "../ocr/OcrPanel";
 import { KIND_LABEL } from "./model";
 import { SecretInput, type SecretDraft } from "./SecretInput";
 import { StoreCapabilitiesPanel } from "./StoreCapabilities";
@@ -124,6 +125,8 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
           <DeleteAction p={p} />
         </div>
       </header>
+
+      {p.kind === "parser" && p.type === "http" ? <OcrPanel provider={p} /> : null}
 
       <TestResultView result={test.data} error={test.error} />
 
@@ -320,7 +323,7 @@ function Secrets({ p, keys }: { p: Provider; keys: string[] }) {
   const health = useHealth();
   const storage = health.data?.secret_storage_enabled ?? true;
   return (
-    <section className="prov-section" aria-labelledby="secrets-title">
+    <section id="secrets" className="prov-section" aria-labelledby="secrets-title">
       <h2 id="secrets-title">
         <KeyRound size={14} strokeWidth={2} aria-hidden /> Secrets
       </h2>

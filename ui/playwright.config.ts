@@ -45,6 +45,7 @@ export default defineConfig({
     url: `${baseURL}/v1/health`,
     reuseExistingServer: false,
     timeout: 60_000,
-    env: { RAGCENTRE_DATA_DIR: dataDir, RAGCENTRE_LOG_LEVEL: "WARNING" },
+    // Only the fixture is discovered, never a shim that happens to run on this machine.
+    env: { RAGCENTRE_DISCOVERY_URLS: `http://127.0.0.1:${fixturePort}/ocr-shim`, RAGCENTRE_DATA_DIR: dataDir, RAGCENTRE_LOG_LEVEL: "WARNING" },
   }],
 });

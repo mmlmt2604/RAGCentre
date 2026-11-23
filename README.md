@@ -44,6 +44,30 @@ docker compose --profile docling up --build     # RAGCentre, and Docling on http
 The other profiles are `mineru`, `paddleocr`, `surya`, `easyocr` and `doctr`. Register the parser with the `base_url`
 shown (see [`examples/providers/`](examples/providers/)); each service's README has the details.
 
+## OCR detection
+
+RAGCentre finds parser shims that are running and shows whether their OCR works, on **Providers**, in
+the pipeline's parser picker and in the status bar.
+
+- **Found, not tested:** a shim answers `GET /info`. Nothing has been sent to it. **Add and test OCR**
+  registers it.
+- **OCR ready:** the shim and its engine read a scanned test page (a page without a text layer) and
+  returned its text. A running container or a healthy `/info` is never enough for this.
+- Anything else names what failed (shim, engine, or text) and what to do.
+
+It looks on the example shims' ports (8701-8706 and 8710): on loopback, or, when RAGCentre runs in
+Docker, at the Compose service names and at `host.docker.internal`. It never scans the network. For a
+shim on another computer, add a parser with its URL, or list it:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `RAGCENTRE_DISCOVERY_URLS` | `auto` | `auto`, `off`, or comma-separated URLs. `auto,http://gpu-box:8701` keeps both |
+| `RAGCENTRE_OCR_RECHECK_SECONDS` | `600` | How often a working engine is re-tested while the UI is open. `0` never |
+
+Each test parses one page with the shim's default options, so it costs one page on a paid engine.
+Added parsers are tested when first seen, when they come back or restart, when they are edited, and
+on the recheck interval. Nothing runs while the UI is closed.
+
 ## Concepts
 
 - **Provider**: a configured parser, chunker, embedder, reranker or vector store. Built in:

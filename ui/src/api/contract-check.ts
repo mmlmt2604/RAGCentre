@@ -22,6 +22,8 @@ export type ResponseChecks = [
   Assignable<S["Provider"], T.Provider>,
   Assignable<S["Page_Provider_"], T.Page<T.Provider>>,
   Assignable<S["ProviderTestResult"], T.ProviderTestResult>,
+  Assignable<S["OcrService"], T.OcrService>,
+  Assignable<S["OcrStatus"], T.OcrStatus>,
   Assignable<S["MetadataSchema-Output"], T.MetadataSchema>,
   Assignable<S["PipelineSummary"], T.PipelineSummary>,
   Assignable<S["Corpus"], T.Corpus>,

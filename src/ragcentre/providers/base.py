@@ -174,13 +174,20 @@ def classify_response(resp: httpx.Response, provider: str) -> ExecutionError | N
         retryable=retryable,
         retry_after=retry_after,
         provider=provider,
+        upstream_status=status,
     )
 
 
 def classify_exception(exc: Exception, provider: str, _url: str) -> ExecutionError:
-    reason = "timed out" if isinstance(exc, httpx.TimeoutException) else "could not connect to the upstream service"
-    message = f"{provider}: {reason}"
-    return ExecutionError(ErrorCode.PROVIDER_ERROR.value, redact(message), retryable=True, provider=provider)
+    timed_out = isinstance(exc, httpx.TimeoutException)
+    reason = "timed out" if timed_out else "could not connect to the upstream service"
+    return ExecutionError(
+        ErrorCode.PROVIDER_ERROR.value,
+        redact(f"{provider}: {reason}"),
+        retryable=True,
+        provider=provider,
+        upstream_code="timeout" if timed_out else "unreachable",
+    )
 
 
 def invalid_response(provider: str, detail: str) -> ExecutionError:

@@ -9,6 +9,7 @@ import * as docs from "./documents";
 import * as ev from "./eval";
 import { readForm } from "./multipart";
 import * as pls from "./pipelines";
+import * as ocr from "./ocr";
 import * as ops from "./providers";
 import { query } from "./query";
 import { pipelineHealth, type MockState } from "./store";
@@ -80,6 +81,13 @@ export const handlers = [
 
   // Providers
   http.get("/v1/provider-types", route(({ state }) => HttpResponse.json({ items: state.providerTypes, next_cursor: null }))),
+  http.get("/v1/ocr-services", route(({ state }) => HttpResponse.json(ocr.ocrStatus(state)))),
+  http.post("/v1/ocr-services/scan", route(({ state }) => HttpResponse.json(ocr.ocrStatus(state)))),
+  http.post("/v1/providers/:id/ocr-check", route((ctx) => {
+    const provider = ops.findProvider(ctx.state, p(ctx, "id"));
+    if (provider.kind !== "parser" || provider.type !== "http") return err(409, "conflict", `${provider.name} is not an HTTP parser.`);
+    return HttpResponse.json(ocr.ocrStatus(ctx.state), { status: 202 });
+  })),
   http.get("/v1/providers", route(({ state, request }) => {
     refreshProviderUsage(state);
     return HttpResponse.json(page(state.providers, request));

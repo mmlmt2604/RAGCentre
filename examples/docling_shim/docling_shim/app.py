@@ -35,7 +35,7 @@ from shimkit import create_app as create_shim_app
 from docling_shim.convert import to_ir
 from docling_shim.remote import DoclingServeConverter
 
-SHIM_VERSION = "0.3.0"
+SHIM_VERSION = "0.3.1"
 NAME = "docling-shim"
 MIME_TYPES = [
     "application/pdf",
@@ -215,6 +215,7 @@ def create_app(converter: Converter | None = None) -> FastAPI:
         options=OPTIONS,
         api_key_env="DOCLING_SHIM_API_KEY",
         parse=parse,
+        engine_check=(lambda: remote.reachable) if remote is not None else None,
         jobs=True,  # a scanned PDF can take longer than one request may last
     )
 

@@ -12,6 +12,7 @@ import { ErrorState, Skeleton } from "../../components/States";
 import { configFields, initialValues, PROVIDER_NAME_HINT, PROVIDER_NAME_RE, toConfig, type FormValues } from "../../lib/configSchema";
 import { nextStep } from "../../lib/errors";
 import { useToast } from "../../lib/toast";
+import { FoundShims } from "../ocr/FoundShims";
 import { KIND_LABEL, KINDS } from "./model";
 import { SecretInput, type SecretDraft } from "./SecretInput";
 import { StoreCapabilitiesPanel } from "./StoreCapabilities";
@@ -78,6 +79,7 @@ export function ProviderNew() {
             </div>
           </section>
 
+          {kind === "parser" ? <FoundShims onAdded={(p) => navigate(`/providers/${p.id}`)} /> : null}
           {kind ? (
             <section className="prov-step" aria-labelledby="step-type">
               <h2 id="step-type" className="prov-step__title">Which type?</h2>

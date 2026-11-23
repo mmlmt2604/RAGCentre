@@ -394,6 +394,10 @@ class ProviderManager:
                 out[row["key"]] = self.ctx.secrets.resolve(row["source"], bytes(row["value"]))
             return out
 
+    def secret_values(self, provider_id: str) -> dict[str, str]:
+        """The resolved secrets. For server-side callers only; never put them in a response."""
+        return self._resolve_secrets(provider_id)
+
     def instance(self, provider_id: str) -> Any:
         with self.db.read():
             row = self.get(provider_id)

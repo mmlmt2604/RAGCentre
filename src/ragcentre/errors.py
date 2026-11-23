@@ -149,9 +149,14 @@ class ExecutionError(Exception):
         retryable: bool = False,
         retry_after: float | None = None,
         provider: str | None = None,
+        upstream_status: int | None = None,
+        upstream_code: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
+        # What the provider service answered, when the error came from one.
+        self.upstream_status = upstream_status
+        self.upstream_code = upstream_code
         self.message = message
         self.retryable = retryable
         self.retry_after = retry_after

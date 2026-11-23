@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Detect running OCR shims and show whether their engine works, proven by a scanned test page, on
+  Providers, in the pipeline parser picker and in the status bar, with one-click setup.
+- shimkit reports an optional `engine` object on `GET /info`. The Docling shim's remote mode keeps its
+  version and reports `unreachable` while docling-serve is down.
+- Fix OCR in the Docling shim image: install onnxruntime so RapidOCR uses the models in its wheel, and
+  check at build time that it reads text offline. The shim is now 0.3.1 because its output changes, so
+  a provider pinned to 0.3.0 must be created again.
+
 ## 0.0.2
 
 - Add HTTP vector-store services and adapters for LanceDB, Redis, Milvus, Weaviate,

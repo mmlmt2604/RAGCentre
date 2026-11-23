@@ -64,6 +64,8 @@ class HttpParserConfig(HttpConfig):
 
 class HttpParser(InfoMixin):
     protocol = PROTOCOL
+    # The slowest job polling. The OCR check lowers it: someone is watching that one.
+    max_poll_seconds = MAX_POLL_SECONDS
 
     def __init__(self, config: HttpParserConfig, secrets: Mapping[str, str], env: BuildEnv) -> None:
         super().__init__(config, secrets, env)
@@ -113,7 +115,7 @@ class HttpParser(InfoMixin):
                 raise invalid_response(self.name, "/parse?mode=async must return a job_id")
             if store is not None:
                 store.save(job_id)
-            interval = _poll_interval(body.get("poll_after_seconds"))
+            interval = min(_poll_interval(body.get("poll_after_seconds")), self.max_poll_seconds)
         else:
             interval = MIN_POLL_SECONDS
         try:
@@ -163,7 +165,7 @@ class HttpParser(InfoMixin):
                         retryable=True,
                         provider=self.name,
                     )
-                interval = min(interval * POLL_BACKOFF, MAX_POLL_SECONDS)
+                interval = min(interval * POLL_BACKOFF, self.max_poll_seconds)
                 continue
             errors = 0
             if resp.status_code == 404:
@@ -173,7 +175,7 @@ class HttpParser(InfoMixin):
             status = _json_object(resp, self.name)
             state = status.get("status")
             if state == "running":
-                interval = min(interval * POLL_BACKOFF, MAX_POLL_SECONDS)
+                interval = min(interval * POLL_BACKOFF, self.max_poll_seconds)
                 continue
             if state == "succeeded":
                 return self._check(self.json("GET", f"/jobs/{job_id}/result"))
@@ -190,6 +192,7 @@ class HttpParser(InfoMixin):
             f"{self.name}: upstream parse job failed (HTTP {status})",
             retryable=status in RETRYABLE_STATUS or status >= 500,
             provider=self.name,
+            upstream_status=status,
         )
 
     def _forget(self, job_id: str) -> None:

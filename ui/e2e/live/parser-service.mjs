@@ -28,6 +28,9 @@ const server = createServer(async (req, res) => {
       }
       return json(res, 200, { mode: s.mode, requests: s.requests, completed: s.completed, waiting: s.waiting.length });
     }
+    if (action === 'info' && key === 'ocr-shim') return json(res, 200, {
+      protocol: 'ragcentre.parser/v1', name: 'e2e-ocr-shim', version: '1.0', mime_types: ['application/pdf'], capabilities: {},
+    });
     if (action === 'info') return json(res, 200, {
       protocol: 'ragcentre.parser/v1', name: `e2e-parser-${key}`, version: '1.0',
       mime_types: ['text/plain', 'text/markdown'], capabilities: {},
@@ -41,7 +44,8 @@ const server = createServer(async (req, res) => {
     s.requests++;
     if (s.mode === 'hold') await new Promise(resolve => s.waiting.push(resolve));
     if (s.mode === 'fail') return json(res, 422, { error: { message: 'E2E parser maintenance: repair service and retry this run' } });
-    const text = await form.get('file').text();
+    // The OCR fixture "reads" the scanned page RAGCentre sends; the engines are tested elsewhere.
+    const text = key === 'ocr-shim' ? 'RAGCentre OCR check: scanned page, PUMP 4827, bolts, valve, pressure' : await form.get('file').text();
     s.completed++;
     return json(res, 200, {
       schema_version: '1.0', metadata: {}, pages: [],

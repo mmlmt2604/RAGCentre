@@ -115,7 +115,7 @@ def test_service_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(create_app(fake_converter(calls)))
     info = client.get("/info").json()
     assert info["protocol"] == PROTOCOL and info["name"] == "docling-shim"
-    assert info["version"].startswith("0.3.0+docling.")
+    assert info["version"].startswith("0.3.1+docling.")
     assert "application/pdf" in info["mime_types"]
     resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
                        data={"options": json.dumps({"ocr": False})})  # fmt: skip
@@ -222,14 +222,54 @@ def test_remote_matches_the_in_process_golden(monkeypatch: pytest.MonkeyPatch) -
     for expected in ('name="files"', 'name="to_formats"\r\n\r\njson', 'name="do_ocr"\r\n\r\nfalse',
                      'name="do_pdf_heading_hierarchy"\r\n\r\ntrue'):  # fmt: skip
         assert expected in body, expected
-    assert client.get("/info").json()["version"] == "0.3.0+docling-serve.2.150.1"
+    assert client.get("/info").json()["version"] == "0.3.1+docling-serve.2.150.1"
 
 
 def test_remote_version_without_a_version_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
 
     client = remote_client(lambda request: httpx.Response(404), monkeypatch)
-    assert client.get("/info").json()["version"] == "0.3.0+docling-serve.remote"
+    assert client.get("/info").json()["version"] == "0.3.1+docling-serve.remote"
+
+
+@pytest.mark.parametrize("outage", ["refused", "502"])
+def test_remote_outage_is_not_a_version_change(monkeypatch: pytest.MonkeyPatch, outage: str) -> None:
+    import httpx
+
+    up = [True]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if up[0]:
+            return httpx.Response(200, json={"docling": "2.150.1"})
+        if outage == "502":
+            return httpx.Response(502, text="bad gateway")
+        raise httpx.ConnectError("down", request=request)
+
+    client = remote_client(handler, monkeypatch)
+    before = client.get("/info").json()
+    assert before["engine"]["state"] != "unreachable"
+    up[0] = False
+    down = client.get("/info").json()
+    assert down["version"] == before["version"] and down["engine"]["state"] == "unreachable"
+    up[0] = True
+    assert client.get("/info").json()["engine"]["state"] != "unreachable"
+
+
+def test_a_busy_remote_server_is_not_an_outage(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    busy = [False]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if busy[0]:
+            raise httpx.ReadTimeout("busy", request=request)
+        return httpx.Response(200, json={"docling": "2.150.1"})
+
+    client = remote_client(handler, monkeypatch)
+    before = client.get("/info").json()
+    busy[0] = True
+    during = client.get("/info").json()
+    assert during["version"] == before["version"] and during["engine"]["state"] != "unreachable"
 
 
 @pytest.mark.parametrize(

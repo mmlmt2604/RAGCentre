@@ -34,6 +34,9 @@ class Settings:
     max_upload_mb: int = 200
     max_attempts: int = 5
     log_level: str = "INFO"
+    # OCR shims: where to look for them, and how often to re-test a working one while a UI watches.
+    discovery_urls: str = "auto"
+    ocr_recheck_seconds: int = 600
     # Queue timings. Not environment settings in the plan; tests shorten them.
     lease_seconds: float = 60.0
     heartbeat_seconds: float = 15.0
@@ -65,6 +68,8 @@ class Settings:
             ),
             max_upload_mb=_int(e, "RAGCENTRE_MAX_UPLOAD_MB", 200),
             max_attempts=_int(e, "RAGCENTRE_MAX_ATTEMPTS", 5),
+            discovery_urls=e.get("RAGCENTRE_DISCOVERY_URLS") or "auto",
+            ocr_recheck_seconds=_int(e, "RAGCENTRE_OCR_RECHECK_SECONDS", 600),
             log_level=(e.get("RAGCENTRE_LOG_LEVEL") or "INFO").upper(),
         )
 

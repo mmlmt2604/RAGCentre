@@ -25,6 +25,7 @@ from ragcentre.settings import Settings
 if TYPE_CHECKING:
     from ragcentre.blobs import BlobStore
     from ragcentre.embedding_service import EmbeddingService
+    from ragcentre.ocr.monitor import OcrMonitor
     from ragcentre.providers.manager import ProviderManager
     from ragcentre.secrets import SecretBox
 
@@ -136,6 +137,13 @@ class AppContext:
         from ragcentre.embedding_service import EmbeddingService
 
         result: EmbeddingService = self._service("embeddings", lambda: EmbeddingService(self))
+        return result
+
+    @property
+    def ocr(self) -> OcrMonitor:
+        from ragcentre.ocr.monitor import OcrMonitor
+
+        result: OcrMonitor = self._service("ocr", lambda: OcrMonitor(self))
         return result
 
     def pipeline_status(self, pipeline_id: str) -> Any:

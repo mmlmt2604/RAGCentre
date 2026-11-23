@@ -52,13 +52,77 @@ def post(client: TestClient, name: str = "m.pdf", options: str | None = None) ->
 
 
 def test_info() -> None:
-    assert make_client().get("/info").json() == {
+    body = make_client().get("/info").json()
+    engine = body.pop("engine")
+    assert engine["state"] == "idle" and engine["instance_id"]
+    assert body == {
         "protocol": PROTOCOL,
         "name": "demo-shim",
         "version": "0.1.0+demo.1",
         "mime_types": ["application/pdf"],
         "capabilities": {"page_images": False},
     }
+
+
+def engine_state(client: TestClient) -> str:
+    return client.get("/info").json()["engine"]["state"]
+
+
+def test_engine_report_follows_parses() -> None:
+    outcome: list[Exception | None] = [None]
+
+    def parse(*_: Any) -> dict[str, Any]:
+        if outcome[0] is not None:
+            raise outcome[0]
+        return IR
+
+    client = make_client(parse)
+    outcome[0] = ShimError(415, "unsupported_media_type", "no")
+    post(client)
+    assert engine_state(client) == "idle"  # a refused document says nothing about the engine
+    outcome[0] = None
+    post(client)
+    assert engine_state(client) == "ready"
+    outcome[0] = ShimError(503, "engine_unavailable", "secret path /models")
+    post(client)
+    assert engine_state(client) == "error"
+    assert "/models" not in client.get("/info").text  # /info is open
+    outcome[0] = None
+    post(client)
+    assert engine_state(client) == "ready"
+
+
+def test_engine_report_is_loading_during_the_first_parse() -> None:
+    entered, release = threading.Event(), threading.Event()
+
+    def parse(*_: Any) -> dict[str, Any]:
+        entered.set()
+        release.wait(5)
+        return IR
+
+    client = make_client(parse)
+    worker = threading.Thread(target=post, args=(client,))
+    worker.start()
+    assert entered.wait(5) and engine_state(client) == "loading"
+    release.set()
+    worker.join(5)
+    assert engine_state(client) == "ready"
+
+
+def test_engine_check_reports_unreachable() -> None:
+    def broken() -> bool:
+        raise RuntimeError("no route")
+
+    assert engine_state(make_client(engine_check=lambda: False)) == "unreachable"
+    assert engine_state(make_client(engine_check=broken)) == "unreachable"
+    assert engine_state(make_client(engine_check=lambda: True)) == "idle"
+
+
+def test_instance_id_changes_with_each_process() -> None:
+    client = make_client()
+    first = client.get("/info").json()["engine"]["instance_id"]
+    assert client.get("/info").json()["engine"]["instance_id"] == first
+    assert make_client().get("/info").json()["engine"]["instance_id"] != first
 
 
 def test_info_reads_the_version_per_request() -> None:

@@ -5,7 +5,7 @@ A small standalone service that lets RAGCentre parse PDFs, Office documents, HTM
 (`docs/protocols/parser-v1.md`) and returns RAGCentre's Document IR.
 
 It is an example, not part of the `ragcentre` package: it has its own dependencies (Docling pulls
-in PyTorch and downloads its layout and OCR models on first use), so it lives in its own
+in PyTorch and downloads its layout and table models on first use), so it lives in its own
 environment.
 
 ## Run it
@@ -30,7 +30,15 @@ RAGCentre runs in the same Compose network and reaches the service by name, so r
 provider with `base_url: http://docling:8701` (change that line in
 `examples/providers/docling-parser.yaml`, or add the provider in the web UI). Models are downloaded on
 the first parse into the `docling-models` volume (`~/.cache` in the container), so they survive a
-rebuild. The image installs the CPU build of PyTorch; pass `--build-arg TORCH_BACKEND=cu128` (or the
+rebuild.
+
+OCR on Linux is RapidOCR on onnxruntime, whose default models are in the image: the build fails if
+they cannot read text offline. Models for other `ocr_lang` values are downloaded inside the container
+on first use and fetched again when it is recreated. Write those codes as Docling does (`iso:ko`,
+`iso:ru`, `th`, `cyrillic`); Arabic also needs `rapidocr[rtl]`, which the image does not include. OCR
+runs on the CPU, also in a CUDA build.
+
+The image installs the CPU build of PyTorch; pass `--build-arg TORCH_BACKEND=cu128` (or the
 backend for your CUDA version) to build for an NVIDIA GPU.
 
 To build the image alone, use `examples/` as the build context:
@@ -108,7 +116,7 @@ uv run ragcentre provider set-secret docling api_key --env RAGCENTRE_PROVIDER_DO
 
 ## Versioning
 
-`/info` reports `0.3.0+docling.<docling version>`. RAGCentre records that version when the
+`/info` reports `0.3.1+docling.<docling version>`. RAGCentre records that version when the
 provider is created and refuses to parse with a service reporting a different one (unless the
 provider's `on_version_drift` is `warn`). Upgrading Docling therefore means creating a new
 provider and a new pipeline, so parses from two Docling versions are never mixed in one index.
