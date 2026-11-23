@@ -8,7 +8,6 @@ from fastapi import APIRouter, Body, Depends
 
 from ragcentre.api.deps import get_ctx
 from ragcentre.context import AppContext
-from ragcentre.db.migrate import current_version
 from ragcentre.models.api import GcReport, GcRequest, Health
 from ragcentre.pipeline.gc import collect
 
@@ -20,7 +19,7 @@ def health(ctx: AppContext = Depends(get_ctx)) -> Health:
     return Health(
         status="ok",
         version=ctx.version,
-        migration=current_version(ctx.db.conn),
+        migration=int(ctx.db.scalar("PRAGMA user_version")),
         workers=ctx.worker_count,
         auth_required=bool(ctx.settings.api_token),
         secret_storage_enabled=bool(ctx.settings.secret_key),

@@ -89,36 +89,37 @@ def check_fts5(conn: sqlite3.Connection) -> None:
 
 def migrate(db: Database) -> list[int]:
     """Apply pending migrations. Returns the versions applied by this call."""
-    conn = db.conn
-    check_fts5(conn)
-    migrations = available_migrations()
-    latest = migrations[-1].version if migrations else 0
-    if current_version(conn) > latest:
-        raise StartupError(
-            f"The database {db.path} has schema version {current_version(conn)}, but this RAGCentre "
-            f"only knows versions up to {latest}. Upgrade RAGCentre."
-        )
-    applied: list[int] = []
-    for mig in migrations:
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            if current_version(conn) >= mig.version:
+    with db.connection() as conn:
+        check_fts5(conn)
+        migrations = available_migrations()
+        latest = migrations[-1].version if migrations else 0
+        if current_version(conn) > latest:
+            raise StartupError(
+                f"The database {db.path} has schema version {current_version(conn)}, but this RAGCentre "
+                f"only knows versions up to {latest}. Upgrade RAGCentre."
+            )
+        applied: list[int] = []
+        for mig in migrations:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                if current_version(conn) >= mig.version:
+                    conn.execute("COMMIT")
+                    continue
+                for stmt in split_statements(mig.sql):
+                    conn.execute(stmt)
+                conn.execute(f"PRAGMA user_version = {mig.version:d}")
                 conn.execute("COMMIT")
-                continue
-            for stmt in split_statements(mig.sql):
-                conn.execute(stmt)
-            conn.execute(f"PRAGMA user_version = {mig.version:d}")
-            conn.execute("COMMIT")
-            applied.append(mig.version)
-        except BaseException:
-            conn.execute("ROLLBACK")
-            raise
-    return applied
+                applied.append(mig.version)
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+        return applied
 
 
 def verify(db: Database) -> int:
     """Check the database is at the latest version; return it."""
-    version = current_version(db.conn)
+    with db.connection() as conn:
+        version = current_version(conn)
     latest = latest_version()
     if version != latest:
         raise StartupError(f"The database {db.path} is at schema version {version}; expected {latest}.")

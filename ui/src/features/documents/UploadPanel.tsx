@@ -49,7 +49,7 @@ export function UploadPanel({
         patch(item.key, { status: "uploading", progress: 0, message: undefined });
         const form = new FormData();
         form.set("file", item.file, item.file.name);
-        form.set("metadata", JSON.stringify(metadata));
+        if (Object.keys(metadata).length) form.set("metadata", JSON.stringify(metadata));
         const ext = single && externalId.trim() ? externalId.trim() : useNames ? item.file.name : "";
         if (ext) form.set("external_id", ext);
         try {

@@ -40,6 +40,8 @@ class Settings:
     idle_sleep_seconds: float = 0.5
     max_idle_sleep_seconds: float = 2.0
     shutdown_grace_seconds: float = 30.0
+    secret_env_prefixes: tuple[str, ...] = ("RAGCENTRE_PROVIDER_",)
+    egress_allow: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -51,6 +53,16 @@ class Settings:
             workers=_int(e, "RAGCENTRE_WORKERS", 4),
             api_token=_opt(e, "RAGCENTRE_API_TOKEN"),
             secret_key=_opt(e, "RAGCENTRE_SECRET_KEY"),
+            secret_env_prefixes=tuple(
+                part.strip()
+                for part in e.get("RAGCENTRE_SECRET_ENV_PREFIXES", "RAGCENTRE_PROVIDER_").split(",")
+                if part.strip()
+            ),
+            egress_allow=tuple(
+                part.strip().lower().rstrip(".")
+                for part in e.get("RAGCENTRE_EGRESS_ALLOW", "").split(",")
+                if part.strip()
+            ),
             max_upload_mb=_int(e, "RAGCENTRE_MAX_UPLOAD_MB", 200),
             max_attempts=_int(e, "RAGCENTRE_MAX_ATTEMPTS", 5),
             log_level=(e.get("RAGCENTRE_LOG_LEVEL") or "INFO").upper(),

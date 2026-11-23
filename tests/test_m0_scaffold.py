@@ -35,7 +35,8 @@ def test_starting_twice_does_not_rerun_migrations(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path)
     first = open_context(settings)
     try:
-        assert current_version(first.db.conn) == latest_version()
+        with first.db.connection() as conn:
+            assert current_version(conn) == latest_version()
         first.db.execute(
             "INSERT INTO corpora (id, name, metadata_schema, created_at) VALUES ('c1', 'keep', '{}', 'now')"
         )

@@ -100,7 +100,7 @@ Set `PADDLEOCR_SHIM_API_KEY` to require `Authorization: Bearer <key>` on `/parse
 RAGCentre the same value as the provider's `api_key` secret:
 
 ```sh
-uv run ragcentre provider set-secret paddleocr api_key --env PADDLEOCR_SHIM_API_KEY
+uv run ragcentre provider set-secret paddleocr api_key --env RAGCENTRE_PROVIDER_PADDLEOCR_SHIM_API_KEY
 ```
 
 `GET /info` stays open: RAGCentre reads it without credentials when it creates the provider.

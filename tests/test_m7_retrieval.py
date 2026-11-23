@@ -93,6 +93,17 @@ def test_filter_defaults_both_sources(client: TestClient, ready: tuple[str, str]
     assert ask(client, ready, filter={"unknown": 1}).json()["error"]["code"] == "invalid_filter"
 
 
+def test_query_applies_current_metadata_before_vector_refresh(
+    ctx: AppContext, client: TestClient, ready: tuple[str, str]
+) -> None:
+    document_id = ctx.db.scalar("SELECT id FROM documents WHERE external_id = 'manual'")
+    assert client.patch(f"/v1/documents/{document_id}", json={"metadata": {"lang": "de"}}).is_success
+    filtered = ask(client, ready, filter={"lang": "en"}, allow_partial=True)
+    assert filtered.is_success
+    assert filtered.json()["results"] == []
+    assert filtered.json()["partial"] is True
+
+
 @pytest.mark.parametrize(
     "condition,code",
     [

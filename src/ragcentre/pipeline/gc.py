@@ -10,9 +10,8 @@ What is garbage:
   because archived pipelines still describe themselves with them. Pairs with a running run are
   left for a later pass.
 - **Blobs** referenced by nothing: neither a document's content nor a parse-cache entry. Blobs
-  written in the last ``BLOB_GRACE_SECONDS`` are kept, so an upload between writing its blob and
-  recording its document is never collected. The parse cache itself is kept: it makes re-adding a
-  document or re-creating a pipeline free.
+  written in the last ``BLOB_GRACE_SECONDS`` are kept. Deletion and replacement have a separate
+  purge task for content that has lost its last document reference.
 
 A dry run (the default) reports what would be removed and changes nothing.
 """
@@ -112,8 +111,17 @@ def collect(ctx: AppContext, *, dry_run: bool = True) -> GcResult:
     result.blob_count = len(orphans)
     result.blob_bytes = sum(size for _, size in orphans)
     if not dry_run:
-        for sha, _ in orphans:
-            ctx.blobs.delete(sha)
+        with ctx.db.write() as conn:
+            for sha, _ in orphans:
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM documents WHERE content_sha256 = ? UNION ALL "
+                        "SELECT 1 FROM parse_cache WHERE blob_sha256 = ? LIMIT 1",
+                        (sha, sha),
+                    ).fetchone()
+                    is None
+                ):
+                    ctx.blobs.delete(sha)
         log.info(
             "garbage collected",
             extra={"indexes": len(indexes), "nodes": result.node_count, "blobs": result.blob_count},

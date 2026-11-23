@@ -9,4 +9,4 @@ config:
   ef_runtime: 100
   prefix: rc_
 secrets:
-  password: {env: REDIS_PASSWORD}
+  password: {env: RAGCENTRE_PROVIDER_REDIS_PASSWORD}

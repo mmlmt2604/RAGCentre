@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 import httpx
@@ -152,21 +153,11 @@ def parse_retry_after(value: str | None) -> float | None:
     return max(0.0, (when - datetime.now(UTC)).total_seconds())
 
 
-def _error_message(resp: httpx.Response) -> str:
+def response_reason(status: int) -> str:
     try:
-        body = resp.json()
+        return HTTPStatus(status).phrase
     except ValueError:
-        text = resp.text.strip()
-        return text[:300] if text else resp.reason_phrase
-    if isinstance(body, dict):
-        err = body.get("error")
-        if isinstance(err, dict) and err.get("message"):
-            return str(err["message"])[:300]
-        if isinstance(err, str):
-            return err[:300]
-        if body.get("detail"):
-            return str(body["detail"])[:300]
-    return str(body)[:300]
+        return "Upstream request failed"
 
 
 def classify_response(resp: httpx.Response, provider: str) -> ExecutionError | None:
@@ -176,8 +167,7 @@ def classify_response(resp: httpx.Response, provider: str) -> ExecutionError | N
         return None
     retryable = status in RETRYABLE_STATUS or status >= 500
     retry_after = parse_retry_after(resp.headers.get("retry-after")) if status in (429, 503) else None
-    where = f"{resp.request.method} {resp.request.url}" if resp.request is not None else ""
-    message = f"{provider}: {where} returned {status} {resp.reason_phrase}: {_error_message(resp)}"
+    message = f"{provider}: upstream returned {status} {response_reason(status)}"
     return ExecutionError(
         ErrorCode.PROVIDER_ERROR.value,
         redact(message),
@@ -187,13 +177,9 @@ def classify_response(resp: httpx.Response, provider: str) -> ExecutionError | N
     )
 
 
-def classify_exception(exc: Exception, provider: str, url: str) -> ExecutionError:
-    if isinstance(exc, httpx.TimeoutException):
-        message = f"{provider}: request to {url} timed out"
-    elif isinstance(exc, httpx.TransportError):
-        message = f"{provider}: could not connect to {url}: {exc}"
-    else:  # pragma: no cover - defensive
-        message = f"{provider}: request to {url} failed: {exc}"
+def classify_exception(exc: Exception, provider: str, _url: str) -> ExecutionError:
+    reason = "timed out" if isinstance(exc, httpx.TimeoutException) else "could not connect to the upstream service"
+    message = f"{provider}: {reason}"
     return ExecutionError(ErrorCode.PROVIDER_ERROR.value, redact(message), retryable=True, provider=provider)
 
 

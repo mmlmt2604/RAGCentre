@@ -93,8 +93,13 @@ def get_provider(provider_id: str, ctx: AppContext = Depends(get_ctx)) -> api.Pr
 
 
 @router.patch("/providers/{provider_id}", response_model=api.Provider)
-def patch_provider(provider_id: str, body: api.ProviderPatch, ctx: AppContext = Depends(get_ctx)) -> api.Provider:
-    return provider_out(ctx, ctx.providers.update(provider_id, body.config))
+def patch_provider(
+    provider_id: str, body: api.ProviderPatch, response: Response, ctx: AppContext = Depends(get_ctx)
+) -> api.Provider:
+    row = ctx.providers.update(provider_id, body.config)
+    if row.secrets_reset:
+        response.headers["X-RAGCentre-Secrets-Reset"] = "true"
+    return provider_out(ctx, row)
 
 
 @router.delete("/providers/{provider_id}", status_code=204)

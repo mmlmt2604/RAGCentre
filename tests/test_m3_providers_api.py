@@ -222,12 +222,14 @@ def test_pagination(client: TestClient) -> None:
 
 
 def test_env_secret(client: TestClient, monkeypatch: pytest.MonkeyPatch, fakes: FakeServices) -> None:
-    monkeypatch.setenv("FAKE_EMBED_KEY", "env-secret-value-123")
+    monkeypatch.setenv("RAGCENTRE_PROVIDER_FAKE_EMBED_KEY", "env-secret-value-123")
     p = create(client, "emb", "embedder", "openai_compatible", {"base_url": EMBEDDER_URL, "model": "m"})
     assert p["secrets"] == {"api_key": {"source": "env", "set": False, "env_var": None}}
-    r = client.put(f"/v1/providers/{p['id']}/secrets/api_key", json={"env": "FAKE_EMBED_KEY"})
+    r = client.put(f"/v1/providers/{p['id']}/secrets/api_key", json={"env": "RAGCENTRE_PROVIDER_FAKE_EMBED_KEY"})
     assert r.status_code == 200
-    assert r.json()["secrets"] == {"api_key": {"source": "env", "set": True, "env_var": "FAKE_EMBED_KEY"}}
+    assert r.json()["secrets"] == {
+        "api_key": {"source": "env", "set": True, "env_var": "RAGCENTRE_PROVIDER_FAKE_EMBED_KEY"}
+    }
     assert "env-secret-value-123" not in r.text
     assert client.post(f"/v1/providers/{p['id']}/test").json()["ok"] is True
     assert fakes.requests[-1].headers["authorization"] == "Bearer env-secret-value-123"
@@ -270,7 +272,8 @@ def test_no_secret_in_any_response_or_log(tmp_path: Path, caplog: pytest.LogCapt
             fakes.echo_auth_in_errors = True
             bad = client.post(f"/v1/providers/{p['id']}/test")
             assert bad.json()["ok"] is False
-            assert "[REDACTED]" in bad.json()["message"]
+            assert secret not in bad.json()["message"]
+            assert "upstream returned" in bad.json()["message"]
             logging.getLogger("ragcentre.test").error("provider said %s", bad.json()["message"])
             logging.getLogger("ragcentre.test").error("raw value %s", secret)
             for path in ("/v1/providers", f"/v1/providers/{p['id']}", "/v1/provider-types"):

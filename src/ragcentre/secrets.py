@@ -16,7 +16,7 @@ from typing import Literal
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from ragcentre.errors import ErrorCode, ExecutionError, SecretStorageDisabled
+from ragcentre.errors import ErrorCode, ExecutionError, SecretStorageDisabled, ValidationFailed
 from ragcentre.logs import register_secret
 
 SecretSource = Literal["env", "stored"]
@@ -34,7 +34,8 @@ def _fernet_key(secret_key: str) -> bytes:
 
 
 class SecretBox:
-    def __init__(self, secret_key: str | None) -> None:
+    def __init__(self, secret_key: str | None, *, env_prefixes: tuple[str, ...] = ("RAGCENTRE_PROVIDER_",)) -> None:
+        self._env_prefixes = tuple(prefix for prefix in env_prefixes if prefix)
         self._fernet = Fernet(_fernet_key(secret_key)) if secret_key else None
 
     @property
@@ -61,10 +62,20 @@ class SecretBox:
                 "A stored secret cannot be decrypted with the current RAGCENTRE_SECRET_KEY.",
             ) from exc
 
+    def validate_env(self, name: str) -> None:
+        if name.upper() in {"RAGCENTRE_API_TOKEN", "RAGCENTRE_SECRET_KEY"} or not name.startswith(self._env_prefixes):
+            raise ValidationFailed("Provider secret environment variable is outside the allowed prefixes.")
+
     def resolve(self, source: str, value: bytes | str, env: Mapping[str, str] | None = None) -> str:
         """Return the secret's value and register it with the log redactor."""
         if source == "env":
             name = value.decode("utf-8") if isinstance(value, bytes) else value
+            try:
+                self.validate_env(name)
+            except ValidationFailed:
+                raise ExecutionError(
+                    "secret_not_allowed", "Provider secret environment reference is disallowed."
+                ) from None
             environ = os.environ if env is None else env
             resolved = environ.get(name)
             if resolved is None:

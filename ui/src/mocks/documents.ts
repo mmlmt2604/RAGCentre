@@ -127,13 +127,14 @@ export function upload(state: MockState, corpusId: string, form: Form): { doc: D
   const sha = fp(`content:${text}:${file.size}`);
   const externalId = (form.fields.external_id ?? "").trim() || null;
 
-  const existing = externalId ? state.documents.find((d) => d.corpus_id === corpusId && d.external_id === externalId && d.status === "active") : undefined;
+  const existing = externalId ? state.documents.find((d) => d.corpus_id === corpusId && d.external_id === externalId) : undefined;
   if (existing) {
+    if (existing.status !== "active") throw new MockError(409, "conflict", "Document is being deleted.");
     if (existing.content_sha256 !== sha) {
       replaceWith(state, existing, { filename, mime, text, size: file.size, sha });
-      existing.metadata = metadata;
-      existing.attributes = attrs as Record<string, unknown>;
     }
+    if (form.fields.metadata !== undefined) existing.metadata = metadata;
+    if (form.fields.attributes !== undefined) existing.attributes = attrs as Record<string, unknown>;
     return { doc: existing, created: false };
   }
   const id = uuidFrom(`doc:${corpusId}:${filename}:${Date.now()}:${Math.random()}`);

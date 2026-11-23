@@ -164,19 +164,21 @@ def test_a_forced_failure_is_a_readable_finding_and_the_collection_is_dropped() 
     assert store.created == set()  # the temporary collection was dropped even on failure
 
 
-def test_cli_direct_store_check(tmp_path: Path) -> None:
+def test_cli_direct_store_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAGCENTRE_DATA_DIR", str(tmp_path))
     result = CliRunner().invoke(
-        app, ["store", "check", "--type", "sqlite_vec", "--config", json.dumps({"path": str(tmp_path / "v.db")})]
+        app, ["store", "check", "--type", "sqlite_vec", "--config", json.dumps({"path": "v.db"})]
     )
     assert result.exit_code == 0, result.output
     assert "usable" in result.output
     assert "all checks passed" in result.output
 
 
-def test_cli_direct_store_check_json_output(tmp_path: Path) -> None:
+def test_cli_direct_store_check_json_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAGCENTRE_DATA_DIR", str(tmp_path))
     result = CliRunner().invoke(
         app,
-        ["--json", "store", "check", "--type", "sqlite_vec", "--config", json.dumps({"path": str(tmp_path / "v.db")})],
+        ["--json", "store", "check", "--type", "sqlite_vec", "--config", json.dumps({"path": "v.db"})],
     )
     assert result.exit_code == 0, result.output
     body = json.loads(result.output)

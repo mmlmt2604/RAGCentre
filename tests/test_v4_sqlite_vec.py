@@ -101,7 +101,7 @@ def test_factory_passes_prefix(tmp_path: Path) -> None:
     store = t.factory(t.config_model.model_validate({"prefix": "rc_"}), {}, tmp_path)
     assert isinstance(store, SqliteVecStore)
     store.ensure_collection(CollectionSpec(name=NAME, dim=2, metric="cosine"))
-    assert "rc_" + NAME in _tables(tmp_path / "vectors.db")
+    assert "rc_" + NAME in _tables(tmp_path / "stores" / "vectors.db")
     store.close()
 
 

@@ -130,7 +130,7 @@ def test_status_classification(status: int, retryable: bool) -> None:
     assert err is not None
     assert err.retryable is retryable
     assert err.code == "provider_error"
-    assert "nope" in err.message and str(status) in err.message
+    assert "nope" not in err.message and str(status) in err.message
 
 
 def test_success_is_not_an_error() -> None:

@@ -80,7 +80,7 @@ def test_error_paths_against_shim() -> None:
         with pytest.raises(CollectionMismatch):
             store.ensure_collection(CollectionSpec("rc_err_0001", 9, "cosine", dict(SCHEMA_FIELDS)))
         # 400 invalid_request -> StoreError on a wrong query dimension.
-        with pytest.raises(StoreError, match=r"invalid_request|dimension"):
+        with pytest.raises(StoreError, match=r"400: Bad Request"):
             store.query("rc_err_0001", [0.0] * 9, 5)
     finally:
         store.close()
@@ -210,8 +210,7 @@ def test_bad_info_is_rejected(info: dict[str, Any]) -> None:
         HttpStore.connect("http://t", client=client)
 
 
-def test_info_is_read_without_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ragcentre.stores import http as http_module
+def test_info_is_read_without_credentials() -> None:
 
     seen: list[tuple[str, str | None]] = []
 
@@ -221,11 +220,11 @@ def test_info_is_read_without_credentials(monkeypatch: pytest.MonkeyPatch) -> No
             return httpx.Response(200, json=INFO_BODY)
         return httpx.Response(200, json={"status": "ok"})
 
-    real_client = httpx.Client
-    monkeypatch.setattr(
-        http_module.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)
+    store = HttpStore.connect(
+        "http://t",
+        api_key="sekret",
+        http_client_factory=lambda **kw: httpx.Client(transport=httpx.MockTransport(handler), **kw),
     )
-    store = HttpStore.connect("http://t", api_key="sekret")
     try:
         store.healthcheck()
     finally:

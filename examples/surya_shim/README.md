@@ -95,7 +95,7 @@ Set `SURYA_SHIM_API_KEY` to require `Authorization: Bearer <key>` on `/parse`, a
 the same value as the provider's `api_key` secret:
 
 ```sh
-uv run ragcentre provider set-secret surya api_key --env SURYA_SHIM_API_KEY
+uv run ragcentre provider set-secret surya api_key --env RAGCENTRE_PROVIDER_SURYA_SHIM_API_KEY
 ```
 
 `GET /info` stays open: RAGCentre reads it without credentials when it creates the provider.

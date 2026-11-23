@@ -79,26 +79,26 @@ class EmbeddingService:
         result.n_cache_hits = sum(1 for sha in shas if sha in cached)
 
         if misses:
-            embedder = self.ctx.providers.instance(provider_id)
-            batch_size = max(1, int(getattr(embedder, "batch_size", 64)))
-            limit = getattr(embedder, "max_input_chars", None)
-            items = list(misses.items())
-            started = time.perf_counter()
-            for start in range(0, len(items), batch_size):
-                batch = items[start : start + batch_size]
-                vectors = embedder.embed([text for _, text in batch], role)
-                result.n_requests += 1
-                if len(vectors) != len(batch):
-                    raise invalid_response(provider.name, f"sent {len(batch)} texts, got {len(vectors)} vectors")
-                rounded = [float32(v) for v in vectors]
-                self._store(
-                    provider.fingerprint, role, [(sha, vec) for (sha, _), vec in zip(batch, rounded, strict=True)]
-                )
-                for (sha, _), vec in zip(batch, rounded, strict=True):
-                    cached[sha] = vec
-            result.stats["embed_ms"] = round((time.perf_counter() - started) * 1000, 2)
-            if limit is not None:
-                result.n_truncated = sum(1 for t in misses.values() if len(t) > int(limit))
+            with self.ctx.providers.lease(provider_id) as embedder:
+                batch_size = max(1, int(getattr(embedder, "batch_size", 64)))
+                limit = getattr(embedder, "max_input_chars", None)
+                items = list(misses.items())
+                started = time.perf_counter()
+                for start in range(0, len(items), batch_size):
+                    batch = items[start : start + batch_size]
+                    vectors = embedder.embed([text for _, text in batch], role)
+                    result.n_requests += 1
+                    if len(vectors) != len(batch):
+                        raise invalid_response(provider.name, f"sent {len(batch)} texts, got {len(vectors)} vectors")
+                    rounded = [float32(v) for v in vectors]
+                    self._store(
+                        provider.fingerprint, role, [(sha, vec) for (sha, _), vec in zip(batch, rounded, strict=True)]
+                    )
+                    for (sha, _), vec in zip(batch, rounded, strict=True):
+                        cached[sha] = vec
+                result.stats["embed_ms"] = round((time.perf_counter() - started) * 1000, 2)
+                if limit is not None:
+                    result.n_truncated = sum(1 for t in misses.values() if len(t) > int(limit))
 
         result.vectors = [cached[sha] for sha in shas]
         dims = {len(v) for v in result.vectors}

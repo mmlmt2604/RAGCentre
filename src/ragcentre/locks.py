@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import fcntl
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 
 from ragcentre.hashing import sha256_text
@@ -23,3 +23,8 @@ def document_lock(data_dir: Path, document_id: str) -> Iterator[None]:
             yield
         finally:
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def index_catalog_lock(data_dir: Path) -> AbstractContextManager[None]:
+    """Serialize index attachment and retirement across processes."""
+    return document_lock(data_dir, "index-catalog")

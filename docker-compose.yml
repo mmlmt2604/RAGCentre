@@ -14,18 +14,19 @@ services:
     volumes:
       - ragcentre-data:/data
     environment:
-      # Set a token before exposing the port beyond this machine.
-      RAGCENTRE_API_TOKEN: ${RAGCENTRE_API_TOKEN:-}
+      RAGCENTRE_API_TOKEN: ${RAGCENTRE_API_TOKEN:?Set RAGCENTRE_API_TOKEN before starting Compose}
       # Fernet key for storing provider secrets in the database (optional).
       RAGCENTRE_SECRET_KEY: ${RAGCENTRE_SECRET_KEY:-}
+      RAGCENTRE_SECRET_ENV_PREFIXES: ${RAGCENTRE_SECRET_ENV_PREFIXES-RAGCENTRE_PROVIDER_}
+      RAGCENTRE_EGRESS_ALLOW: ${RAGCENTRE_EGRESS_ALLOW:-}
       # The parser services' keys (optional), so a provider's `api_key` secret can name them:
-      #   ragcentre provider set-secret docling api_key --env DOCLING_SHIM_API_KEY
-      DOCLING_SHIM_API_KEY: ${DOCLING_SHIM_API_KEY:-}
-      MINERU_SHIM_API_KEY: ${MINERU_SHIM_API_KEY:-}
-      PADDLEOCR_SHIM_API_KEY: ${PADDLEOCR_SHIM_API_KEY:-}
-      SURYA_SHIM_API_KEY: ${SURYA_SHIM_API_KEY:-}
-      EASYOCR_SHIM_API_KEY: ${EASYOCR_SHIM_API_KEY:-}
-      DOCTR_SHIM_API_KEY: ${DOCTR_SHIM_API_KEY:-}
+      #   ragcentre provider set-secret docling api_key --env RAGCENTRE_PROVIDER_DOCLING_SHIM_API_KEY
+      RAGCENTRE_PROVIDER_DOCLING_SHIM_API_KEY: ${DOCLING_SHIM_API_KEY:-}
+      RAGCENTRE_PROVIDER_MINERU_SHIM_API_KEY: ${MINERU_SHIM_API_KEY:-}
+      RAGCENTRE_PROVIDER_PADDLEOCR_SHIM_API_KEY: ${PADDLEOCR_SHIM_API_KEY:-}
+      RAGCENTRE_PROVIDER_SURYA_SHIM_API_KEY: ${SURYA_SHIM_API_KEY:-}
+      RAGCENTRE_PROVIDER_EASYOCR_SHIM_API_KEY: ${EASYOCR_SHIM_API_KEY:-}
+      RAGCENTRE_PROVIDER_DOCTR_SHIM_API_KEY: ${DOCTR_SHIM_API_KEY:-}
     restart: unless-stopped
 
   docling:

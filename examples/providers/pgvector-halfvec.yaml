@@ -11,4 +11,4 @@ config:
   hnsw_m: 16
   hnsw_ef_construction: 64
 secrets:
-  dsn: {env: RAGCENTRE_PGVECTOR_DSN}
+  dsn: {env: RAGCENTRE_PROVIDER_PGVECTOR_DSN}

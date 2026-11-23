@@ -18,7 +18,7 @@ these packages, and opening an unavailable store reports the missing extra.
 
 Ready-to-import examples:
 
-- [Milvus server](../examples/providers/milvus-vectors.yaml), with an optional `MILVUS_TOKEN` secret.
+- [Milvus server](../examples/providers/milvus-vectors.yaml), with an optional `RAGCENTRE_PROVIDER_MILVUS_TOKEN` environment reference.
 - [Milvus Lite](../examples/providers/milvus-lite-vectors.yaml), with a `.db` path under the data directory.
 - [Weaviate](../examples/providers/weaviate-vectors.yaml), using the test service's HTTP and gRPC ports.
 - [Pinecone Cloud](../examples/providers/pinecone-vectors.yaml), using an existing dense index and `PINECONE_API_KEY`.

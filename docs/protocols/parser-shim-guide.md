@@ -191,7 +191,7 @@ mapping with a captured response from a real server and no network.
 
 ```sh
 ragcentre provider add -f examples/providers/docling-parser.yaml     # a template to copy
-ragcentre provider set-secret my-shim api_key --env MY_SHIM_API_KEY   # if you set an API key
+ragcentre provider set-secret my-shim api_key --env RAGCENTRE_PROVIDER_MY_SHIM_API_KEY   # if you set an API key
 ragcentre provider test my-shim --deep                                # parses a sample document
 ragcentre parser check http://127.0.0.1:8710                          # works without RAGCentre running
 ```

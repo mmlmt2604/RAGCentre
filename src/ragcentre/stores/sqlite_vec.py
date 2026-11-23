@@ -45,6 +45,7 @@ from ragcentre.stores.base import (
     check_spec,
 )
 from ragcentre.stores.filter_sql import compile_sqlite, sqlite_json_field
+from ragcentre.stores.paths import store_path
 from ragcentre.stores.registry import VectorStoreType
 from ragcentre.vectors import pack
 
@@ -239,7 +240,8 @@ class SqliteVecConfig(BaseModel):
 
 def _factory(config: BaseModel, secrets: dict[str, str], data_dir: Path) -> SqliteVecStore:
     assert isinstance(config, SqliteVecConfig)
-    path = Path(config.path) if config.path else data_dir / "vectors.db"
+    path = store_path(data_dir, config.path, "vectors.db")
+    path.parent.mkdir(parents=True, exist_ok=True)
     return SqliteVecStore(path, prefix=config.prefix)
 
 

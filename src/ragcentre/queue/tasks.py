@@ -6,21 +6,22 @@ import json
 from typing import Any
 
 from ragcentre.errors import ExecutionError
+from ragcentre.locks import document_lock, index_catalog_lock
+from ragcentre.pipeline.purge import purge_blobs, release_document
 from ragcentre.stores.base import delete_batched
 
 
 def _run_delete_document(ctx: Any, payload: dict[str, Any]) -> None:
     document_id = payload["document_id"]
+    doc = ctx.db.one("SELECT * FROM documents WHERE id = ? AND status = 'deleting'", (document_id,))
+    if doc is None:
+        return
     rows = ctx.db.all(
         "SELECT DISTINCT i.* FROM indexes i JOIN index_records ir ON ir.index_id = i.id WHERE ir.document_id = ?",
         (document_id,),
     )
     for index in rows:
-        if index["kind"] == "fts":
-            table = f"fts_{index['physical_name']}"
-            ctx.db.execute(f'DELETE FROM "{table}" WHERE document_id = ?', (document_id,))
-        else:
-            store = ctx.providers.store(index["provider_id"])
+        if index["kind"] != "fts":
             record_ids = [
                 r["record_id"]
                 for r in ctx.db.all(
@@ -29,28 +30,45 @@ def _run_delete_document(ctx: Any, payload: dict[str, Any]) -> None:
                 )
             ]
             if record_ids:
-                delete_batched(store, index["physical_name"], record_ids)
+                with ctx.providers.lease(index["provider_id"]) as store:
+                    delete_batched(store, index["physical_name"], record_ids)
     with ctx.db.write() as conn:
+        blobs = release_document(conn, doc)
         conn.execute("DELETE FROM index_records WHERE document_id = ?", (document_id,))
-        conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
         conn.execute("DELETE FROM node_runs WHERE document_id = ?", (document_id,))
         conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+    purge_blobs(ctx, blobs)
 
 
 def _run_drop_index(ctx: Any, payload: dict[str, Any]) -> None:
     index_id = payload["index_id"]
-    index = ctx.db.one("SELECT * FROM indexes WHERE id = ?", (index_id,))
-    if index is None:
-        return
-    if index["kind"] == "fts":
-        table = f"fts_{index['physical_name']}"
-        ctx.db.execute(f'DROP TABLE IF EXISTS "{table}"')
-    else:
-        store = ctx.providers.store(index["provider_id"])
-        store.drop_collection(index["physical_name"])
-    with ctx.db.write() as conn:
-        conn.execute("DELETE FROM index_records WHERE index_id = ?", (index_id,))
-        conn.execute("DELETE FROM indexes WHERE id = ?", (index_id,))
+    with index_catalog_lock(ctx.settings.data_dir):
+        with ctx.db.read() as conn:
+            index = conn.execute("SELECT * FROM indexes WHERE id = ?", (index_id,)).fetchone()
+            if index is None:
+                return
+            live = conn.execute(
+                "SELECT 1 FROM pipelines p JOIN pipeline_nodes pn ON pn.pipeline_id = p.id "
+                "WHERE p.corpus_id = ? AND pn.node_fp = ? AND p.archived = 0 LIMIT 1",
+                (index["corpus_id"], index["node_fp"]),
+            ).fetchone()
+            if live is not None:
+                return
+            shared = conn.execute(
+                "SELECT 1 FROM indexes WHERE kind = ? AND physical_name = ? AND id != ? LIMIT 1",
+                (index["kind"], index["physical_name"], index_id),
+            ).fetchone()
+        if shared is None and index["kind"] == "vector":
+            # The catalog lock keeps the reference check valid without holding a SQLite write
+            # transaction while waiting for a remote store.
+            with ctx.providers.lease(index["provider_id"]) as store:
+                store.drop_collection(index["physical_name"])
+        with ctx.db.write() as conn:
+            if shared is None and index["kind"] == "fts":
+                table = f"fts_{index['physical_name']}"
+                conn.execute(f'DROP TABLE IF EXISTS "{table}"')
+            conn.execute("DELETE FROM index_records WHERE index_id = ?", (index_id,))
+            conn.execute("DELETE FROM indexes WHERE id = ?", (index_id,))
 
 
 def _run_eval(ctx: Any, payload: dict[str, Any]) -> None:
@@ -71,10 +89,10 @@ def run_task(ctx: Any, task: Any) -> None:
     kind = task["kind"]
     payload = json.loads(task["payload"])
     if kind == "delete_document":
-        from ragcentre.locks import document_lock
-
         with document_lock(ctx.settings.data_dir, payload["document_id"]):
             _run_delete_document(ctx, payload)
+    elif kind == "purge_blobs":
+        purge_blobs(ctx, payload["blobs"])
     elif kind == "drop_index":
         _run_drop_index(ctx, payload)
     elif kind == "eval_run":

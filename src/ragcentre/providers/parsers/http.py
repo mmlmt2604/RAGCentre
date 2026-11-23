@@ -12,7 +12,6 @@ import httpx
 from pydantic import Field
 
 from ragcentre.errors import ErrorCode, ExecutionError
-from ragcentre.logs import redact
 from ragcentre.providers.base import (
     RETRYABLE_STATUS,
     BuildEnv,
@@ -186,10 +185,9 @@ class HttpParser(InfoMixin):
         info = error if isinstance(error, dict) else {}
         status = info.get("http_status")
         status = status if isinstance(status, int) else 422
-        message = str(info.get("message") or "the job failed")[:300]
         return ExecutionError(
             ErrorCode.PROVIDER_ERROR.value,
-            redact(f"{self.name}: parse job failed ({status} {info.get('code') or 'error'}): {message}"),
+            f"{self.name}: upstream parse job failed (HTTP {status})",
             retryable=status in RETRYABLE_STATUS or status >= 500,
             provider=self.name,
         )

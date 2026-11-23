@@ -163,20 +163,22 @@ def test_a_restarted_worker_resumes_the_job(
     fakes.parser_async, fakes.job_running_polls = True, 2
     parser = _parser(ctx, job_timeout_seconds=1)
     provider_id = ctx.providers.by_name("p").id
+    monkeypatch.setattr("ragcentre.pipeline.executors.is_current", lambda *_: True)
+    claim = object()
     # First attempt: the wait runs out while the job is still running.
     clock = iter([0.0, 5.0])
     with monkeypatch.context() as m:
         m.setattr(http_parser.time, "monotonic", lambda: next(clock, 99.0))
         with pytest.raises(ExecutionError) as caught:
-            parser.parse(b"hello", "a.pdf", "application/pdf", {}, job=_ParseJob(ctx, "key-1", provider_id))
+            parser.parse(b"hello", "a.pdf", "application/pdf", {}, job=_ParseJob(ctx, "key-1", provider_id, claim))
     assert caught.value.retryable and "did not finish" in caught.value.message
-    assert _ParseJob(ctx, "key-1", provider_id).get() == "job-1"
+    assert _ParseJob(ctx, "key-1", provider_id, claim).get() == "job-1"
     # The retry (or another worker after a restart) polls the same job: nothing is submitted twice.
     parser = ctx.providers.instance(provider_id)
-    ir = parser.parse(b"hello", "a.pdf", "application/pdf", {}, job=_ParseJob(ctx, "key-1", provider_id))
+    ir = parser.parse(b"hello", "a.pdf", "application/pdf", {}, job=_ParseJob(ctx, "key-1", provider_id, claim))
     assert ir["blocks"][0]["text"] == "hello"
     assert fakes.count("parser", "/parse") == 1
-    assert _ParseJob(ctx, "key-1", provider_id).get() is None
+    assert _ParseJob(ctx, "key-1", provider_id, claim).get() is None
 
 
 def test_a_job_the_service_forgot_is_submitted_again(ctx: AppContext, fakes: FakeServices, sleeps: list[float]) -> None:
@@ -195,7 +197,8 @@ def test_failed_job_reports_the_service_error(ctx: AppContext, fakes: FakeServic
     job = MemoryJob()
     with pytest.raises(ExecutionError) as caught:
         parser.parse(b"x", "a.xyz", "application/octet-stream", {}, job=job)
-    assert not caught.value.retryable and "no scans" in caught.value.message
+    assert not caught.value.retryable and "HTTP 415" in caught.value.message
+    assert "no scans" not in caught.value.message
     assert job.job_id is None  # a retry starts a fresh job
     fakes.job_failure = {"http_status": 503, "code": "busy", "message": "overloaded"}
     fakes.jobs.clear()

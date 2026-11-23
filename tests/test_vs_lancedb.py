@@ -353,7 +353,7 @@ def test_factory_places_relative_uris_in_the_data_dir(tmp_path: Path) -> None:
             s.ensure_collection(spec())
         finally:
             s.close()
-        assert (tmp_path / expected / f"{NAME}.lance").is_dir()
+        assert (tmp_path / "stores" / expected / f"{NAME}.lance").is_dir()
 
 
 @needs_lancedb

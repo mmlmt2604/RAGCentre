@@ -8,4 +8,4 @@ config:
   prefix: ragcentre_
 # Remove this block for an anonymous development server.
 secrets:
-  token: {env: MILVUS_TOKEN}
+  token: {env: RAGCENTRE_PROVIDER_MILVUS_TOKEN}

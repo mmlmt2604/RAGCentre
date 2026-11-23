@@ -8,8 +8,10 @@ keeps the whole codebase synchronous.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -17,6 +19,7 @@ import httpx
 from ragcentre import __version__
 from ragcentre.db.connection import Database
 from ragcentre.db.migrate import migrate, migrate_cache, verify
+from ragcentre.providers.egress import checked_http_client
 from ragcentre.settings import Settings
 
 if TYPE_CHECKING:
@@ -31,7 +34,7 @@ HttpClientFactory = Callable[..., httpx.Client]
 
 
 def default_http_client_factory(**kwargs: Any) -> httpx.Client:
-    return httpx.Client(**kwargs)
+    return checked_http_client(**kwargs)
 
 
 class AppContext:
@@ -46,7 +49,10 @@ class AppContext:
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         self.db = Database(settings.db_path)
         self.cache = Database(settings.cache_path)
-        self.http_client_factory: HttpClientFactory = http_client_factory or default_http_client_factory
+        self.http_client_factory: HttpClientFactory = http_client_factory or (
+            lambda **kwargs: default_http_client_factory(allow=settings.egress_allow, **kwargs)
+        )
+        self.retrieval_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="retrieval")
         self.migration = 0
         self.workers: Any = None
         self._services: dict[str, Any] = {}
@@ -61,6 +67,28 @@ class AppContext:
         self.migration = verify(self.db)
         migrate_cache(self.cache)
         self._bootstrap()
+        self._check_security_settings()
+
+    def _check_security_settings(self) -> None:
+        from ragcentre.errors import ValidationFailed
+        from ragcentre.pipeline.planner import enable_fts_secure_delete
+        from ragcentre.stores.paths import validate_store_path
+
+        if sqlite3.sqlite_version_info < (3, 42, 0):
+            log.warning("SQLite 3.42 or later is required to securely delete FTS terms")
+        else:
+            with self.db.write() as conn:
+                indexes = conn.execute(
+                    "SELECT DISTINCT i.physical_name FROM indexes i JOIN sqlite_master m "
+                    "ON m.name = 'fts_' || i.physical_name AND m.type = 'table' WHERE i.kind = 'fts'"
+                ).fetchall()
+                for index in indexes:
+                    enable_fts_secure_delete(conn, index["physical_name"])
+        for provider in self.providers.list():
+            try:
+                validate_store_path(self.settings.data_dir, provider.type, provider.config)
+            except ValidationFailed:
+                log.warning("provider uses a disallowed local store path", extra={"provider": provider.name})
 
     def _bootstrap(self) -> None:
         """Create built-in rows (the builtin-text provider)."""
@@ -91,7 +119,9 @@ class AppContext:
     def secrets(self) -> SecretBox:
         from ragcentre.secrets import SecretBox
 
-        result: SecretBox = self._service("secrets", lambda: SecretBox(self.settings.secret_key))
+        result: SecretBox = self._service(
+            "secrets", lambda: SecretBox(self.settings.secret_key, env_prefixes=self.settings.secret_env_prefixes)
+        )
         return result
 
     @property
@@ -137,6 +167,7 @@ class AppContext:
         if self.workers is not None:
             self.workers.stop()
             self.workers = None
+        self.retrieval_executor.shutdown(wait=True)
         for svc in self._services.values():
             close = getattr(svc, "close", None)
             if close is not None:

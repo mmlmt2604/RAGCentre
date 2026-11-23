@@ -103,7 +103,7 @@ Set `DOCLING_SHIM_API_KEY` to require `Authorization: Bearer <key>` on every req
 value as the provider's `api_key` secret:
 
 ```sh
-uv run ragcentre provider set-secret docling api_key --env DOCLING_SHIM_API_KEY
+uv run ragcentre provider set-secret docling api_key --env RAGCENTRE_PROVIDER_DOCLING_SHIM_API_KEY
 ```
 
 ## Versioning

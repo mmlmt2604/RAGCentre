@@ -55,6 +55,7 @@ from ragcentre.stores.base import (
     check_spec,
     require_extra,
 )
+from ragcentre.stores.paths import store_path
 from ragcentre.stores.registry import VectorStoreType
 
 DEFAULT_MAX_BATCH = 1000
@@ -465,7 +466,9 @@ class ChromaStore:
         return [Match(id=i, score=_score(metric, float(d))) for i, d in zip(ids, distances, strict=True)]
 
     def close(self) -> None:
-        pass  # Chroma clients hold no resources that need explicit release
+        close = getattr(self._client, "close", None)
+        if close is not None:
+            close()
 
 
 def _local_tenant_database(chromadb: Any, tenant: str | None, database: str | None) -> tuple[str, str]:
@@ -598,9 +601,7 @@ def _factory(config: BaseModel, secrets: dict[str, str], data_dir: Path) -> Chro
             hnsw_ef_construction=config.hnsw_ef_construction,
             ef_search=config.ef_search,
         )
-    path = Path(config.path) if config.path else data_dir / "chroma"
-    if not path.is_absolute():
-        path = data_dir / path
+    path = store_path(data_dir, config.path, "chroma")
     return ChromaStore.persistent(
         path,
         tenant=config.tenant,

@@ -599,20 +599,14 @@ export interface components {
         };
         /** Body_upload_v1_corpora__corpus_id__documents_post */
         Body_upload_v1_corpora__corpus_id__documents_post: {
-            /**
-             * Attributes
-             * @default {}
-             */
-            attributes?: string;
+            /** Attributes */
+            attributes?: string | null;
             /** External Id */
             external_id?: string | null;
             /** File */
             file: string;
-            /**
-             * Metadata
-             * @default {}
-             */
-            metadata?: string;
+            /** Metadata */
+            metadata?: string | null;
         };
         /** Chunk */
         Chunk: {

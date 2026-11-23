@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from starlette._utils import get_route_path
 from starlette.exceptions import HTTPException
 from starlette.responses import FileResponse, PlainTextResponse, Response
 from starlette.staticfiles import StaticFiles
@@ -30,7 +31,7 @@ MISSING_MESSAGE = (
 )
 
 
-def _is_api(path: str) -> bool:
+def is_api_path(path: str) -> bool:
     return path == "/v1" or path.startswith("/v1/")
 
 
@@ -67,8 +68,10 @@ class UiApp:
         self.spa = SinglePageApp(directory) if (directory / "index.html").is_file() else None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        path = scope["path"]
-        if scope["type"] != "http" or _is_api(path):
+        if scope["type"] != "http":
+            raise HTTPException(status_code=404)
+        path = get_route_path(scope)
+        if is_api_path(path):
             raise HTTPException(status_code=404)
         if self.spa is not None:
             await self.spa(scope, receive, send)

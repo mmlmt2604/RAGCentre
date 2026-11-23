@@ -99,6 +99,7 @@ def test_document_deletion_batches_all_index_records(ctx: AppContext, monkeypatc
     assert len(expected_ids) > 2
     calls = _limit_deletes(monkeypatch, store)
 
+    ctx.db.execute("UPDATE documents SET status = 'deleting' WHERE id = ?", (document_id,))
     run_task(ctx, {"kind": "delete_document", "payload": json.dumps({"document_id": document_id})})
 
     assert len(calls) == (len(expected_ids) + 1) // 2

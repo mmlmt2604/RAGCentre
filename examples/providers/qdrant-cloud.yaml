@@ -10,4 +10,4 @@ config:
   prefix: rc_
   quantization: scalar
 secrets:
-  api_key: {env: QDRANT_API_KEY}
+  api_key: {env: RAGCENTRE_PROVIDER_QDRANT_API_KEY}

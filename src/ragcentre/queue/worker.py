@@ -81,9 +81,9 @@ class Worker:
                 fail(self.ctx, claim, exc)
             else:
                 log.info("stale result discarded", extra={"node_run_id": claim.id})
-        except Exception as exc:  # defensive: never lose a worker to a bug
+        except Exception:  # defensive: never lose a worker to a bug
             log.exception("executor crashed", extra={"node_run_id": claim.id})
-            error = ExecutionError("internal_error", f"internal error: {exc}", retryable=False)
+            error = ExecutionError("internal_error", "Internal worker error. See server logs.", retryable=False)
             if is_current(self.ctx, claim):
                 fail(self.ctx, claim, error)
         finally:
@@ -113,7 +113,7 @@ class Worker:
                 error = exc
             else:
                 log.exception("task crashed", extra={"task_id": task_id})
-                error = ExecutionError("internal_error", f"internal error: {exc}", retryable=False)
+                error = ExecutionError("internal_error", "Internal worker error. See server logs.", retryable=False)
             fail_task(self.ctx, task_id, worker_id, attempt, error)
             if self.ctx.db.scalar("SELECT status FROM tasks WHERE id = ?", (task_id,)) == "failed":
                 on_task_failed(self.ctx, task)

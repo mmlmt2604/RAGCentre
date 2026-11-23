@@ -83,6 +83,7 @@ def run_eval(ctx: AppContext, run_id: str) -> None:
 
     Resumable: rows already written are skipped, so an interrupted run continues where it stopped.
     """
+    from ragcentre.pipeline.purge import scrub_retrieved
     from ragcentre.retrieval.engine import query
 
     run = ctx.db.one("SELECT * FROM eval_runs WHERE id = ?", (run_id,))
@@ -106,7 +107,14 @@ def run_eval(ctx: AppContext, run_id: str) -> None:
             error = None
             try:
                 response = query(
-                    ctx, corpus_id, pid, item["question"], max(ks), item["filter"], bool(config["allow_partial"])
+                    ctx,
+                    corpus_id,
+                    pid,
+                    item["question"],
+                    max(ks),
+                    item["filter"],
+                    bool(config["allow_partial"]),
+                    include_document_revision=True,
                 )
                 for r in response["results"]:
                     retrieved.append(
@@ -114,6 +122,7 @@ def run_eval(ctx: AppContext, run_id: str) -> None:
                             "rank": r["rank"],
                             "chunk_id": r["chunk_id"],
                             "document_id": r["document_id"],
+                            "document_revision": r["document_revision"],
                             "document_label": _label(ctx, r["document_id"], labels),
                             "text": r["text"],
                             "page_start": r["page_start"],
@@ -129,11 +138,19 @@ def run_eval(ctx: AppContext, run_id: str) -> None:
                 error = redact(f"{exc.code}: {exc.message}")
                 metrics = zero_metrics(ks)
             latency = round((time.perf_counter() - started) * 1000, 2)
-            ctx.db.execute(
-                "INSERT OR IGNORE INTO eval_results (run_id, pipeline_id, item_id, retrieved, metrics, latency_ms, "
-                "error) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (run_id, pid, item["id"], json.dumps(retrieved), json.dumps(metrics), latency, error),
-            )
+            with ctx.db.write() as conn:
+                for i, entry in enumerate(retrieved):
+                    current = conn.execute(
+                        "SELECT 1 FROM documents WHERE id = ? AND revision = ? AND status = 'active'",
+                        (entry["document_id"], entry.pop("document_revision")),
+                    ).fetchone()
+                    if current is None:
+                        retrieved[i] = scrub_retrieved(entry)
+                conn.execute(
+                    "INSERT OR IGNORE INTO eval_results (run_id, pipeline_id, item_id, retrieved, metrics, latency_ms, "
+                    "error) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (run_id, pid, item["id"], json.dumps(retrieved), json.dumps(metrics), latency, error),
+                )
     _write_summaries(ctx, run_id, config, corpus_id)
 
 
