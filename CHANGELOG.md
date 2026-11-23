@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.0.3
 
+- Harden API request handling, outbound provider access, provider secret scoping,
+  corpus isolation, and document cleanup.
+- Add a standalone RAGCentre MCP server with stdio and Streamable HTTP transports.
 - Detect running OCR shims and show whether their engine works, proven by a scanned test page, on
   Providers, in the pipeline parser picker and in the status bar, with one-click setup.
 - shimkit reports an optional `engine` object on `GET /info`. The Docling shim's remote mode keeps its
