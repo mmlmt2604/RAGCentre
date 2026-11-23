@@ -279,7 +279,8 @@ def test_failed_parses_are_told_apart(world: World, jobs: bool, status: int, sta
     world.add(Shim(jobs=jobs, parse_status=status))
     service = world.one()
     assert (service["state"], service["steps"]["engine"]) == (state, engine)
-    assert "engine said no" in service["detail"]
+    assert str(status) in service["detail"]
+    assert "engine said no" not in service["detail"]
 
 
 @pytest.mark.parametrize("text", ["", ".", "4827", "pump valve bolts pressure", "check.pdf"])
@@ -475,8 +476,8 @@ def test_another_service_with_the_same_version(world: World) -> None:
 def test_setting_the_key_tests_again(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     provider = world.add(Shim(key="right-key"))
     assert world.one()["state"] == "needs_key"
-    monkeypatch.setenv("OCR_TEST_KEY", "right-key")
-    world.ctx.providers.set_secret(provider, "api_key", env="OCR_TEST_KEY")
+    monkeypatch.setenv("RAGCENTRE_PROVIDER_OCR_TEST_KEY", "right-key")
+    world.ctx.providers.set_secret(provider, "api_key", env="RAGCENTRE_PROVIDER_OCR_TEST_KEY")
     assert world.one()["state"] == "ready"
     assert "right-key" not in str(world.monitor.snapshot())
     world.later()
@@ -486,10 +487,10 @@ def test_setting_the_key_tests_again(world: World, monkeypatch: pytest.MonkeyPat
 
 def test_a_missing_key_variable(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     provider = world.add()
-    monkeypatch.delenv("OCR_NOT_SET", raising=False)
-    world.ctx.providers.set_secret(provider, "api_key", env="OCR_NOT_SET")
+    monkeypatch.delenv("RAGCENTRE_PROVIDER_OCR_NOT_SET", raising=False)
+    world.ctx.providers.set_secret(provider, "api_key", env="RAGCENTRE_PROVIDER_OCR_NOT_SET")
     service = world.one()
-    assert service["state"] == "needs_key" and "OCR_NOT_SET" in service["detail"]
+    assert service["state"] == "needs_key" and "RAGCENTRE_PROVIDER_OCR_NOT_SET" in service["detail"]
 
 
 def test_a_result_for_an_edited_provider_is_discarded(world: World) -> None:
