@@ -131,6 +131,31 @@ jobs:
       - name: Tests
         run: uv run --isolated --no-project --with ../shimkit --with docling-core --with fastapi --with python-multipart --with httpx --with pytest pytest
 
+  ragcentre-mcp:
+    # The MCP server package. It has its own environment (it doesn't depend on ragcentre) and its tests
+    # run against a fake API, over in-process, stdio and Streamable HTTP connections.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+    defaults:
+      run:
+        working-directory: packages/ragcentre-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check && uv run ruff format --check
+      - name: Types
+        run: uv run mypy
+      - name: Tests
+        run: uv run pytest
+
   parser-shims:
     # The tests of shimkit and of the MinerU, PaddleOCR, Surya, EasyOCR and docTR example parser
     # services. They need none of the engines or their models (the conversion works on plain dicts),
