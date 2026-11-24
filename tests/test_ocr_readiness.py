@@ -570,6 +570,28 @@ def test_monitor_and_api_agree_on_the_states() -> None:
     assert set(monitor.STEPS) == set(get_args(api.OcrState))
 
 
+@pytest.mark.parametrize("container", [True, False])
+def test_status_says_whether_ragcentre_runs_in_a_container(tmp_path: Path, container: bool) -> None:
+    world = World(tmp_path, container=container)
+    try:
+        assert world.monitor.snapshot()["in_container"] is container
+        with TestClient(create_app(world.ctx)) as client:
+            assert client.get("/v1/ocr-services").json()["in_container"] is container
+            assert client.post("/v1/ocr-services/scan").json()["in_container"] is container
+    finally:
+        world.ctx.close()
+
+
+def test_api_status_works_with_the_default_http_client(tmp_path: Path) -> None:
+    ctx = open_context(Settings(data_dir=tmp_path, discovery_urls="off"))
+    try:
+        with TestClient(create_app(ctx)) as client:
+            assert client.get("/v1/ocr-services").status_code == 200
+            assert client.post("/v1/ocr-services/scan").status_code == 200
+    finally:
+        ctx.close()
+
+
 def test_api(world: World) -> None:
     provider = world.add()
     with TestClient(create_app(world.ctx)) as client:

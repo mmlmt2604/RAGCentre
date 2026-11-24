@@ -116,4 +116,6 @@ class CheckedHTTPTransport(httpx.HTTPTransport):
 
 
 def checked_http_client(allow: tuple[str, ...] = (), **kwargs: Any) -> httpx.Client:
-    return httpx.Client(transport=CheckedHTTPTransport(allow), trust_env=False, follow_redirects=False, **kwargs)
+    # Keep the egress policy even when callers explicitly request these same settings.
+    kwargs.update(transport=CheckedHTTPTransport(allow), trust_env=False, follow_redirects=False)
+    return httpx.Client(**kwargs)

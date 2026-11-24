@@ -12,6 +12,7 @@
   run before it spends more than you allow. See `docs/protocols/llm-v1.md`.
 - The pipeline builder has an optional Enrich column, and chunks, query results and pipeline diffs show
   the enrichment. Database migration 0004 adds the `chunk_enrichments` table.
+- First-run setup creates a corpus and its first pipeline, guides you through starting an OCR shim, and selects it when it answers.
 
 ## 0.0.3
 

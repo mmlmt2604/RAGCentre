@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 log = logging.getLogger("ragcentre.ocr")
 
 # The Compose service names and ports of examples/*_shim (and of shimkit's Tesseract example).
+# Keep the welcome guide catalogue in ui/src/features/welcome/engines.ts in sync.
 KNOWN_SHIMS = (
     ("docling", 8701),
     ("mineru", 8702),

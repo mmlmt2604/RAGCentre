@@ -77,7 +77,7 @@ describe("OCR readiness", () => {
     await within(bar()).findByText("OCR ready");
     state.runningShims = ["http://surya:8704"];
     await queryClient.invalidateQueries({ queryKey: keys.ocr });
-    expect(await within(screen.getByRole("region", { name: "Notifications" })).findByText("Found docling-shim")).toBeInTheDocument();
+    expect(await within(screen.getByRole("region", { name: "Notifications" })).findByText("Found surya-shim")).toBeInTheDocument();
   });
 
   it("offers found shims when adding a parser", async () => {
@@ -99,7 +99,7 @@ describe("OCR readiness", () => {
 
 describe("status bar summary", () => {
   const service = (state: OcrState, added = true) => ({ state, busy: false, provider_id: added ? state : null }) as OcrService;
-  const summary = (...services: OcrService[]) => ocrSummary({ services, scanning: false, discovery_enabled: true } satisfies OcrStatus);
+  const summary = (...services: OcrService[]) => ocrSummary({ services, scanning: false, discovery_enabled: true, in_container: true } satisfies OcrStatus);
 
   it("never calls a mix ready", () => {
     expect(summary(service("ready"), service("offline"))).toEqual({ state: "offline", label: "1 of 2 OCR ready" });

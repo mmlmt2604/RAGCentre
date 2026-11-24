@@ -47,7 +47,8 @@ shown (see [`examples/providers/`](examples/providers/)); each service's README 
 ## OCR detection
 
 RAGCentre finds parser shims that are running and shows whether their OCR works, on **Providers**, in
-the pipeline's parser picker and in the status bar.
+the pipeline's parser picker and in the status bar. On a new server, guided setup shows the command
+to start a shim and selects it when it answers.
 
 - **Found, not tested:** a shim answers `GET /info`. Nothing has been sent to it. **Add and test OCR**
   registers it.

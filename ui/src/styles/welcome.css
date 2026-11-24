@@ -1,0 +1,850 @@
+/* ---------- First-run setup (features/welcome) ----------
+   Left: the pipeline chain filling in as choices are made. Right: one step at a time.
+   Motion has one authored moment: on create, wires draw down the chain and each node's
+   fingerprint types itself in. Everything else is quick state feedback. */
+
+.wl {
+  width: min(880px, calc(100vw - 32px));
+  height: min(600px, calc(100vh - 48px));
+  overflow: hidden;
+}
+.wl-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  height: 100%;
+  color: var(--text-2);
+}
+.wl-close {
+  position: absolute;
+  top: var(--space-5);
+  right: var(--space-5);
+}
+
+.wl-grid {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  height: 100%;
+}
+
+/* ---------- Chain ---------- */
+
+.wl-chain {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-7) var(--space-6);
+  background: var(--ground);
+  border-right: 1px solid var(--seam);
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  overflow-y: auto;
+}
+.wl-nodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wl-corpus,
+.wl-node__box,
+.wl-retrieve {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  padding: 7px 10px 8px;
+  border: 1px dashed var(--seam-strong);
+  border-radius: var(--radius);
+  transition:
+    border-color 200ms var(--ease-out),
+    background-color 200ms var(--ease-out),
+    opacity 200ms var(--ease-out);
+}
+.wl-corpus {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-4);
+  border-radius: var(--radius-lg);
+}
+.wl-corpus .wl-mark {
+  align-self: center;
+}
+.wl-node__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 18px;
+}
+.wl-node__label,
+.wl-corpus__label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-2);
+  transition: color 200ms var(--ease-out);
+}
+.wl-node__jump {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--seam-strong);
+  text-underline-offset: 3px;
+}
+.wl-node__jump:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+.wl-node__value,
+.wl-corpus__name {
+  font-size: var(--text-xs);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-node__plus {
+  color: var(--text-3);
+}
+
+/* Wires: a 1px seam between nodes, with an accent fill that draws down once a node is built. */
+.wl-node,
+.wl-retrieve {
+  position: relative;
+  padding-top: 14px;
+}
+.wl-retrieve {
+  margin-top: 14px;
+  padding-top: 7px;
+}
+.wl-node__wire {
+  position: absolute;
+  left: 18px;
+  top: 0;
+  width: 1px;
+  height: 14px;
+  background: var(--seam-strong);
+  overflow: hidden;
+}
+.wl-retrieve .wl-node__wire {
+  top: -15px;
+}
+.wl-node__wire::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ok);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 320ms var(--ease-out) calc(var(--i, 5) * 110ms);
+}
+.wl-node[data-state="done"] .wl-node__wire::after,
+.wl-retrieve[data-state="done"] .wl-node__wire::after {
+  transform: scaleY(1);
+}
+
+/* Node states */
+[data-state="todo"] > .wl-node__box,
+.wl-corpus[data-state="todo"],
+.wl-retrieve[data-state="todo"] {
+  border-style: dashed;
+}
+[data-state="todo"] .wl-node__value,
+.wl-corpus[data-state="todo"] .wl-corpus__name,
+.wl-retrieve[data-state="todo"] .wl-node__value {
+  color: var(--text-3);
+}
+[data-state="current"] > .wl-node__box,
+.wl-corpus[data-state="current"],
+.wl-retrieve[data-state="current"] {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+[data-state="current"] .wl-node__label,
+.wl-corpus[data-state="current"] .wl-corpus__label {
+  color: var(--text);
+}
+[data-state="set"] > .wl-node__box,
+.wl-corpus[data-state="set"],
+.wl-retrieve[data-state="set"] {
+  border-style: solid;
+  background: var(--panel);
+}
+[data-state="busy"] > .wl-node__box,
+.wl-corpus[data-state="busy"],
+.wl-retrieve[data-state="busy"] {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--warn) 60%, var(--seam));
+  background: var(--warn-soft);
+}
+[data-state="done"] > .wl-node__box,
+.wl-corpus[data-state="done"],
+.wl-retrieve[data-state="done"] {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--seam));
+  background: var(--panel);
+}
+[data-state="failed"] > .wl-node__box,
+.wl-corpus[data-state="failed"],
+.wl-retrieve[data-state="failed"] {
+  border-style: solid;
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.wl-node[data-state="off"] > .wl-node__box {
+  border-style: dashed;
+  opacity: 0.6;
+}
+.wl-node[data-state="off"] .wl-node__value {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.wl-mark {
+  flex: none;
+}
+.wl-mark--ok {
+  color: var(--ok);
+  animation: wl-tick 220ms var(--ease-out);
+}
+.wl-mark--bad {
+  color: var(--danger);
+}
+.wl-mark--now {
+  font-size: 11px;
+  color: var(--accent);
+}
+.wl-chain .rc-spinner {
+  width: 11px;
+  height: 11px;
+}
+@keyframes wl-tick {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+/* Fingerprints type in, one node after another. */
+.wl-fp {
+  display: flex;
+  margin-top: 5px;
+  animation: wl-type 520ms var(--ease-out) both;
+  animation-delay: calc(var(--i) * 110ms + 140ms);
+}
+@keyframes wl-type {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.4;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+/* ---------- Main column ---------- */
+
+.wl-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.wl-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-8) 56px var(--space-6) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  animation: wl-in 300ms var(--ease-out);
+}
+@keyframes wl-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir, 1) * 14px));
+    filter: blur(2px);
+  }
+}
+
+.wl-head h2 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+.wl-head--hello h2 {
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+}
+.wl-head p {
+  margin-top: var(--space-3);
+  max-width: 62ch;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+.wl-head strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.wl-facts {
+  display: grid;
+  border-top: 1px solid var(--seam);
+  max-width: 62ch;
+}
+.wl-facts > div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: var(--space-5);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--seam);
+}
+.wl-facts dt {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-3);
+  padding-top: 1px;
+}
+.wl-facts dd {
+  margin: 0;
+  color: var(--text);
+}
+
+/* Options: one bordered list with seams, not a stack of cards. */
+.wl-opts {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--seam);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  flex: none;
+}
+.wl-opt + .wl-opt {
+  border-top: 1px solid var(--seam);
+}
+.wl-opt {
+  transition: background-color 160ms var(--ease-out);
+}
+.wl-opt[data-on] {
+  background: var(--accent-soft);
+}
+.wl-opt__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: var(--space-5);
+  padding: 10px var(--space-5) 11px;
+  cursor: pointer;
+}
+.wl-opt:not([data-on]) .wl-opt__row:hover {
+  background: var(--hover);
+}
+.wl-opt__row input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.wl-opt__row:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.wl-opt__dot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border: 1px solid var(--seam-strong);
+  border-radius: 50%;
+  background: var(--ground);
+  transition: border-color 160ms var(--ease-out);
+}
+.wl-opt__dot::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--accent-fill);
+  transform: scale(0);
+  transition: transform 180ms var(--ease-out);
+}
+.wl-opt[data-on] .wl-opt__dot {
+  border-color: var(--accent);
+}
+.wl-opt[data-on] .wl-opt__dot::after {
+  transform: scale(1);
+}
+.wl-opt__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.wl-opt__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  font-weight: 500;
+  color: var(--text);
+}
+.wl-opt__meta {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.wl-opt__desc {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.wl-opt__more {
+  padding: var(--space-1) var(--space-5) var(--space-5) calc(var(--space-5) * 2 + 14px);
+  animation: wl-more 220ms var(--ease-out);
+}
+@keyframes wl-more {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.wl-tag {
+  height: 16px;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.wl-fields {
+  display: grid;
+  gap: var(--space-5);
+}
+.wl-fields--host {
+  grid-template-columns: minmax(0, 1fr) 96px;
+}
+.wl-fields--names {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.wl-note {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  max-width: 62ch;
+}
+
+/* ---------- Create log ---------- */
+
+.wl-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--seam);
+}
+.wl-log__line {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto 56px;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--seam);
+  transition: color 200ms var(--ease-out);
+}
+.wl-log__icon {
+  display: grid;
+  place-items: center;
+}
+.wl-log__wait {
+  width: 9px;
+  height: 9px;
+  border: 1px dashed var(--text-3);
+  border-radius: 50%;
+}
+.wl-log__line[data-state="wait"] {
+  color: var(--text-3);
+}
+.wl-log__line[data-state="done"] .wl-log__icon {
+  color: var(--ok);
+  animation: wl-tick 220ms var(--ease-out);
+}
+.wl-log__line[data-state="failed"] .wl-log__icon {
+  color: var(--danger);
+}
+.wl-log__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-log__detail {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+.wl-log__ms {
+  font-size: var(--text-xs);
+  color: var(--num);
+  text-align: right;
+}
+.wl-log__error {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--seam));
+  border-radius: var(--radius-lg);
+  background: var(--danger-soft);
+  color: var(--text);
+}
+.wl-log__next {
+  color: var(--text-2);
+}
+.wl-log__error code {
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+/* ---------- Done ---------- */
+
+.wl-made {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+.wl-made__label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-2);
+}
+.wl-made__hint {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  max-width: 62ch;
+}
+
+.wl-drop {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border: 1px dashed var(--seam-strong);
+  border-radius: var(--radius-lg);
+  transition:
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out);
+}
+.wl-drop[data-over] {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.wl-drop__icon {
+  color: var(--text-3);
+}
+.wl-drop[data-over] .wl-drop__icon {
+  color: var(--accent);
+}
+.wl-drop__text {
+  display: grid;
+  gap: 2px;
+}
+.wl-drop__text strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.wl-drop__text span {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.wl-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--seam);
+}
+.wl-files li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4) var(--space-5);
+  padding: var(--space-4) 0 0;
+  border-bottom: 1px solid var(--seam);
+  animation: wl-more 200ms var(--ease-out);
+}
+.wl-files__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-files__size {
+  font-size: var(--text-xs);
+  color: var(--num);
+}
+.wl-files__state {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.wl-files li[data-state="failed"] .wl-files__state {
+  color: var(--danger);
+}
+.wl-files__ok {
+  color: var(--ok);
+}
+.wl-files__bad {
+  color: var(--danger);
+}
+.wl-files__bar {
+  grid-column: 1 / -1;
+  height: 2px;
+  margin-top: var(--space-4);
+  background: transparent;
+}
+.wl-files__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform 200ms linear, opacity 300ms var(--ease-out) 200ms;
+}
+.wl-files li:not([data-state="up"]) .wl-files__bar > span {
+  opacity: 0;
+}
+
+/* ---------- Footer ---------- */
+
+.wl-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-5) var(--space-8);
+  border-top: 1px solid var(--seam);
+  background: var(--elevated);
+  border-radius: 0 0 var(--radius-lg) 0;
+}
+.wl-foot__spacer {
+  flex: 1;
+}
+.wl-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.wl-progress__bars {
+  display: inline-flex;
+  gap: 3px;
+}
+.wl-progress__bars > span {
+  width: 18px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--seam-strong);
+  transition: background-color 240ms var(--ease-out);
+}
+.wl-progress__bars > span[data-on] {
+  background: var(--accent);
+}
+
+/* ---------- Small screens: the chain gives way to the step ---------- */
+
+@media (max-width: 760px) {
+  .wl {
+    height: calc(100vh - 32px);
+  }
+  .wl-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wl-chain {
+    display: none;
+  }
+  .wl-pane {
+    padding: var(--space-7) var(--space-6) var(--space-6);
+  }
+  .wl-head {
+    padding-right: var(--space-7);
+  }
+  .wl-foot {
+    padding-left: var(--space-6);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  }
+  .wl-fields--names {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wl-log__detail {
+    display: none;
+  }
+  .wl-progress__bars {
+    display: none;
+  }
+  .wl-progress {
+    white-space: nowrap;
+  }
+  .wl-log__line {
+    grid-template-columns: 16px minmax(0, 1fr) 56px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No sliding, blurring or typing: steps and fingerprints cross-fade; state colours still change. */
+  .wl-pane {
+    animation: wl-fade 160ms linear;
+  }
+  .wl-fp {
+    animation: wl-fade 160ms linear both;
+  }
+  .wl-opt__more,
+  .wl-files li,
+  .wl-mark--ok,
+  .wl-log__line[data-state="done"] .wl-log__icon {
+    animation: none;
+  }
+  .wl-node__wire::after {
+    transition: none;
+  }
+}
+@keyframes wl-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* OCR setup guide */
+.wl-guide {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.wl-guide p {
+  margin: 0;
+}
+.wl-engines {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--seam);
+  border: 1px solid var(--seam);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.wl-engine {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--panel);
+  cursor: pointer;
+}
+.wl-engine:hover {
+  background: var(--hover);
+}
+.wl-engine:has(:checked) {
+  background: var(--accent-soft);
+}
+.wl-engine:has(:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.wl-engine input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.wl-engine__copy {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+}
+.wl-engine__name,
+.wl-guide__mode > span {
+  color: var(--text);
+  font-weight: 500;
+}
+.wl-engine__name .mono,
+.wl-guide__note {
+  color: var(--text-3);
+}
+.wl-guide__mode {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.wl-guide__mode .rc-seg {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.wl-guide__mode .rc-seg__opt {
+  flex-shrink: 0;
+}
+.wl-guide__command {
+  min-width: 0;
+  animation: wl-fade 140ms var(--ease-out);
+}
+.wl-guide__command pre {
+  font-size: var(--text-xs);
+  white-space: pre;
+}
+.wl-guide__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  overflow-wrap: anywhere;
+}
+.wl-guide__status .rc-btn {
+  margin-left: auto;
+}
+.wl-guide__note {
+  max-width: 62ch;
+  overflow-wrap: anywhere;
+}
+.wl-opt[data-arrived] {
+  animation: wl-arrive 900ms var(--ease-out);
+}
+.wl-opt[data-arrived] .wl-opt__dot::after {
+  animation: wl-tick 220ms var(--ease-out);
+}
+@keyframes wl-arrive {
+  from { background: var(--ok-soft); }
+  to { background: var(--accent-soft); }
+}
+.wl-engine__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+.wl-guide__status--waiting {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.wl-node[data-state="busy"] .wl-node__value {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .wl-engines {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wl-guide__status--waiting {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .wl-guide__status--waiting .rc-btn {
+    grid-column: 2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wl-opt[data-arrived],
+  .wl-opt[data-arrived] .wl-opt__dot::after,
+  .wl-guide__command {
+    animation: none;
+  }
+}
