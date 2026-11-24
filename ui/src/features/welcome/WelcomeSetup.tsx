@@ -4,16 +4,19 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useMatch, useNavigate, useSearchParams } from "react-router";
 import { ApiError, request, upload } from "../../api/client";
 import { useCorpora, useOcr, useProviders } from "../../api/hooks";
-import type { Corpus, Document, OcrService, Pipeline, Provider } from "../../api/types";
+import type { Corpus, Document, OcrService, OcrStatus, Pipeline, Provider } from "../../api/types";
 import { Button } from "../../components/Button";
 import { Field, TextInput } from "../../components/Field";
 import { Fingerprint } from "../../components/Fingerprint";
 import { nextStep } from "../../lib/errors";
 import { bytes } from "../../lib/format";
+import { ocrLabel } from "../ocr/model";
 import {
   acceptFor,
   defaultChoices,
+  defaultGuide,
   embedderPick,
+  guideDetails,
   markSetupSeen,
   parserPick,
   pipelineConfig,
@@ -24,6 +27,7 @@ import {
   type Errors,
   type Pick,
 } from "./model";
+import { ShimGuide } from "./ShimGuide";
 
 /**
  * First-run setup. Opens once on an empty server (no corpora) and on demand with ?setup.
@@ -130,7 +134,7 @@ function SetupDialog({ onClose }: { onClose: (how: "done" | "skipped") => void }
       {ready ? (
         <Flow
           providers={providers.data.items}
-          services={ocr.data?.services ?? []}
+          ocrStatus={ocr.data}
           corpora={corpora.data.items}
           step={step}
           dir={dir}
@@ -154,7 +158,7 @@ function SetupDialog({ onClose }: { onClose: (how: "done" | "skipped") => void }
 
 function Flow({
   providers,
-  services,
+  ocrStatus,
   corpora,
   step,
   dir,
@@ -165,7 +169,7 @@ function Flow({
   onFinish,
 }: {
   providers: Provider[];
-  services: OcrService[];
+  ocrStatus?: OcrStatus;
   corpora: Corpus[];
   step: number;
   dir: number;
@@ -177,7 +181,11 @@ function Flow({
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [c, setC] = useState<Choices>(() => defaultChoices(providers, services));
+  const [c, setC] = useState<Choices>(() => defaultChoices(providers, ocrStatus?.services ?? [], ocrStatus));
+  const [arrival, setArrival] = useState<{ id: string; message: string }>();
+  const [animateArrival, setAnimateArrival] = useState(false);
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const guide = c.parser.mode === "guide" && ocrStatus ? guideDetails(c.parser, ocrStatus, providers) : undefined;
   const [errors, setErrors] = useState<Errors>({});
   const [tasks, setTasks] = useState<Task[]>([]);
   // What the run has created so far, so a retry or an edited choice reuses it. The ref is the
@@ -203,7 +211,7 @@ function Flow({
       if (p && "create" in p) taken.add(p.create.name);
       return p;
     };
-    const parser = claim(parserPick(c.parser, taken));
+    const parser = c.parser.mode === "guide" ? null : claim(parserPick(c.parser, taken));
     const embedder = claim(embedderPick(c.embedder, taken));
     const store = claim(storePick(c.store, taken));
     return { parser, embedder, store };
@@ -213,7 +221,21 @@ function Flow({
   const set = (patch: Partial<Choices>) => {
     setC((prev) => ({ ...prev, ...patch }));
     setErrors({});
+    if (patch.parser) {
+      setArrival(undefined);
+      setAnimateArrival(false);
+    }
   };
+
+  const foundShim = (service: OcrService, label: string) => {
+    set({ parser: { mode: "shim", service } });
+    setArrival({ id: service.id, message: `${label} found at ${service.base_url}. Selected as the parser.` });
+    setAnimateArrival(true);
+  };
+
+  useEffect(() => {
+    if (arrival) continueRef.current?.focus();
+  }, [arrival]);
 
   // Move focus into each new step: the selected option, the first field, or the primary action.
   useEffect(() => {
@@ -226,6 +248,12 @@ function Flow({
       pane.closest("form")?.querySelector<HTMLElement>(".wl-foot [data-autofocus]");
     target?.focus({ preventScroll: true });
   }, [step]);
+
+  useEffect(() => {
+    if (Object.keys(errors).length) {
+      paneRef.current?.querySelector<HTMLElement>("[aria-invalid='true'], [data-setup-error]")?.focus();
+    }
+  }, [errors]);
 
   const run = async () => {
     setRunning(true);
@@ -295,12 +323,13 @@ function Flow({
     e.preventDefault();
     if (step === 0) return go(1);
     if (step <= LAST_CHOICE) {
-      const errs = validateStep(step, c, takenCorpora);
+      const nextChoices: Choices = step === 1 && guide?.manualUrl !== undefined
+        ? { ...c, parser: { mode: "url", url: guide.manualUrl.trim() } }
+        : c;
+      const errs = validateStep(step, nextChoices, takenCorpora);
       setErrors(errs);
-      if (Object.keys(errs).length) {
-        paneRef.current?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus();
-        return;
-      }
+      if (Object.keys(errs).length) return;
+      if (nextChoices !== c) setC(nextChoices);
       if (step < LAST_CHOICE) return go(step + 1);
       go(CREATE);
       void run();
@@ -312,20 +341,35 @@ function Flow({
   const failed = tasks.find((t) => t.state === "failed");
   const nodeState = useNodeStates(step, tasks, Boolean(made.pipeline) && step >= DONE);
 
+  const waiting = step === 1 && Boolean(guide?.watchUrl);
+
   return (
     <form className="wl-grid" onSubmit={submit} noValidate>
       <Chain
         choices={c}
         step={step}
-        states={nodeState}
-        names={{ text: textParser, parser: nameOf(picks.parser), embedder: nameOf(picks.embedder), store: nameOf(picks.store) }}
+        states={waiting ? { ...nodeState, parse: "busy" } : nodeState}
+        names={{ text: textParser, parser: guide ? `${guide.engine.id}${waiting ? " (waiting)" : ""}` : nameOf(picks.parser), embedder: nameOf(picks.embedder), store: nameOf(picks.store) }}
         pipeline={step >= DONE ? made.pipeline : undefined}
         onJump={(s) => (s < step && step <= LAST_CHOICE ? go(s) : undefined)}
       />
       <div className="wl-main">
         <div key={step} ref={paneRef} className="wl-pane" style={{ "--dir": dir } as React.CSSProperties}>
           {step === 0 ? <Welcome /> : null}
-          {step === 1 ? <ParseStep c={c} set={set} errors={errors} providers={providers} services={services} textParser={textParser} /> : null}
+          {step === 1 ? (
+            <ParseStep
+              c={c}
+              set={set}
+              errors={errors}
+              providers={providers}
+              ocrStatus={ocrStatus}
+              textParser={textParser}
+              arrival={arrival}
+              animateArrival={animateArrival}
+              onAnimationEnd={() => setAnimateArrival(false)}
+              onFound={foundShim}
+            />
+          ) : null}
           {step === 2 ? <EmbedStep c={c} set={set} errors={errors} providers={providers} /> : null}
           {step === 3 ? <StoreStep c={c} set={set} errors={errors} providers={providers} /> : null}
           {step === 4 ? <NameStep c={c} set={set} errors={errors} /> : null}
@@ -352,7 +396,7 @@ function Flow({
               Start <ArrowRight size={14} strokeWidth={1.75} aria-hidden />
             </Button>
           ) : step < LAST_CHOICE ? (
-            <Button type="submit" variant="primary">
+            <Button ref={continueRef} type="submit" variant="primary">
               Continue <ArrowRight size={14} strokeWidth={1.75} aria-hidden />
             </Button>
           ) : step === LAST_CHOICE ? (
@@ -568,9 +612,16 @@ function Welcome() {
 type StepProps = { c: Choices; set: (p: Partial<Choices>) => void; errors: Errors };
 
 /** One option in a radio list; `more` renders only while the option is selected. */
-function Option({ name, checked, onSelect, title, meta, children, more, tag }: { name: string; checked: boolean; onSelect: () => void; title: ReactNode; meta?: ReactNode; children?: ReactNode; more?: ReactNode; tag?: ReactNode }) {
+function Option({ name, checked, onSelect, title, meta, children, more, tag, arrived, onAnimationEnd }: { name: string; checked: boolean; onSelect: () => void; title: ReactNode; meta?: ReactNode; children?: ReactNode; more?: ReactNode; tag?: ReactNode; arrived?: boolean; onAnimationEnd?: () => void }) {
   return (
-    <div className="wl-opt" data-on={checked || undefined}>
+    <div
+      className="wl-opt"
+      data-on={checked || undefined}
+      data-arrived={arrived || undefined}
+      onAnimationEnd={arrived ? (event) => {
+        if (event.animationName === "wl-arrive") onAnimationEnd?.();
+      } : undefined}
+    >
       <label className="wl-opt__row">
         <input type="radio" name={name} checked={checked} onChange={onSelect} />
         <span className="wl-opt__dot" aria-hidden />
@@ -590,15 +641,24 @@ function Option({ name, checked, onSelect, title, meta, children, more, tag }: {
 
 const Tag = ({ children }: { children: ReactNode }) => <span className="rc-badge wl-tag">{children}</span>;
 
-function ParseStep({ c, set, errors, providers, services, textParser }: StepProps & { providers: Provider[]; services: OcrService[]; textParser: string }) {
+function ParseStep({ c, set, errors, providers, ocrStatus, textParser, arrival, animateArrival, onAnimationEnd, onFound }: StepProps & {
+  providers: Provider[];
+  ocrStatus?: OcrStatus;
+  textParser: string;
+  arrival?: { id: string; message: string };
+  animateArrival: boolean;
+  onAnimationEnd: () => void;
+  onFound: (service: OcrService, label: string) => void;
+}) {
   const existing = providers.filter((p) => p.kind === "parser" && !p.builtin);
-  const found = services.filter((s) => !s.provider_id);
+  const found = (ocrStatus?.services ?? []).filter((s) => !s.provider_id);
   const p = c.parser;
   return (
     <>
       <Head title="How should documents be read?">
         <span className="mono">{textParser}</span> reads plain text, Markdown and HTML in-process. PDFs, scans and Office files need a parser service, such as an OCR shim.
       </Head>
+      <div className="sr-only" role="status">{arrival?.message}</div>
       <div className="wl-opts" role="radiogroup" aria-labelledby="wl-title">
         {existing.map((e) => (
           <Option key={e.id} name="parser" checked={p.mode === "existing" && p.name === e.name} onSelect={() => set({ parser: { mode: "existing", name: e.name } })} title={<span className="mono">{e.name}</span>} meta={String(e.config.base_url ?? e.type)} tag={<Tag>registered</Tag>}>
@@ -610,17 +670,40 @@ function ParseStep({ c, set, errors, providers, services, textParser }: StepProp
           return (
             <Option
               key={s.id}
+              arrived={animateArrival && p.mode === "shim" && p.service.id === s.id && arrival?.id === s.id}
+              onAnimationEnd={onAnimationEnd}
               name="parser"
               checked={p.mode === "shim" && p.service.id === s.id}
               onSelect={() => set({ parser: { mode: "shim", service: s } })}
               title={<>{s.name ?? "Parser service"} found running</>}
               meta={`${s.base_url}${s.version ? ` · ${s.version}` : ""}`}
-              tag={<Tag>{down ? "not answering" : "detected"}</Tag>}
+              tag={<Tag>{s.state === "detected" ? "detected" : ocrLabel(s)}</Tag>}
             >
-              {down ? s.message : "Reads PDFs, scans and Office files. Registered as a provider when you create the pipeline."}
+              {down || s.state === "no_ocr" ? s.message : "Registered as a parser provider when you create the pipeline."}
             </Option>
           );
         })}
+        {ocrStatus ? (
+          <Option
+            name="parser"
+            checked={p.mode === "guide"}
+            onSelect={() => set({ parser: defaultGuide(ocrStatus) })}
+            title="Start an OCR shim"
+            more={p.mode === "guide" ? (
+              <ShimGuide
+                choice={p}
+                status={ocrStatus}
+                providers={providers}
+                errors={errors}
+                onChange={(parser) => set({ parser })}
+                onFound={onFound}
+                onReuse={(name) => set({ parser: { mode: "existing", name } })}
+              />
+            ) : null}
+          >
+            Pick an engine and run the setup command. {ocrStatus.discovery_enabled ? "RAGCentre watches for it and selects it when it answers." : "Enter the service URL when it starts."}
+          </Option>
+        ) : null}
         <Option name="parser" checked={p.mode === "text"} onSelect={() => set({ parser: { mode: "text" } })} title="Text files only">
           No service needed. Add a parser later by cloning the pipeline.
         </Option>

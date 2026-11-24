@@ -1,6 +1,7 @@
 // First-run setup: the choices the welcome flow collects and the requests that realise them.
-import type { OcrService, PipelineConfig, Provider, ProviderCreate } from "../../api/types";
+import type { OcrService, OcrStatus, PipelineConfig, Provider, ProviderCreate } from "../../api/types";
 import { PROVIDER_NAME_RE } from "../../lib/configSchema";
+import { ENGINES, shimCommand, urlPort, type EngineId, type RunWith } from "./engines";
 
 const KEY = "ragcentre.setup";
 
@@ -26,7 +27,8 @@ export function markSetupSeen(how: "done" | "skipped") {
 /** A provider the flow either reuses by name or creates from a request. */
 export type Pick = { reuse: string } | { create: ProviderCreate };
 
-export type ParserChoice = { mode: "text" } | { mode: "shim"; service: OcrService } | { mode: "url"; url: string } | { mode: "existing"; name: string };
+export type GuideChoice = { mode: "guide"; engine: EngineId; runWith: RunWith; url?: string };
+export type ParserChoice = GuideChoice | { mode: "text" } | { mode: "shim"; service: OcrService } | { mode: "url"; url: string } | { mode: "existing"; name: string };
 export type EmbedderChoice = { mode: "hash" } | { mode: "openai"; url: string; model: string } | { mode: "existing"; name: string };
 export type StoreChoice = { mode: "sqlite" } | { mode: "qdrant"; url: string } | { mode: "chroma"; host: string; port: string } | { mode: "existing"; name: string };
 export type Retrieval = "hybrid" | "dense";
@@ -40,19 +42,36 @@ export interface Choices {
   retrieval: Retrieval;
 }
 
-export function defaultChoices(providers: Provider[], services: OcrService[]): Choices {
+export function defaultChoices(providers: Provider[], services: OcrService[], status?: OcrStatus): Choices {
   const shim = services.find((s) => !s.provider_id && s.state !== "engine_down" && s.state !== "offline");
   const existingParser = providers.find((p) => p.kind === "parser" && !p.builtin);
   const embedder = providers.find((p) => p.kind === "embedder");
   const store = providers.find((p) => p.kind === "vector_store");
   return {
-    parser: existingParser ? { mode: "existing", name: existingParser.name } : shim ? { mode: "shim", service: shim } : { mode: "text" },
+    parser: existingParser ? { mode: "existing", name: existingParser.name } : shim ? { mode: "shim", service: shim } : status?.discovery_enabled ? defaultGuide(status) : { mode: "text" },
     embedder: embedder ? { mode: "existing", name: embedder.name } : { mode: "hash" },
     store: store ? { mode: "existing", name: store.name } : { mode: "sqlite" },
     corpus: "",
     pipeline: "first-pipeline",
     retrieval: "hybrid",
   };
+}
+
+export function defaultGuide(status: OcrStatus): GuideChoice {
+  return { mode: "guide", engine: "docling", runWith: status.in_container ? "docker" : "uv" };
+}
+
+export function guideDetails(choice: GuideChoice, status: OcrStatus, providers: Provider[]) {
+  const engine = ENGINES.find((entry) => entry.id === choice.engine) ?? ENGINES[0];
+  const command = shimCommand(engine, choice.runWith, status.in_container);
+  const registered = choice.runWith === "remote"
+    ? undefined
+    : providers.find((p) => p.kind === "parser" && p.type === "http" && urlPort(p.config.base_url) === engine.port);
+  const watchUrl = status.discovery_enabled && !registered ? command.watchUrl : null;
+  const manualUrl = !registered && (choice.runWith === "remote" || !status.discovery_enabled)
+    ? choice.url ?? command.watchUrl ?? `http://<host>:${engine.port}`
+    : undefined;
+  return { engine, command, registered, watchUrl, manualUrl };
 }
 
 // ---------- Validation, one step at a time ----------
@@ -70,6 +89,7 @@ export type Errors = Record<string, string>;
 
 export function validateStep(step: number, c: Choices, takenCorpora: Set<string>): Errors {
   const e: Errors = {};
+  if (step === 1 && c.parser.mode === "guide") e.parserGuide = "Start the shim, or choose Text files only.";
   if (step === 1 && c.parser.mode === "url" && !isUrl(c.parser.url)) e.parserUrl = "Enter the service's http:// or https:// address.";
   if (step === 2 && c.embedder.mode === "openai") {
     if (!isUrl(c.embedder.url)) e.embedUrl = "Enter the server's base URL, for example http://gpu-01:8080/v1.";
@@ -109,7 +129,7 @@ export function freeName(base: string, taken: Set<string>): string {
 
 // ---------- Requests ----------
 
-export function parserPick(c: ParserChoice, taken: Set<string>): Pick | null {
+export function parserPick(c: Exclude<ParserChoice, GuideChoice>, taken: Set<string>): Pick | null {
   if (c.mode === "text") return null;
   if (c.mode === "existing") return { reuse: c.name };
   if (c.mode === "shim") return { create: { name: freeName(c.service.suggested_name ?? c.service.name ?? "ocr", taken), kind: "parser", type: "http", config: { base_url: c.service.base_url } } };

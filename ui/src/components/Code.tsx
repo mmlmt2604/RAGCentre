@@ -1,27 +1,41 @@
 import { Check, Copy } from "lucide-react";
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
-export function CodeBlock({ code, label, maxHeight }: { code: string; label?: string; maxHeight?: number }) {
-  const [copied, setCopied] = useState(false);
+export function CodeBlock({ code, label, maxHeight, copyLabel }: { code: string; label?: string; maxHeight?: number; copyLabel?: boolean }) {
+  const [feedback, setFeedback] = useState<"copied" | "manual">();
+  const content = useRef<HTMLElement>(null);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   const copy = async () => {
+    window.clearTimeout(timer.current);
     try {
       await navigator.clipboard.writeText(code);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
+      if (!content.current) return;
+      setFeedback("copied");
+      timer.current = window.setTimeout(() => setFeedback(undefined), 1400);
     } catch {
-      /* clipboard unavailable */
+      const selection = window.getSelection();
+      if (!selection || !content.current) return;
+      const range = document.createRange();
+      range.selectNodeContents(content.current);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      setFeedback("manual");
     }
   };
   return (
     <div className="rc-code">
       <div className="rc-code__bar">
         <span>{label}</span>
-        <button type="button" className="rc-iconbtn" onClick={copy} aria-label={copied ? "Copied" : "Copy code"}>
-          {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+        {feedback === "manual" ? <span role="status">Press ⌘C / Ctrl+C</span> : null}
+        <button type="button" className={copyLabel ? "rc-btn rc-btn--ghost rc-btn--sm" : "rc-iconbtn"} onClick={copy}
+          aria-label={feedback === "copied" ? "Copied" : copyLabel ? "Copy" : "Copy code"}>
+          {feedback === "copied" ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+          {copyLabel ? <span>{feedback === "copied" ? "Copied" : "Copy"}</span> : null}
         </button>
       </div>
       <pre style={{ maxHeight }}>
-        <code>{code}</code>
+        <code ref={content}>{code}</code>
       </pre>
     </div>
   );
