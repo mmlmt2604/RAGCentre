@@ -679,6 +679,8 @@ export interface components {
             context: string | null;
             /** Document Id */
             document_id: string;
+            /** Enrichment */
+            enrichment: string | null;
             /** Heading Path */
             heading_path: string[];
             /** Id */
@@ -860,6 +862,40 @@ export interface components {
              * @enum {string}
              */
             type: "embed";
+        };
+        /** EnrichNodeOut */
+        EnrichNodeOut: {
+            /** Id */
+            id: string;
+            /** Inputs */
+            inputs: [
+                string
+            ];
+            /** Options */
+            options?: components["schemas"]["EnrichOptionsOut"];
+            /** Provider */
+            provider: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "enrich";
+        };
+        /** EnrichOptionsOut */
+        EnrichOptionsOut: {
+            /** Max Doc Chars */
+            max_doc_chars?: number;
+            /** Max Tokens */
+            max_tokens?: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode?: "situate" | "summary" | "keywords" | "questions";
+            /** Prompt */
+            prompt?: string;
+            /** Temperature */
+            temperature?: number;
         };
         /** EvalComparison */
         EvalComparison: {
@@ -1492,7 +1528,7 @@ export interface components {
             /** Name */
             name: string;
             /** Nodes */
-            nodes: (components["schemas"]["ParseNodeOut"] | components["schemas"]["ChunkNodeOut"] | components["schemas"]["EmbedNodeOut"] | components["schemas"]["IndexVectorNodeOut"] | components["schemas"]["IndexFtsNodeOut"])[];
+            nodes: (components["schemas"]["ParseNodeOut"] | components["schemas"]["ChunkNodeOut"] | components["schemas"]["EnrichNodeOut"] | components["schemas"]["EmbedNodeOut"] | components["schemas"]["IndexVectorNodeOut"] | components["schemas"]["IndexFtsNodeOut"])[];
             retrieval: components["schemas"]["RetrievalConfigOut"];
         };
         /** PipelineDiff */
@@ -1622,7 +1658,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm";
             /** Name */
             name: string;
             /** Secrets */
@@ -1646,7 +1682,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm";
             /** Name */
             name: string;
             /** Type */
@@ -1689,7 +1725,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm";
             /** Label */
             label: string;
             /** Secret Keys */
@@ -1737,6 +1773,8 @@ export interface components {
         };
         /** QueryResponse */
         QueryResponse: {
+            /** Enriched Sources */
+            enriched_sources: string[];
             /** Partial */
             partial: boolean;
             /** Pipeline Fingerprint */
@@ -1763,6 +1801,8 @@ export interface components {
             document: components["schemas"]["QueryDocument"];
             /** Document Id */
             document_id: string;
+            /** Enrichment */
+            enrichment: string | null;
             /** Heading Path */
             heading_path: string[];
             /** Page End */

@@ -234,8 +234,10 @@ def query(
 
     ordered = [cid for cid, _ in sorted(scores.items(), key=lambda x: (-x[1], x[0]))]
 
+    enrich = resolved["retrieval_runtime"].get("enrich")
+
     def eligible(ids: Sequence[str]) -> list[dict[str, Any]]:
-        return _load_chunks(ctx, ids, corpus_id, where, params)
+        return _with_enrichment(ctx, _load_chunks(ctx, ids, corpus_id, where, params), enrich)
 
     with ctx.db.read():
         chunks = eligible(ordered)
@@ -246,7 +248,7 @@ def query(
     rerank = resolved["retrieval_runtime"].get("rerank")
     if rerank is not None and chunks:
         chunks = chunks[: int(rerank["top_n"])]
-        texts = [embedded_text(c["text"], c["context"]) for c in chunks]
+        texts = [embedded_text(c["text"], c["context"], c["enrichment"]) for c in chunks]
         started = time.perf_counter()
         with ctx.providers.lease(rerank["provider_id"]) as reranker:
             ranked = _provider_call(
@@ -275,6 +277,7 @@ def query(
         "pipeline_id": pipeline_id,
         "pipeline_fingerprint": pipeline["fingerprint"],
         "partial": partial,
+        "enriched_sources": [s["id"] for s in sources if s.get("enriched")],
         "results": results,
         "timings_ms": timings,
     }
@@ -307,6 +310,30 @@ def _load_chunks(
     )
     by_id = {r["id"]: dict(r) for r in rows}
     return [by_id[i] for i in ids if i in by_id]
+
+
+def _with_enrichment(
+    ctx: AppContext, chunks: list[dict[str, Any]], enrich: Mapping[str, Any] | None
+) -> list[dict[str, Any]]:
+    """Attach the text the pipeline's enrich node wrote for each chunk (``None`` without one).
+
+    A row from an older revision of the document is ignored, like a stale chunk."""
+    for chunk in chunks:
+        chunk["enrichment"] = None
+    if not enrich or not chunks:
+        return chunks
+    marks = ",".join("?" for _ in chunks)
+    rows = ctx.db.all(
+        f"SELECT chunk_id, doc_revision, enrichment FROM chunk_enrichments "
+        f"WHERE enrich_node_fp = ? AND chunk_id IN ({marks})",
+        [enrich["node_fp"], *(c["id"] for c in chunks)],
+    )
+    found = {r["chunk_id"]: r for r in rows}
+    for chunk in chunks:
+        row = found.get(chunk["id"])
+        if row is not None and row["doc_revision"] == chunk["doc_revision"]:
+            chunk["enrichment"] = row["enrichment"] or None
+    return chunks
 
 
 def _assemble(
@@ -346,6 +373,7 @@ def _assemble(
                 "rank": rank,
                 "text": chunk["text"],
                 "context": chunk["context"],
+                "enrichment": chunk.get("enrichment"),
                 "page_start": chunk["page_start"],
                 "page_end": chunk["page_end"],
                 "heading_path": json.loads(chunk["heading_path"]),

@@ -23,6 +23,7 @@ def release_document(conn: sqlite3.Connection, doc: sqlite3.Row | Mapping[str, A
     """Detach retained data in the same transaction that removes or replaces the document."""
     document_id, content = doc["id"], doc["content_sha256"]
     conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
+    conn.execute("DELETE FROM chunk_enrichments WHERE document_id = ?", (document_id,))
     rows = conn.execute(
         "SELECT run_id, pipeline_id, item_id, retrieved FROM eval_results "
         "WHERE EXISTS (SELECT 1 FROM json_each(retrieved) WHERE json_extract(value, '$.document_id') = ?)",

@@ -20,7 +20,7 @@ T = TypeVar("T")
 Metric = Literal["cosine", "l2", "dot"]
 FieldType = Literal["str", "int", "float", "bool"]
 Scalar = str | int | float | bool
-ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store"]
+ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store", "llm"]
 
 
 class RequestModel(BaseModel):
@@ -348,6 +348,22 @@ class ChunkNodeOut(_ConfigOut):
     provider: str | SkipJsonSchema[None] = None
 
 
+class EnrichOptionsOut(_ConfigOut):
+    mode: Literal["situate", "summary", "keywords", "questions"] | SkipJsonSchema[None] = None
+    prompt: str | SkipJsonSchema[None] = None
+    max_doc_chars: int | SkipJsonSchema[None] = None
+    max_tokens: int | SkipJsonSchema[None] = None
+    temperature: float | SkipJsonSchema[None] = None
+
+
+class EnrichNodeOut(_ConfigOut):
+    id: str
+    type: Literal["enrich"]
+    inputs: tuple[str]
+    provider: str
+    options: EnrichOptionsOut | SkipJsonSchema[None] = None
+
+
 class EmbedNodeOut(_ConfigOut):
     id: str
     type: Literal["embed"]
@@ -379,7 +395,8 @@ class IndexFtsNodeOut(_ConfigOut):
 
 
 PipelineNodeOut = Annotated[
-    ParseNodeOut | ChunkNodeOut | EmbedNodeOut | IndexVectorNodeOut | IndexFtsNodeOut, Field(discriminator="type")
+    ParseNodeOut | ChunkNodeOut | EnrichNodeOut | EmbedNodeOut | IndexVectorNodeOut | IndexFtsNodeOut,
+    Field(discriminator="type"),
 ]
 
 
@@ -552,6 +569,7 @@ class Chunk(ResponseModel):
     ordinal: int
     text: str
     context: str | None
+    enrichment: str | None
     page_start: int | None
     page_end: int | None
     heading_path: list[str]
@@ -595,6 +613,8 @@ class QueryResult(ResponseModel):
     rank: int
     text: str
     context: str | None
+    # What the pipeline's enrich node wrote for the chunk; null without one (section 19).
+    enrichment: str | None
     page_start: int | None
     page_end: int | None
     heading_path: list[str]
@@ -608,6 +628,8 @@ class QueryResponse(ResponseModel):
     pipeline_id: str
     pipeline_fingerprint: str
     partial: bool
+    # Sources whose index holds the enriched text; empty when the pipeline has no enrich node.
+    enriched_sources: list[str]
     results: list[QueryResult]
     timings_ms: dict[str, float]
 

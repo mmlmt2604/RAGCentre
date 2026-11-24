@@ -51,13 +51,15 @@ function statsFor(state: MockState, run: RunRec): Record<string, unknown> {
   const doc = state.documents.find((d) => d.id === run.document_id);
   const n = doc?.chunk_texts.length ?? 4;
   const duration_ms = Math.round(
-    { parse: 900, chunk: 40, embed: 600, index_vector: 30, index_fts: 12 }[run.node_type] ?? 50,
+    { parse: 900, chunk: 40, enrich: 2400, embed: 600, index_vector: 30, index_fts: 12 }[run.node_type] ?? 50,
   ) * (0.6 + ((run.id * 37) % 10) / 10);
   switch (run.node_type) {
     case "parse":
       return { duration_ms, cache_hit: false, blocks: n * 6 };
     case "chunk":
       return { duration_ms, n_chunks: n };
+    case "enrich":
+      return { duration_ms, n_chunks: n, n_cache_hits: 0, n_llm_calls: n, tokens: n * 310 };
     case "embed":
       return { duration_ms, n_texts: n, n_cache_hits: 0 };
     default:

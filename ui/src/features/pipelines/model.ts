@@ -5,6 +5,7 @@ const SEVERITY: Record<PipelineState, number> = { degraded: 0, building: 1, read
 export const NODE_LABEL: Record<string, string> = {
   parse: "Parse",
   chunk: "Chunk",
+  enrich: "Enrich",
   embed: "Embed",
   index_vector: "Vector index",
   index_fts: "Keyword index",

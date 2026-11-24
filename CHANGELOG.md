@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.4
+
+- Add chunk enrichment. An `enrich` pipeline node asks an `llm` provider for a short text per chunk
+  (`situate`, `summary`, `keywords` or `questions`, or your own prompt) and stores it beside the chunk,
+  so chunk ids do not change and enriched and plain sources still fuse. Embedding, keyword indexing,
+  reranking and query results use the enriched text; results gain `enrichment` and the response
+  `enriched_sources`. Enrich nodes may stack; at most one may feed the retrieval sources.
+- Add the `llm` provider kind with an `openai_compatible` type (`POST /chat/completions`). Answers are
+  cached by provider fingerprint and request, and `max_tokens_per_run` and `daily_token_budget` stop a
+  run before it spends more than you allow. See `docs/protocols/llm-v1.md`.
+- The pipeline builder has an optional Enrich column, and chunks, query results and pipeline diffs show
+  the enrichment. Database migration 0004 adds the `chunk_enrichments` table.
+
 ## 0.0.3
 
 - Harden API request handling, outbound provider access, provider secret scoping,

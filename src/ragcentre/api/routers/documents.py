@@ -396,18 +396,28 @@ def get_chunks(
 ) -> list[api.Chunk]:
     with document_lock(ctx.settings.data_dir, document_id), ctx.db.read():
         pipeline = _document_pipeline(ctx, document_id, pipeline_id)
-        nodes = json.loads(pipeline["resolved"])["nodes"]
-        chunk_nodes = [n for n in nodes if n["type"] == "chunk"]
+        resolved = json.loads(pipeline["resolved"])
+        nodes = resolved["nodes"]
+        text_nodes = [n for n in nodes if n["type"] in ("chunk", "enrich")]
         if node_id:
-            chunk_node = next((n for n in chunk_nodes if n["node_id"] == node_id), None)
+            text_node = next((n for n in text_nodes if n["node_id"] == node_id), None)
         else:
-            chunk_node = chunk_nodes[0] if len(chunk_nodes) == 1 else None
-        if chunk_node is None:
-            raise ValidationFailed("Choose a chunk node, or a pipeline with exactly one chunk node.")
+            # Without a node id: the enrich node retrieval reads, else the only chunk node.
+            enrich = (resolved.get("retrieval_runtime") or {}).get("enrich")
+            chunk_nodes = [n for n in text_nodes if n["type"] == "chunk"]
+            if enrich is not None:
+                text_node = next((n for n in text_nodes if n["node_id"] == enrich["node_id"]), None)
+            else:
+                text_node = chunk_nodes[0] if len(chunk_nodes) == 1 else None
+        if text_node is None:
+            raise ValidationFailed("Choose a chunk or enrich node, or a pipeline with exactly one chunk node.")
+        chunk_fp = text_node["runtime"]["chunk_fp"] if text_node["type"] == "enrich" else text_node["node_fp"]
         rows = ctx.db.all(
-            "SELECT c.* FROM chunks c JOIN documents d ON d.id = c.document_id "
+            "SELECT c.*, e.enrichment AS enrichment FROM chunks c JOIN documents d ON d.id = c.document_id "
+            "LEFT JOIN chunk_enrichments e ON e.enrich_node_fp = ? AND e.chunk_id = c.id "
+            "AND e.doc_revision = c.doc_revision "
             "WHERE d.id = ? AND c.chunk_node_fp = ? AND c.doc_revision = d.revision ORDER BY c.ordinal",
-            (document_id, chunk_node["node_fp"]),
+            (text_node["node_fp"] if text_node["type"] == "enrich" else None, document_id, chunk_fp),
         )
         return [
             api.Chunk.model_validate(
@@ -417,6 +427,7 @@ def get_chunks(
                     ordinal=r["ordinal"],
                     text=r["text"],
                     context=r["context"],
+                    enrichment=r["enrichment"] or None,
                     page_start=r["page_start"],
                     page_end=r["page_end"],
                     heading_path=json.loads(r["heading_path"]),

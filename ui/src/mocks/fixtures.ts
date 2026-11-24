@@ -1,5 +1,5 @@
 // Synthetic demonstration data. Names and text are invented; nothing here is a real result.
-import type { MetadataSchema, PipelineConfig, Provider, ProviderType } from "../api/types";
+import type { EnrichMode, MetadataSchema, PipelineConfig, Provider, ProviderType } from "../api/types";
 import { fp, rng, uuidFrom } from "./hash";
 import { ago, type CorpusRec, type DocRec } from "./store";
 
@@ -36,6 +36,11 @@ export const providerTypes: ProviderType[] = [
   {
     kind: "reranker", type: "http", label: "Reranker (HTTP)", description: "Cohere/Jina-style POST /rerank.",
     config_schema: obj({ ...http, model: str("Model name"), revision: str("Optional revision tag") }, ["base_url", "model"]),
+    fingerprint_fields: ["model", "revision"], secret_keys: ["api_key"], capabilities: null,
+  },
+  {
+    kind: "llm", type: "openai_compatible", label: "OpenAI-compatible chat model", description: "Any server exposing POST /chat/completions; writes the text of enrich nodes.",
+    config_schema: obj({ ...http, model: str("Model name"), revision: str("Optional revision tag"), max_tokens_per_run: int("Fail a document's enrichment above this many estimated tokens", { minimum: 1 }), daily_token_budget: int("Stop for the rest of the UTC day after this many tokens", { minimum: 1 }) }, ["base_url", "model"]),
     fingerprint_fields: ["model", "revision"], secret_keys: ["api_key"], capabilities: null,
   },
   {
@@ -88,6 +93,7 @@ export function allProviders(): Provider[] {
     provider("bge-small", "embedder", "openai_compatible", { base_url: "http://gpu-01:8080/v1", model: "BAAI/bge-small-en-v1.5", dimensions: 384, normalize: true, query_prefix: "Represent this sentence for searching relevant passages: ", document_prefix: "", batch_size: 64, revision: "" }),
     provider("bge-m3", "embedder", "openai_compatible", { base_url: "http://gpu-02:8080/v1", model: "BAAI/bge-m3", dimensions: 1024, normalize: true, query_prefix: "", document_prefix: "", batch_size: 32, revision: "" }),
     provider("jina-rerank", "reranker", "http", { base_url: "http://gpu-01:8081", model: "jina-reranker-v2-base-multilingual", revision: "" }),
+    provider("qwen-llm", "llm", "openai_compatible", { base_url: "http://gpu-01:8082/v1", model: "qwen2.5-7b-instruct", revision: "", timeout_seconds: 120, max_concurrency: 4, daily_token_budget: 2000000 }),
     provider("local-sqlite", "vector_store", "sqlite_vec", { path: "data/vectors.db" }),
     provider("qdrant-main", "vector_store", "qdrant", { url: "http://qdrant:6333" }, { secrets: { api_key: { source: "env", set: true, env_var: "QDRANT_API_KEY" } } }),
   ];
@@ -162,16 +168,22 @@ export function documents(c: CorpusRec, count: number, seed: number): DocRec[] {
 
 const parseNode = () => ({ id: "parse", type: "parse" as const, routes: [{ mime: "text/*", provider: "builtin-text" }, { mime: "*/*", provider: "docling", options: { ocr: true } }] });
 
-export function hybrid(name: string, opts: { chunk?: "recursive" | "structure"; maxChars?: number; embedder?: string; rerank?: boolean } = {}): PipelineConfig {
+export function hybrid(
+  name: string,
+  opts: { chunk?: "recursive" | "structure"; maxChars?: number; embedder?: string; rerank?: boolean; enrich?: EnrichMode } = {},
+): PipelineConfig {
   const strategy = opts.chunk ?? "recursive";
+  // With enrichment the text the retrieval nodes read comes from the enrich node, not the chunk node.
+  const text = opts.enrich ? "enrich" : "chunk";
   return {
     name,
     nodes: [
       parseNode(),
       { id: "chunk", type: "chunk", inputs: ["parse"], strategy, options: { max_chars: opts.maxChars ?? 1000, overlap_chars: strategy === "structure" ? 0 : 100 } },
-      { id: "embed", type: "embed", inputs: ["chunk"], provider: opts.embedder ?? "bge-small" },
+      ...(opts.enrich ? [{ id: "enrich", type: "enrich" as const, inputs: ["chunk"] as [string], provider: "qwen-llm", options: { mode: opts.enrich } }] : []),
+      { id: "embed", type: "embed", inputs: [text], provider: opts.embedder ?? "bge-small" },
       { id: "vec", type: "index_vector", inputs: ["embed"], provider: "local-sqlite", options: { metric: "cosine" } },
-      { id: "fts", type: "index_fts", inputs: ["chunk"], options: { tokenizer: "unicode61" } },
+      { id: "fts", type: "index_fts", inputs: [text], options: { tokenizer: "unicode61" } },
     ],
     retrieval: {
       sources: [{ id: "dense", index: "vec", top_k: 30 }, { id: "sparse", index: "fts", top_k: 30 }],

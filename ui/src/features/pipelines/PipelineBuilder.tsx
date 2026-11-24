@@ -35,7 +35,7 @@ function parseConfig(text: string): { config?: PipelineConfig; error?: string } 
     if (!Array.isArray(c.nodes)) return { error: "nodes must be a list." };
     const object = (x: unknown): x is Record<string, unknown> => x !== null && typeof x === "object" && !Array.isArray(x);
     for (const [i, node] of c.nodes.entries()) {
-      if (!object(node) || typeof node.id !== "string" || !["parse", "chunk", "embed", "index_vector", "index_fts"].includes(node.type)) {
+      if (!object(node) || typeof node.id !== "string" || !["parse", "chunk", "enrich", "embed", "index_vector", "index_fts"].includes(node.type)) {
         return { error: `nodes[${i}] needs a string id and a supported node type.` };
       }
       if (node.type === "parse") {
@@ -263,6 +263,7 @@ function Builder({ corpusId, initial, documentCount, sourceName, back }: { corpu
                 <span className="pg__add">
                   {col === "parse" && !config.nodes.some((n) => n.type === "parse") ? <AddButton label="Parse" onClick={() => add("parse")} /> : null}
                   {col === "chunk" ? <AddButton label="Chunk" onClick={() => add("chunk")} /> : null}
+                  {col === "enrich" ? <AddButton label="Enrich" onClick={() => add("enrich")} /> : null}
                   {col === "embed" ? <AddButton label="Embed" onClick={() => add("embed")} /> : null}
                   {col === "index" ? (
                     <>

@@ -1,4 +1,4 @@
-"""Fake parser, embedder, reranker and chunker services on ``httpx.MockTransport``.
+"""Fake parser, embedder, reranker, chunker and LLM services on ``httpx.MockTransport``.
 
 Use ``FakeServices().client_factory`` as the context's ``http_client_factory``; every HTTP
 provider then talks to these fakes. Each service counts its calls, and failures can be scripted
@@ -29,8 +29,15 @@ PARSER_URL = "http://parser.test"
 EMBEDDER_URL = "http://embedder.test/v1"
 RERANKER_URL = "http://reranker.test"
 CHUNKER_URL = "http://chunker.test"
+LLM_URL = "http://llm.test/v1"
 
-HOSTS = {"parser.test": "parser", "embedder.test": "embedder", "reranker.test": "reranker", "chunker.test": "chunker"}
+HOSTS = {
+    "parser.test": "parser",
+    "embedder.test": "embedder",
+    "reranker.test": "reranker",
+    "chunker.test": "chunker",
+    "llm.test": "llm",
+}
 
 Step = int | httpx.Response | Callable[[httpx.Request], httpx.Response]
 
@@ -53,6 +60,13 @@ def paged_ir(text: str) -> dict[str, Any]:
         "pages": [{"page": n, "width": 612.0, "height": 792.0} for n in range(1, len(pages) + 1)],
         "blocks": blocks,
     }
+
+
+def _default_llm_reply(system: str | None, prompt: str) -> str:
+    """A deterministic stand-in answer: names the chunk's first words."""
+    match = re.search(r"<chunk>\n(.*?)\n</chunk>", prompt, re.S)
+    words = (match.group(1) if match else prompt).split()[:6]
+    return "About: " + " ".join(words)
 
 
 def _multipart(request: httpx.Request) -> dict[str, tuple[str | None, str, bytes]]:
@@ -93,6 +107,10 @@ class FakeServices:
         self.job_running_polls = 0
         self.job_failure: dict[str, Any] | None = None
         self.jobs: dict[str, dict[str, Any]] = {}
+        # LLM: every chat request is recorded; ``llm_reply(system, prompt)`` writes the answer.
+        self.llm_requests: list[dict[str, Any]] = []
+        self.llm_reply: Callable[[str | None, str], str] = _default_llm_reply
+        self.llm_usage = True  # report usage token counts
 
     # ---- scripting ----------------------------------------------------------------------------
 
@@ -130,7 +148,7 @@ class FakeServices:
         if service is None:
             raise httpx.ConnectError(f"no fake service at {request.url.host}", request=request)
         path = request.url.path
-        if service == "embedder" and path.startswith("/v1"):
+        if service in ("embedder", "llm") and path.startswith("/v1"):
             path = path[3:]
         if service == "parser" and path.startswith("/jobs/"):
             return self._parser_job(request, path)
@@ -232,6 +250,28 @@ class FakeServices:
         data = [{"object": "embedding", "index": i, "embedding": hash_embed(t, dim)} for i, t in enumerate(inputs)]
         data.reverse()  # exercise ordering by index
         return httpx.Response(200, json={"object": "list", "data": data, "model": body["model"]})
+
+    # ---- llm ----------------------------------------------------------------------------------
+
+    def _llm_chat_completions(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        with self.lock:
+            self.llm_requests.append(body)
+        messages = body["messages"]
+        system = next((m["content"] for m in messages if m["role"] == "system"), None)
+        prompt = messages[-1]["content"]
+        text = self.llm_reply(system, prompt)
+        out: dict[str, Any] = {
+            "object": "chat.completion",
+            "model": body["model"],
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+        }
+        if self.llm_usage:
+            out["usage"] = {
+                "prompt_tokens": (len(system or "") + len(prompt)) // 4,
+                "completion_tokens": len(text) // 4 + 1,
+            }
+        return httpx.Response(200, json=out)
 
     # ---- reranker -----------------------------------------------------------------------------
 

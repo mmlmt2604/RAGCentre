@@ -94,6 +94,11 @@ export function ResultColumn({
           </span>
         </p>
       ) : null}
+      {data?.enriched_sources.length ? (
+        <p className="qcol__timings num" aria-label="Enriched sources">
+          <span className="muted">enriched text in</span> {data.enriched_sources.join(", ")}
+        </p>
+      ) : null}
 
       {loading ? (
         <div className="qlist">
@@ -175,6 +180,12 @@ export function ResultColumn({
                   <p className="chunk__context">
                     <span className="chunk__context-label">context</span>
                     {r.context}
+                  </p>
+                ) : null}
+                {r.enrichment ? (
+                  <p className="chunk__context chunk__enrichment">
+                    <span className="chunk__context-label">enrichment</span>
+                    {r.enrichment}
                   </p>
                 ) : null}
                 <ResultText text={r.text} />

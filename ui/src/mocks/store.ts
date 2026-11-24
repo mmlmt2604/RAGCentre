@@ -143,6 +143,7 @@ const IMPL_VERSION: Record<string, number> = {
   chunk_structure: 1,
   chunk_page: 1,
   chunk_http: 1,
+  enrich: 1,
   embed: 1,
   index_vector: 1,
   index_fts: 1,
@@ -156,15 +157,19 @@ const CHUNK_DEFAULTS: Record<string, Record<string, unknown>> = {
   http: {},
 };
 
-const EXPECTED_INPUT: Record<PipelineNode["type"], PipelineNode["type"] | null> = {
-  parse: null,
-  chunk: "parse",
-  embed: "chunk",
-  index_vector: "embed",
-  index_fts: "chunk",
+const EXPECTED_INPUTS: Record<PipelineNode["type"], PipelineNode["type"][]> = {
+  parse: [],
+  chunk: ["parse"],
+  enrich: ["chunk", "enrich"],
+  embed: ["chunk", "enrich"],
+  index_vector: ["embed"],
+  index_fts: ["chunk", "enrich"],
 };
 
+export const ENRICH_DEFAULTS = { mode: "situate", max_doc_chars: 24000, max_tokens: 200, temperature: 0 } as const;
+
 const PROVIDER_KIND: Partial<Record<PipelineNode["type"], Provider["kind"]>> = {
+  enrich: "llm",
   embed: "embedder",
   index_vector: "vector_store",
 };
@@ -194,7 +199,7 @@ export function resolvePipeline(state: MockState, config: PipelineConfig): Resol
   if (parseNodes.length !== 1)
     problems.push({ node_id: null, path: "nodes", message: parseNodes.length === 0 ? "Add a parse node." : "A pipeline has exactly one parse node." });
 
-  const a = (noun: string) => `${/^[aeiou]/i.test(noun) ? "an" : "a"} ${noun.replace("_", " ")}`;
+  const a = (noun: string) => `${/^([aeiou]|llm)/i.test(noun) ? "an" : "a"} ${noun.replace("_", " ")}`;
   const checkProvider = (node: PipelineNode, name: string | undefined, kind: Provider["kind"], path: string) => {
     if (!name) {
       problems.push({ node_id: node.id, path, message: `Choose ${a(kind)} provider.` });
@@ -207,20 +212,26 @@ export function resolvePipeline(state: MockState, config: PipelineConfig): Resol
   };
 
   config.nodes.forEach((node, i) => {
-    const expected = EXPECTED_INPUT[node.type];
+    const expectedTypes = EXPECTED_INPUTS[node.type];
+    const expected = expectedTypes.join(" or ");
     const inputs = "inputs" in node ? node.inputs : [];
-    if (expected === null) {
+    if (!expectedTypes.length) {
       if (inputs && inputs.length) problems.push({ node_id: node.id, path: `nodes[${i}].inputs`, message: "A parse node takes no inputs." });
     } else {
       const src = inputs?.[0];
       const up = src ? byId.get(src) : undefined;
       if (!src) problems.push({ node_id: node.id, path: `nodes[${i}].inputs`, message: `Connect this node to a ${expected} node.` });
       else if (!up) problems.push({ node_id: node.id, path: `nodes[${i}].inputs`, message: `Input "${src}" does not exist.` });
-      else if (up.type !== expected) problems.push({ node_id: node.id, path: `nodes[${i}].inputs`, message: `A ${node.type} node reads from a ${expected} node, not ${up.type}.` });
+      else if (!expectedTypes.includes(up.type)) problems.push({ node_id: node.id, path: `nodes[${i}].inputs`, message: `A ${node.type} node reads from a ${expected} node, not ${up.type}.` });
     }
     if (node.type === "parse") {
       if (!node.routes.length) problems.push({ node_id: node.id, path: `nodes[${i}].routes`, message: "Add at least one route." });
       node.routes.forEach((r, j) => checkProvider(node, r.provider, "parser", `nodes[${i}].routes[${j}].provider`));
+    }
+    if (node.type === "enrich") {
+      const prompt = node.options?.prompt;
+      if (prompt !== undefined && !prompt.includes("{chunk}"))
+        problems.push({ node_id: node.id, path: `nodes[${i}].options.prompt`, message: "A custom prompt must contain {chunk}, where the chunk's text goes." });
     }
     if (node.type === "chunk" && node.strategy === "http") checkProvider(node, node.provider, "chunker", `nodes[${i}].provider`);
     const kind = PROVIDER_KIND[node.type];
@@ -249,6 +260,9 @@ export function resolvePipeline(state: MockState, config: PipelineConfig): Resol
     if (s.top_k < 1 || s.top_k > 1000) problems.push({ node_id: null, path: `retrieval.sources[${i}].top_k`, message: "top_k must be between 1 and 1000." });
   });
   if (!r.sources.length) problems.push({ node_id: null, path: "retrieval.sources", message: "Add at least one retrieval source." });
+  const enrichRoots = new Set(r.sources.map((s) => byId.get(s.index)).filter((n): n is PipelineNode => !!n).map((n) => textNode(byId, n)).filter((n): n is PipelineNode => n?.type === "enrich").map((n) => n.id));
+  if (enrichRoots.size > 1)
+    problems.push({ node_id: null, path: "retrieval.sources", message: `Sources read from different enrich nodes (${[...enrichRoots].sort().join(", ")}). At most one enrich node may feed the retrieval sources, so results and the reranker see one enriched text.` });
   if (chunkRoots.size > 1) problems.push({ node_id: null, path: "retrieval.sources", message: "All sources must index the same chunk node, so their results can be fused." });
   if (r.sources.length > 1 && !r.fusion) problems.push({ node_id: null, path: "retrieval.fusion", message: "Choose a fusion method to merge two or more sources." });
   if (r.sources.length === 1 && r.fusion) problems.push({ node_id: null, path: "retrieval.fusion", message: "Fusion needs two or more sources; remove it." });
@@ -265,7 +279,7 @@ export function resolvePipeline(state: MockState, config: PipelineConfig): Resol
   // Fingerprints, in dependency order.
   const fps = new Map<string, string>();
   const nodes: NodeRec[] = [];
-  const order = ["parse", "chunk", "embed", "index_vector", "index_fts"] as const;
+  const order = ["parse", "chunk", "enrich", "embed", "index_vector", "index_fts"] as const;
   for (const type of order) {
     for (const node of config.nodes.filter((n) => n.type === type)) {
       const upstream = "inputs" in node && node.inputs ? node.inputs.map((id) => fps.get(id) ?? "") : [];
@@ -283,6 +297,16 @@ export function resolvePipeline(state: MockState, config: PipelineConfig): Resol
   };
   const fingerprint = fp({ nodes: nodes.map((n) => n.node_fp).sort(), retrieval });
   return { nodes, problems: [], fingerprint };
+}
+
+/** The chunk or enrich node whose text an index holds (through the embed node for vectors). */
+export function textNode(byId: Map<string, PipelineNode>, node: PipelineNode): PipelineNode | null {
+  let cur: PipelineNode | undefined = node;
+  while (cur && cur.type !== "chunk" && cur.type !== "enrich") {
+    const src: string | undefined = "inputs" in cur ? cur.inputs?.[0] : undefined;
+    cur = src ? byId.get(src) : undefined;
+  }
+  return cur ?? null;
 }
 
 function chunkAncestor(byId: Map<string, PipelineNode>, node: PipelineNode): string | null {
@@ -307,6 +331,15 @@ function resolvedConfig(state: MockState, node: PipelineNode): Record<string, un
         strategy: node.strategy,
         options: { ...CHUNK_DEFAULTS[node.strategy], ...(node.options ?? {}) },
         ...(node.strategy === "http" ? { provider_fp: providerFp(state, node.provider) } : {}),
+      };
+    case "enrich":
+      return {
+        provider_fp: providerFp(state, node.provider),
+        mode: node.options?.mode ?? ENRICH_DEFAULTS.mode,
+        prompt: node.options?.prompt ?? null,
+        max_doc_chars: node.options?.max_doc_chars ?? ENRICH_DEFAULTS.max_doc_chars,
+        max_tokens: node.options?.max_tokens ?? ENRICH_DEFAULTS.max_tokens,
+        temperature: node.options?.temperature ?? ENRICH_DEFAULTS.temperature,
       };
     case "embed":
       return { provider_fp: providerFp(state, node.provider) };

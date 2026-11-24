@@ -25,6 +25,7 @@ from ragcentre.settings import Settings
 if TYPE_CHECKING:
     from ragcentre.blobs import BlobStore
     from ragcentre.embedding_service import EmbeddingService
+    from ragcentre.llm_service import LlmService
     from ragcentre.ocr.monitor import OcrMonitor
     from ragcentre.providers.manager import ProviderManager
     from ragcentre.secrets import SecretBox
@@ -137,6 +138,13 @@ class AppContext:
         from ragcentre.embedding_service import EmbeddingService
 
         result: EmbeddingService = self._service("embeddings", lambda: EmbeddingService(self))
+        return result
+
+    @property
+    def llm(self) -> LlmService:
+        from ragcentre.llm_service import LlmService
+
+        result: LlmService = self._service("llm", lambda: LlmService(self))
         return result
 
     @property

@@ -144,6 +144,8 @@ export function testProvider(state: MockState, id: string, deep = false): Provid
       result.version_drift = { pinned, current };
       result.message = `${p.name} now reports version ${current}; it was pinned at ${pinned} when created.`;
     }
+  } else if (p.kind === "llm") {
+    result.message = `${String(p.config.model ?? "model")} answered a one-word prompt.`;
   } else if (p.kind === "embedder") {
     result.dimensions = typeof p.config.dimensions === "number" ? p.config.dimensions : 256;
   } else if (p.kind === "vector_store" && deep) {

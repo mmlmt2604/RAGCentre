@@ -27,6 +27,7 @@ BUILTIN = (
     "ragcentre.providers.embedders.builtin_hash:SPEC",
     "ragcentre.providers.embedders.openai_compatible:SPEC",
     "ragcentre.providers.rerankers.http:SPEC",
+    "ragcentre.providers.llms.openai_compatible:SPEC",
 )
 
 

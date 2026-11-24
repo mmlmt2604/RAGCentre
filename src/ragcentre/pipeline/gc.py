@@ -5,7 +5,7 @@ What is garbage:
 - **Indexes** (vector collections and keyword tables) whose node no non-archived pipeline of the
   index's corpus uses. They are dropped by ``drop_index`` tasks, because dropping a vector
   collection may need the store's network connection.
-- **Node work**: the node runs and chunks of a ``(corpus, node fingerprint)`` pair that no
+- **Node work**: the node runs, chunks and chunk enrichments of a ``(corpus, node fingerprint)`` pair that no
   non-archived pipeline of that corpus uses. Node definitions themselves (``nodes``) are kept,
   because archived pipelines still describe themselves with them. Pairs with a running run are
   left for a later pass.
@@ -58,6 +58,13 @@ def _work_pairs(conn: Any) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
             "SELECT DISTINCT d.corpus_id, c.chunk_node_fp FROM chunks c JOIN documents d ON d.id = c.document_id"
         )
     }
+    pairs |= {
+        (r[0], r[1])
+        for r in conn.execute(
+            "SELECT DISTINCT d.corpus_id, e.enrich_node_fp FROM chunk_enrichments e "
+            "JOIN documents d ON d.id = e.document_id"
+        )
+    }
     running = {
         (r[0], r[1]) for r in conn.execute("SELECT DISTINCT corpus_id, node_fp FROM node_runs WHERE status = 'running'")
     }
@@ -82,6 +89,11 @@ def collect(ctx: AppContext, *, dry_run: bool = True) -> GcResult:
                 conn.execute("DELETE FROM node_runs WHERE corpus_id = ? AND node_fp = ?", (corpus_id, fp))
                 conn.execute(
                     "DELETE FROM chunks WHERE chunk_node_fp = ? AND document_id IN "
+                    "(SELECT id FROM documents WHERE corpus_id = ?)",
+                    (fp, corpus_id),
+                )
+                conn.execute(
+                    "DELETE FROM chunk_enrichments WHERE enrich_node_fp = ? AND document_id IN "
                     "(SELECT id FROM documents WHERE corpus_id = ?)",
                     (fp, corpus_id),
                 )
