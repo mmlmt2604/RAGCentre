@@ -70,7 +70,16 @@ def test_query_shapes_sources_expansion(client: TestClient, ready: tuple[str, st
     body = response.json()
     assert body["partial"] is False
     assert body["results"]
-    assert set(body) == {"pipeline_id", "pipeline_fingerprint", "partial", "enriched_sources", "results", "timings_ms"}
+    assert set(body) == {
+        "pipeline_id",
+        "pipeline_fingerprint",
+        "partial",
+        "enriched_sources",
+        "results",
+        "timings_ms",
+        "transform",
+    }
+    assert body["transform"] is None
     assert "total" in body["timings_ms"]
     assert any(r["context_before"] or r["context_after"] for r in body["results"])
     assert all(set(r["sources"]) == {"dense", "sparse"} for r in body["results"])

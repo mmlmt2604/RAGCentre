@@ -7,12 +7,18 @@
   so chunk ids do not change and enriched and plain sources still fuse. Embedding, keyword indexing,
   reranking and query results use the enriched text; results gain `enrichment` and the response
   `enriched_sources`. Enrich nodes may stack; at most one may feed the retrieval sources.
-- Add the `llm` provider kind with an `openai_compatible` type (`POST /chat/completions`). Answers are
-  cached by provider fingerprint and request, and `max_tokens_per_run` and `daily_token_budget` stop a
-  run before it spends more than you allow. See `docs/protocols/llm-v1.md`.
+- Add the `llm` provider kind with an `openai_compatible` type (`POST /chat/completions`, with images,
+  JSON mode and reasoning-model support). Configure and test it through the API, CLI or web UI.
+  Enrichment answers are cached by provider fingerprint and request, and `max_tokens_per_run` and
+  `daily_token_budget` stop a run before it spends more than you allow. See `docs/protocols/llm-v1.md`.
 - The pipeline builder has an optional Enrich column, and chunks, query results and pipeline diffs show
   the enrichment. Database migration 0004 adds the `chunk_enrichments` table.
 - First-run setup creates a corpus and its first pipeline, guides you through starting an OCR shim, and selects it when it answers.
+- Add optional query transforms to a pipeline's retrieval settings: rewriting, multi-query, HyDE and
+  decomposition with a language model provider. A transform adds no indexing work, caches its
+  answers, can be skipped per request, and shows the generated queries in the API, CLI, MCP search
+  tool and web UI. `ragcentre cache clear --transforms` forgets cached answers.
+- Add CLI commands to edit provider settings and delete unused providers.
 
 ## 0.0.3
 

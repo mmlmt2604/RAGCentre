@@ -26,7 +26,15 @@ from ragcentre.errors import (
 )
 from ragcentre.hashing import fp, new_id, provider_fp
 from ragcentre.logs import redact, register_secret
-from ragcentre.providers.base import KINDS, BuildEnv, InfoService, ProviderTypeSpec, ServiceInfo
+from ragcentre.providers.base import (
+    KINDS,
+    BuildEnv,
+    InfoService,
+    Message,
+    ProviderTypeSpec,
+    ServiceInfo,
+    invalid_response,
+)
 from ragcentre.providers.egress import validate_destination
 from ragcentre.providers.registry import get_type, provider_types
 from ragcentre.stores.base import StoreError
@@ -502,7 +510,22 @@ class ProviderManager:
         try:
             spec = self.spec(row)
             with self.lease(provider_id) as inst:
-                if spec.captured_fields:
+                if row.kind == "llm":
+                    # Enough room for a short answer; a reasoning model may still spend it all thinking.
+                    completion = inst.complete([Message("user", "Reply with the word OK.")], max_tokens=64)
+                    if not completion.text.strip():
+                        if completion.finish_reason != "length":
+                            raise invalid_response(row.name, "expected non-empty completion text")
+                        result["message"] = (
+                            "The model is reachable but used the whole 64-token test budget before answering, "
+                            "which reasoning models often do. Keep max_tokens high enough for reasoning and answer."
+                        )
+                    result["service"] = {
+                        "name": completion.model or row.config.get("model") or row.name,
+                        "version": "",
+                        "mime_types": [],
+                    }
+                elif spec.captured_fields:
                     info = cast(Any, inst).info(fresh=True)
                     result["service"] = {"name": info.name, "version": info.version, "mime_types": info.mime_types}
                     pinned = str(row.config.get("service_version", ""))
@@ -543,8 +566,6 @@ class ProviderManager:
                     result["dimensions"] = len(vectors[0]) if vectors else None
                 elif row.kind == "reranker":
                     inst.rerank("connectivity test", ["first document", "second document"], 2)
-                elif row.kind == "llm":
-                    inst.complete(None, "Reply with the single word OK.", 8, 0.0)
                 elif row.kind == "vector_store":
                     inst.healthcheck()
                 result["ok"] = result["version_drift"] is None

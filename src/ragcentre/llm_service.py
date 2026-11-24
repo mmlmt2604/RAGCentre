@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 from ragcentre.enrichment import CHARS_PER_TOKEN, Request
 from ragcentre.errors import ExecutionError
-from ragcentre.providers.base import Completion, invalid_response
+from ragcentre.providers.base import Completion, Message, invalid_response
 
 if TYPE_CHECKING:
     from ragcentre.context import AppContext
@@ -138,7 +138,10 @@ class LlmService:
 
                 def call(item: tuple[str, Request]) -> tuple[str, str, int]:
                     key, request = item
-                    completion = llm.complete(request.system, request.prompt, request.max_tokens, request.temperature)
+                    messages = [Message("user", request.prompt)]
+                    if request.system:
+                        messages.insert(0, Message("system", request.system))
+                    completion = llm.complete(messages, max_tokens=request.max_tokens, temperature=request.temperature)
                     if not isinstance(completion, Completion):
                         raise invalid_response(provider.name, "the LLM client returned no completion")
                     tokens = _tokens_used(request, completion)

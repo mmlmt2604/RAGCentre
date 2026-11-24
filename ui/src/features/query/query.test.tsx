@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { completeRuns, createPipeline } from "../../mocks/engine";
 import { hybrid } from "../../mocks/fixtures";
 import { uuidFrom } from "../../mocks/hash";
+import { query as queryMock } from "../../mocks/query";
 import { renderApp, server } from "../../test/render";
 
 const support = uuidFrom("corpus:support-docs");
@@ -138,5 +139,58 @@ describe("query playground (UI-4)", () => {
     await user.click(screen.getByRole("button", { name: "Search" }));
     expect(await screen.findByRole("button", { name: "token rotation" })).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(`ragcentre.recent-queries.${support}`)!)).toEqual(["token rotation"]);
+  });
+
+  it("shows the queries a transform generated, and the skip toggle sends transform: false", async () => {
+    const user = userEvent.setup();
+    const { state } = renderApp(`${base}?q=${encodeURIComponent("password reimbursement")}&a=${pid("multi-query")}`);
+    const col = await screen.findByRole("region", { name: "Results from multi-query" });
+    const probes = await within(col).findByLabelText("Query transform");
+    const rows = within(probes).getAllByRole("listitem");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "originalpassword reimbursement",
+      "paraphrasetoken refund",
+      "paraphrasereimbursement password",
+      "paraphraseinformation about password reimbursement",
+    ]);
+    expect(within(col).getByLabelText("Timings")).toHaveTextContent(/transform/);
+    expect(within(probes).queryByText("cached")).not.toBeInTheDocument();
+
+    // The same query again is served from the mock model's cache.
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await waitFor(() => expect(within(col).getByText("cached")).toBeInTheDocument());
+
+    const seen: unknown[] = [];
+    server.use(
+      http.post("/v1/corpora/:id/query", async ({ request }) => {
+        seen.push(await request.clone().json());
+        return HttpResponse.json(queryMock(state, support, (await request.json()) as never));
+      }),
+    );
+    await user.click(screen.getByRole("checkbox", { name: "Skip query transform" }));
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Results from multi-query" })).queryByLabelText("Query transform")).not.toBeInTheDocument());
+    expect(seen.at(-1)).toMatchObject({ transform: false });
+  });
+
+  it("offers the transform toggles only when a chosen pipeline has a transform", async () => {
+    renderApp(`${base}?q=${q}&a=${pid("baseline-hybrid")}`);
+    await screen.findByRole("region", { name: "Results from baseline-hybrid" });
+    expect(screen.queryByRole("checkbox", { name: "Skip query transform" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Query transform")).not.toBeInTheDocument();
+  });
+
+  it("marks which generated query found each result when asked", async () => {
+    renderApp(`${base}?q=${encodeURIComponent("password reimbursement")}&a=${pid("multi-query")}&dbg=1`);
+    const col = await screen.findByRole("region", { name: "Results from multi-query" });
+    const first = (await within(col).findAllByRole("listitem")).find((li) => li.className.includes("qres"))!;
+    expect(within(first).getByLabelText("Queries that found this chunk")).toHaveTextContent(/^found by #\d/);
+  });
+
+  it("reports a failing language model as a provider error", async () => {
+    renderApp(`${base}?q=${q}&a=${pid("multi-query")}`, "ready", (s) => {
+      s.serviceFaults["local-chat"] = { down: "POST http://gpu-01:8082/v1/chat/completions returned 503" };
+    });
+    expect(await screen.findByText(/local-chat failed: POST http:\/\/gpu-01:8082/)).toBeInTheDocument();
   });
 });

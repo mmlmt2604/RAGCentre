@@ -80,6 +80,7 @@ class FakeApi:
     chunk_text: dict[str, str] = field(default_factory=dict)
     corpora_status: int = 200
     whoami_down: bool = False
+    transform_probes: list[str] | None = None  # extra queries the fake knowledge base generates
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -166,8 +167,18 @@ class FakeApi:
                 "results": results,
                 "timings_ms": {},
                 "truncated": self.query_truncated,
+                "transform": self.transform_info(body),
             },
         )
+
+    def transform_info(self, body: dict[str, Any]) -> dict[str, Any] | None:
+        if self.transform_probes is None or body.get("transform") is False:
+            return None
+        probes = [{"index": 0, "text": body["query"], "kind": "original"}]
+        probes += [
+            {"index": i, "text": text, "kind": "paraphrase"} for i, text in enumerate(self.transform_probes, start=1)
+        ]
+        return {"mode": "multi_query", "probes": probes, "cached": False}
 
     def chunk(self, chunk_id: str, before: int, after: int) -> httpx.Response:
         for doc_id, chunks in CHUNKS.items():

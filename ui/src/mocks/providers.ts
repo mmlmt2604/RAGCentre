@@ -1,7 +1,7 @@
 // Mock provider and corpus operations: the behaviour of the backend's providers/manager.py and
 // corpora router, close enough that the UI meets the same errors (IMPLEMENTATION_PLAN.md §8, §15, §16).
 import type { MetadataSchema, Provider, ProviderTestResult, Scalar } from "../api/types";
-import { configFields, METADATA_FIELD_RE, PROVIDER_NAME_RE, SERVER_FIELDS, toConfig, type FormValues } from "../lib/configSchema";
+import { configFields, initialValues, METADATA_FIELD_RE, PROVIDER_NAME_RE, SERVER_FIELDS, toConfig } from "../lib/configSchema";
 import { refreshProviderUsage } from "./engine";
 import { provider as makeProvider } from "./fixtures";
 import { uuidFrom } from "./hash";
@@ -38,11 +38,7 @@ function validConfig(state: MockState, kind: string, type: string, config: Recor
   const known = new Set(fields.map((f) => f.key));
   const unknown = Object.keys(config).filter((k) => !known.has(k) && !SERVER_FIELDS.has(k));
   if (unknown.length) throw new MockError(422, "validation_error", `Unknown setting ${unknown[0]}.`, { problems: unknown.map((k) => ({ path: `config.${k}`, message: "Extra inputs are not permitted" })) });
-  const values: FormValues = {};
-  for (const f of fields) {
-    const v = config[f.key];
-    values[f.key] = f.kind === "boolean" ? v === true : v === undefined || v === null ? "" : String(v);
-  }
+  const values = initialValues(fields, Object.fromEntries(fields.map((f) => [f.key, config[f.key]])));
   const { config: parsed, errors } = toConfig(fields, values);
   const problems = Object.entries(errors).map(([k, message]) => ({ path: `config.${k}`, message }));
   if (problems.length) throw new MockError(422, "validation_error", `Invalid request: ${problems[0]!.path}: ${problems[0]!.message}`, { problems });
@@ -146,6 +142,7 @@ export function testProvider(state: MockState, id: string, deep = false): Provid
     }
   } else if (p.kind === "llm") {
     result.message = `${String(p.config.model ?? "model")} answered a one-word prompt.`;
+    result.service = { name: String(p.config.model ?? p.name), version: "", mime_types: [] };
   } else if (p.kind === "embedder") {
     result.dimensions = typeof p.config.dimensions === "number" ? p.config.dimensions : 256;
   } else if (p.kind === "vector_store" && deep) {

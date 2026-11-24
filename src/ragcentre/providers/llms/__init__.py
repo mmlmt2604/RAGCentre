@@ -1,1 +1,1 @@
-"""LLM provider types (chunk enrichment)."""
+"""Language model providers."""

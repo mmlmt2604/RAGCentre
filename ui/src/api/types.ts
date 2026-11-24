@@ -138,7 +138,19 @@ export type PipelineNode =
       options?: { tokenizer?: "unicode61" | "trigram" } };
 // `provider` values are provider names.
 
+export type TransformMode = "rewrite" | "multi_query" | "hyde" | "decompose";
+// Turns the query into the probes that are searched, with a language model ("llm" provider).
+export interface QueryTransformConfig {
+  mode: TransformMode; provider: string;
+  n?: number;                       // up to 8, default 3; rewrite always makes one
+  include_original?: boolean;       // default true
+  original_weight?: number;         // 0–10, default 1
+  k?: number;                       // RRF k when merging probes, default 60
+  instructions?: string;            // appended to the built-in prompt, up to 2000 characters
+}
+
 export interface RetrievalConfig {
+  transform?: QueryTransformConfig;
   sources: { id: string; index: string; top_k: number }[];
   fusion?: { method: "rrf" | "weighted"; k?: number; weights?: Record<string, number> };
   rerank?: { provider: string; top_n: number };
@@ -200,6 +212,7 @@ export type Filter = Record<string, unknown>;       // the filter language of se
 export interface QueryRequest {
   query: string; pipeline_id?: UUID; top_k?: number;
   filter?: Filter; allow_partial?: boolean; debug?: boolean;
+  transform?: boolean | null;     // false skips the pipeline's query transform for this request
 }
 export interface QueryResult {
   chunk_id: UUID; document_id: UUID; score: number; rank: number;
@@ -210,12 +223,17 @@ export interface QueryResult {
               metadata: Record<string, Scalar>; attributes: Record<string, unknown> };
   context_before: string[]; context_after: string[];
   sources: Record<string, { rank: number; score: number }>;   // keyed by source id
+  probes: number[] | null;                   // probe indexes that found it; transformed query with debug only
 }
+export type ProbeKind = "original" | "rewrite" | "paraphrase" | "hypothetical" | "sub_question";
+export interface QueryProbe { index: number; text: string; kind: ProbeKind }
+export interface QueryTransformInfo { mode: TransformMode; probes: QueryProbe[]; cached: boolean }
 export interface QueryResponse {
   pipeline_id: UUID; pipeline_fingerprint: string; partial: boolean;
   enriched_sources: string[];                // source ids whose index holds the enriched text
   results: QueryResult[];
-  timings_ms: Record<string, number>;        // always includes "total"
+  timings_ms: Record<string, number>;        // always includes "total"; "transform" when one ran
+  transform: QueryTransformInfo | null;      // null without a transform or when the request skipped it
 }
 
 // ---------- Evaluation ----------

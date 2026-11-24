@@ -9,7 +9,9 @@ import { EmptyState, ErrorState, Skeleton } from "../../components/States";
 import { Badge, StatusIndicator } from "../../components/Status";
 import { duration, percent } from "../../lib/format";
 
-const STAGES = ["embed", "fusion", "rerank"];
+const STAGES = ["transform", "embed", "fusion", "rerank"];
+
+const PROBE_LABEL: Record<string, string> = { original: "original", rewrite: "rewrite", paraphrase: "paraphrase", hypothetical: "passage", sub_question: "sub-question" };
 
 function pages(r: QueryResult): string | null {
   if (r.page_start === null) return null;
@@ -100,6 +102,24 @@ export function ResultColumn({
         </p>
       ) : null}
 
+      {data?.transform ? (
+        <div className="qprobes" aria-label="Query transform">
+          <p className="qprobes__head">
+            <span className="strong">{data.transform.mode.replace("_", "-")}</span>
+            <span className="muted">{data.transform.probes.length === 1 ? "searched the query as asked" : `searched ${data.transform.probes.length} queries`}</span>
+            {data.transform.cached ? <Badge>cached</Badge> : null}
+          </p>
+          <ol className="qprobes__list">
+            {data.transform.probes.map((pr) => (
+              <li key={pr.index} className="qprobes__item">
+                <span className="qprobes__kind">{PROBE_LABEL[pr.kind] ?? pr.kind}</span>
+                <span className="mono">{pr.text}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="qlist">
           {[0, 1, 2, 3].map((i) => (
@@ -175,6 +195,11 @@ export function ResultColumn({
                     )
                   ) : null}
                 </div>
+                {r.probes ? (
+                  <p className="qres__probes num" aria-label="Queries that found this chunk">
+                    found by {r.probes.map((i) => `#${i}`).join(", ") || "none"}
+                  </p>
+                ) : null}
                 {r.heading_path.length ? <p className="qres__path">{r.heading_path.join(" › ")}</p> : null}
                 {r.context ? (
                   <p className="chunk__context">

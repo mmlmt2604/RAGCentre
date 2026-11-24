@@ -1,0 +1,44 @@
+# production.yaml plus a query transform: before searching, a language model writes alternative
+# phrasings of the query, and what each one finds is merged. Every index is shared with
+# production, so creating this pipeline on a corpus that has production starts no ingestion.
+# Needs the providers of production.yaml and examples/providers/openai-compatible-llm.yaml.
+# Compare the two with `ragcentre eval run DATASET production multi-query` before adopting it.
+name: multi-query
+nodes:
+  - id: parse
+    type: parse
+    routes:                                   # the first matching route wins
+      - {mime: "text/*", provider: builtin-text}
+      - {mime: "*/*", provider: docling, options: {ocr: true}}
+  - id: chunk
+    type: chunk
+    inputs: [parse]
+    strategy: structure
+    options: {max_chars: 1200, overlap_chars: 150, include_heading_path: true}
+  - id: embed
+    type: embed
+    inputs: [chunk]
+    provider: openai-small
+  - id: vec
+    type: index_vector
+    inputs: [embed]
+    provider: local-sqlite
+    options: {metric: cosine}
+  - id: fts
+    type: index_fts
+    inputs: [chunk]
+    options: {tokenizer: unicode61}
+retrieval:
+  transform:
+    mode: multi_query
+    provider: ollama-chat
+    n: 3                         # up to three alternative phrasings
+    include_original: true       # the query as written is searched too
+    # instructions: "The documents are support articles for an invoicing product."
+  sources:
+    - {id: dense, index: vec, top_k: 30}
+    - {id: sparse, index: fts, top_k: 30}
+  fusion: {method: rrf, k: 60, weights: {dense: 1.0, sparse: 1.0}}
+  rerank: {provider: reranker, top_n: 30}
+  expand: {neighbors: 1}
+  top_k: 8

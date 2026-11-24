@@ -24,12 +24,15 @@ import httpx
 
 from ragcentre.providers.embedders.builtin_hash import hash_embed
 from ragcentre.providers.parsers.builtin_text import decode, parse_text
+from ragcentre.retrieval.prompts import TRANSFORM_MODES
 
 PARSER_URL = "http://parser.test"
 EMBEDDER_URL = "http://embedder.test/v1"
 RERANKER_URL = "http://reranker.test"
 CHUNKER_URL = "http://chunker.test"
 LLM_URL = "http://llm.test/v1"
+
+SYNONYMS = {"fast": "quick", "car": "automobile", "buy": "purchase", "big": "large", "error": "fault"}
 
 HOSTS = {
     "parser.test": "parser",
@@ -63,10 +66,11 @@ def paged_ir(text: str) -> dict[str, Any]:
 
 
 def _default_llm_reply(system: str | None, prompt: str) -> str:
-    """A deterministic stand-in answer: names the chunk's first words."""
+    """A deterministic stand-in answer: names the chunk's first words, or just ``OK``."""
     match = re.search(r"<chunk>\n(.*?)\n</chunk>", prompt, re.S)
-    words = (match.group(1) if match else prompt).split()[:6]
-    return "About: " + " ".join(words)
+    if match is None:
+        return "OK"
+    return "About: " + " ".join(match.group(1).split()[:6])
 
 
 def _multipart(request: httpx.Request) -> dict[str, tuple[str | None, str, bytes]]:
@@ -91,6 +95,7 @@ class FakeServices:
         self._fail_on: dict[tuple[str, str], set[int]] = {}
         self.embed_dim = embed_dim
         self.embedded_texts: list[str] = []
+        self.hyde_passage: str | None = None  # what the fake LLM writes for a hyde prompt
         self.parser_name = "fake-parser"
         self.parser_version = "1.0.0"
         self.parser_mime_types = ["application/pdf", "text/*"]
@@ -107,9 +112,9 @@ class FakeServices:
         self.job_running_polls = 0
         self.job_failure: dict[str, Any] | None = None
         self.jobs: dict[str, dict[str, Any]] = {}
-        # LLM: every chat request is recorded; ``llm_reply(system, prompt)`` writes the answer.
+        # LLM: every chat request is recorded; ``llm_answer(system, prompt)`` writes the answer.
         self.llm_requests: list[dict[str, Any]] = []
-        self.llm_reply: Callable[[str | None, str], str] = _default_llm_reply
+        self.llm_answer: Callable[[str | None, str], str] = _default_llm_reply
         self.llm_usage = True  # report usage token counts
 
     # ---- scripting ----------------------------------------------------------------------------
@@ -148,7 +153,7 @@ class FakeServices:
         if service is None:
             raise httpx.ConnectError(f"no fake service at {request.url.host}", request=request)
         path = request.url.path
-        if service in ("embedder", "llm") and path.startswith("/v1"):
+        if service in {"embedder", "llm"} and path.startswith("/v1/"):
             path = path[3:]
         if service == "parser" and path.startswith("/jobs/"):
             return self._parser_job(request, path)
@@ -251,7 +256,18 @@ class FakeServices:
         data.reverse()  # exercise ordering by index
         return httpx.Response(200, json={"object": "list", "data": data, "model": body["model"]})
 
-    # ---- llm ----------------------------------------------------------------------------------
+    # ---- language model -----------------------------------------------------------------------
+
+    def llm_reply(self, content: str, finish_reason: str = "stop") -> httpx.Response:
+        """A scripted chat completion, for ``script("llm", "/chat/completions", [...])``."""
+        return httpx.Response(
+            200,
+            json={
+                "model": "local-chat",
+                "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": finish_reason}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 1},
+            },
+        )
 
     def _llm_chat_completions(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -259,19 +275,47 @@ class FakeServices:
             self.llm_requests.append(body)
         messages = body["messages"]
         system = next((m["content"] for m in messages if m["role"] == "system"), None)
+        task = re.match(r"Task: (\w+)", system) if isinstance(system, str) else None
+        if isinstance(system, str) and task is not None and task.group(1) in TRANSFORM_MODES:
+            user = next(m["content"] for m in reversed(messages) if m["role"] == "user")
+            n = int(match.group(1)) if (match := re.search(r"up to (\d+)", system)) else 1
+            return self.llm_reply(json.dumps({"queries": self._transform_queries(task.group(1), user, n)}))
         prompt = messages[-1]["content"]
-        text = self.llm_reply(system, prompt)
+        if body.get("response_format") == {"type": "json_object"}:
+            text = '{"reply": "OK"}'
+        else:
+            text = self.llm_answer(system, prompt)
         out: dict[str, Any] = {
             "object": "chat.completion",
             "model": body["model"],
             "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
         }
         if self.llm_usage:
-            out["usage"] = {
-                "prompt_tokens": (len(system or "") + len(prompt)) // 4,
-                "completion_tokens": len(text) // 4 + 1,
-            }
+            if "<chunk>" in prompt:  # an enrich request: usage follows the text, so budgets can be tested
+                out["usage"] = {
+                    "prompt_tokens": (len(system or "") + len(prompt)) // 4,
+                    "completion_tokens": len(text) // 4 + 1,
+                }
+            else:
+                out["usage"] = {"prompt_tokens": 5, "completion_tokens": 1}
         return httpx.Response(200, json=out)
+
+    def _transform_queries(self, mode: str, query: str, n: int) -> list[str]:
+        """Deterministic answers to the query-transform prompts."""
+        if mode == "hyde":
+            passage = self.hyde_passage or f"This passage discusses {query} in detail."
+            return [passage] + [f"{passage} (variant {i})" for i in range(2, n + 1)]
+        if mode == "decompose":
+            return [part.strip() for part in re.split(r"\s+and\s+", query, flags=re.IGNORECASE) if part.strip()][:n]
+        words = query.split()
+        swapped = " ".join(SYNONYMS.get(w.lower(), w) for w in words)
+        variants = [
+            swapped if swapped != query else f"information about {query}",
+            " ".join(reversed(words)),
+            f"information about {query}",
+        ]
+        variants += [f"details on {query} ({i})" for i in range(len(variants), n)]
+        return variants[: 1 if mode == "rewrite" else n]
 
     # ---- reranker -----------------------------------------------------------------------------
 

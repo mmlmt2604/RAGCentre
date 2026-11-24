@@ -32,6 +32,7 @@ def test_provider_types(client: TestClient) -> None:
         ("embedder", "builtin_hash"),
         ("embedder", "openai_compatible"),
         ("reranker", "http"),
+        ("llm", "openai_compatible"),
         ("vector_store", "sqlite_vec"),
     }
     sv = items[("vector_store", "sqlite_vec")]

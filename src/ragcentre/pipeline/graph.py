@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from ragcentre.chunking import get_strategy, options_with_defaults
 from ragcentre.enrichment import IMPL_VERSION as ENRICH_IMPL_VERSION
 from ragcentre.enrichment import effective_prompt, prompt_problems
-from ragcentre.hashing import CanonicalJsonError, canonical, node_fp, pipeline_fp
+from ragcentre.hashing import CanonicalJsonError, canonical, fp, node_fp, pipeline_fp, sha256_text
 from ragcentre.models.pipeline import (
     INDEX_TYPES,
     ChunkNode,
@@ -31,6 +31,7 @@ from ragcentre.models.pipeline import (
 from ragcentre.providers.manager import ProviderRow
 from ragcentre.providers.parsers.options import validate_route_options
 from ragcentre.providers.registry import get_type
+from ragcentre.retrieval.prompts import TRANSFORM_IMPL
 
 NODE_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -45,6 +46,8 @@ NODE_IMPL_VERSIONS: dict[str, int] = {
     "index_vector": 1,
     "index_fts": 1,
 }
+
+TRANSFORM_INSTRUCTIONS_MAX = 2000
 
 # Which node types each node type reads from (rule 3). Enrich nodes return chunks, so anything
 # that reads chunks also reads an enrich node, and enrich nodes may follow each other.
@@ -179,6 +182,7 @@ class _Resolver:
         self.config = config
         self.providers = providers
         self.problems: list[Problem] = []
+        self.transform_llm: ProviderRow | None = None
         self.index_of = {n.id: i for i, n in enumerate(config.nodes)}
         self.by_id = {n.id: n for n in config.nodes}
 
@@ -439,7 +443,35 @@ class _Resolver:
             )
         if r.expand is not None and not 0 <= r.expand.neighbors <= 5:
             self.problem(None, "retrieval.expand.neighbors", "neighbors must be between 0 and 5.")
+        if r.transform is not None:
+            self.check_transform()
         return reranker
+
+    def check_transform(self) -> None:
+        t = self.config.retrieval.transform
+        assert t is not None
+        self.transform_llm = self.provider(None, t.provider, "llm", "retrieval.transform.provider")
+        if not 1 <= t.n <= 8:
+            self.problem(None, "retrieval.transform.n", "n must be between 1 and 8.")
+        if not 0 <= t.original_weight <= 10:
+            self.problem(None, "retrieval.transform.original_weight", "original_weight must be between 0 and 10.")
+        if t.k < 1:
+            self.problem(None, "retrieval.transform.k", "k must be at least 1.")
+        if len(t.instructions) > TRANSFORM_INSTRUCTIONS_MAX:
+            self.problem(
+                None,
+                "retrieval.transform.instructions",
+                f"Instructions are limited to {TRANSFORM_INSTRUCTIONS_MAX} characters.",
+            )
+        if t.mode == "hyde" and not any(
+            (target := self.by_id.get(s.index)) is not None and target.type == "index_vector"
+            for s in self.config.retrieval.sources
+        ):
+            self.problem(
+                None,
+                "retrieval.transform.mode",
+                "HyDE only changes vector search; add a vector source or choose another mode.",
+            )
 
 
 def _json_ok(value: Any) -> bool:
@@ -571,6 +603,29 @@ def resolve_pipeline(raw: Any, providers: ProviderLookup, existing_names: set[st
         weights = {s.id: float((r.fusion.weights or {}).get(s.id, 1.0)) for s in r.sources}
         fusion = {"method": r.fusion.method, "k": r.fusion.k, "weights": weights}
     neighbors = r.expand.neighbors if r.expand is not None else 0
+    transform_fp: dict[str, Any] | None = None
+    transform_runtime: dict[str, Any] | None = None
+    if r.transform is not None:
+        llm = res.transform_llm
+        assert llm is not None
+        n_effective = 1 if r.transform.mode == "rewrite" else r.transform.n
+        transform_fp = {
+            "mode": r.transform.mode,
+            "provider": llm.fingerprint,
+            "n": n_effective,
+            "include_original": r.transform.include_original,
+            "original_weight": float(r.transform.original_weight),
+            "k": r.transform.k,
+            "instructions_sha256": sha256_text(r.transform.instructions),
+            "impl_version": TRANSFORM_IMPL[r.transform.mode],
+        }
+        transform_runtime = {
+            **transform_fp,
+            "provider_id": llm.id,
+            "instructions": r.transform.instructions,
+            "fp": fp(transform_fp),
+        }
+        provider_ids.append(llm.id)
     resolution.retrieval = {
         "sources": [{"id": s.id, "index": fps[s.index], "top_k": s.top_k} for s in r.sources],
         "fusion": fusion,
@@ -578,6 +633,8 @@ def resolve_pipeline(raw: Any, providers: ProviderLookup, existing_names: set[st
         "expand": {"neighbors": neighbors} if neighbors else None,
         "top_k": r.top_k,
     }
+    if transform_fp is not None:
+        resolution.retrieval["transform"] = transform_fp  # absent when unset, so old fingerprints hold
     text_nodes = {s.id: res.text_node(s.index) for s in r.sources}
     enrich_id = next((t for t in text_nodes.values() if t is not None and res.by_id[t].type == "enrich"), None)
     resolution.retrieval_runtime = {
@@ -599,6 +656,8 @@ def resolve_pipeline(raw: Any, providers: ProviderLookup, existing_names: set[st
         "expand": {"neighbors": neighbors},
         "top_k": r.top_k,
     }
+    if transform_runtime is not None:
+        resolution.retrieval_runtime["transform"] = transform_runtime
     if reranker is not None:
         provider_ids.append(reranker.id)
     resolution.provider_ids = list(dict.fromkeys(provider_ids))

@@ -87,17 +87,42 @@ class Reranker(Protocol):
 
 
 @dataclass(frozen=True)
-class Completion:
-    """One LLM answer. Token counts are what the service reported, or ``None``."""
+class ImagePart:
+    data: bytes
+    mime_type: str
 
+
+ContentPart = str | ImagePart
+
+
+@dataclass(frozen=True)
+class Message:
+    role: Literal["system", "user", "assistant"]
+    content: str | Sequence[ContentPart]
+
+
+@dataclass(frozen=True)
+class Completion:
+    # Empty only when finish_reason is "length": the limit was reached before any answer text.
     text: str
-    input_tokens: int | None = None
-    output_tokens: int | None = None
+    finish_reason: Literal["stop", "length", "other"]
+    model: str | None
+    input_tokens: int | None
+    output_tokens: int | None
 
 
 @runtime_checkable
-class Llm(Protocol):
-    def complete(self, system: str | None, prompt: str, max_tokens: int, temperature: float) -> Completion: ...
+class LLM(Protocol):
+    supports_images: bool
+
+    def complete(
+        self,
+        messages: Sequence[Message],
+        *,
+        max_tokens: int | None = None,
+        json_output: bool = False,
+        temperature: float | None = None,
+    ) -> Completion: ...
 
 
 @runtime_checkable

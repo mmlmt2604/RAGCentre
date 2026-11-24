@@ -7,7 +7,7 @@ export const KIND_LABEL: Record<ProviderKind, { one: string; many: string; blurb
   chunker: { one: "Chunker", many: "Chunkers", blurb: "Optional custom chunking services. Five chunk strategies are built in." },
   embedder: { one: "Embedder", many: "Embedders", blurb: "Turn chunks and queries into vectors for dense search." },
   reranker: { one: "Reranker", many: "Rerankers", blurb: "Optionally reorder retrieved chunks by relevance at query time." },
-  llm: { one: "LLM", many: "LLMs", blurb: "Chat models that write a short text for each chunk (enrich nodes), such as the context a chunk needs." },
+  llm: { one: "Language model", many: "Language models", blurb: "Chat-completion models that write chunk enrichment text and plan query transforms." },
   vector_store: { one: "Vector store", many: "Vector stores", blurb: "Hold vectors and answer nearest-neighbour searches." },
 };
 

@@ -1,14 +1,21 @@
 import { Plus, Trash2 } from "lucide-react";
-import type { PipelineConfig, Provider, RetrievalConfig } from "../../api/types";
+import type { PipelineConfig, Provider, QueryTransformConfig, RetrievalConfig, TransformMode } from "../../api/types";
 import { Button, IconButton } from "../../components/Button";
 import { Checkbox, Field, Select, TextInput } from "../../components/Field";
 import { NumberInput } from "../../components/NumberInput";
 
-function without(r: RetrievalConfig, key: "rerank" | "expand"): RetrievalConfig {
+function without(r: RetrievalConfig, key: "rerank" | "expand" | "transform"): RetrievalConfig {
   const next = { ...r };
   delete next[key];
   return next;
 }
+
+const MODES: { mode: TransformMode; label: string; what: string }[] = [
+  { mode: "rewrite", label: "Rewrite", what: "Asks for one clearer version of the query and searches it." },
+  { mode: "multi_query", label: "Multi-query", what: "Asks for alternative phrasings and merges what each one finds." },
+  { mode: "hyde", label: "HyDE", what: "Asks for short passages that would answer the query and searches with them (vector sources only)." },
+  { mode: "decompose", label: "Decompose", what: "Splits a compound question into sub-questions and gives each an equal share of the results." },
+];
 
 /** Sources, fusion (two or more sources), optional reranker and neighbour expansion, final top_k. */
 export function RetrievalEditor({
@@ -33,6 +40,11 @@ export function RetrievalEditor({
     onChange(next);
   };
   const rerankers = providers.filter((p) => p.kind === "reranker");
+  const llms = providers.filter((p) => p.kind === "llm");
+  const t = r.transform;
+  const setTransform = (patch: Partial<QueryTransformConfig>) => onChange({ ...r, transform: { ...t!, ...patch } });
+  const chosen = llms.find((p) => p.name === t?.provider);
+  const maxTokens = typeof chosen?.config.max_tokens === "number" ? chosen.config.max_tokens : 1024;
 
   return (
     <section className="retr" aria-labelledby="retr-title">
@@ -45,6 +57,56 @@ export function RetrievalEditor({
           ))}
         </ul>
       ) : null}
+
+      <div className="retr__optional retr__transform">
+        <Checkbox
+          checked={Boolean(t)}
+          onChange={(e) => onChange(e.target.checked ? { ...r, transform: { mode: "multi_query", provider: llms[0]?.name ?? "", n: 3 } } : without(r, "transform"))}
+          label="Transform the query with a language model before searching"
+        />
+        {t ? (
+          <>
+            <div className="cfg-grid">
+              <Field label="Transform" hint={MODES.find((m) => m.mode === t.mode)?.what} error={err("retrieval.transform.mode") ?? null}>
+                {(a11y) => (
+                  <Select {...a11y} value={t.mode} onChange={(e) => setTransform({ mode: e.target.value as TransformMode })}>
+                    {MODES.map((m) => (
+                      <option key={m.mode} value={m.mode}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label="Language model" error={err("retrieval.transform.provider") ?? null}>
+                {(a11y) => (
+                  <Select {...a11y} value={t.provider} onChange={(e) => setTransform({ provider: e.target.value })}>
+                    <option value="">Choose…</option>
+                    {llms.map((p) => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              {t.mode !== "rewrite" ? <NumberInput label="Queries to generate" min={1} max={8} value={t.n ?? 3} onChange={(v) => setTransform({ n: v })} error={err("retrieval.transform.n")} /> : null}
+            </div>
+            <Checkbox checked={t.include_original ?? true} onChange={(e) => setTransform({ include_original: e.target.checked })} label="Also search the original query" />
+            <Field label="Extra instructions" hint="Added to the built-in prompt, for example the vocabulary of your documents." error={err("retrieval.transform.instructions") ?? null}>
+              {(a11y) => <textarea {...a11y} className="rc-input" rows={3} maxLength={2000} value={t.instructions ?? ""} onChange={(e) => setTransform({ instructions: e.target.value })} />}
+            </Field>
+            <p className="retr__note">
+              One language model call before every search; answers are cached, so a repeated query makes none. Indexes are not rebuilt. A request can skip the transform, and an evaluation shows whether it helps.
+            </p>
+            {chosen && maxTokens < 512 ? (
+              <p className="retr__note retr__note--warn" role="status">
+                {chosen.name} allows only {maxTokens} output tokens. A model that reasons first may run out before it answers, which fails the query.
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
 
       <div className="retr__sources">
         {r.sources.map((s, i) => (

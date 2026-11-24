@@ -1,0 +1,43 @@
+# production.yaml plus HyDE: a language model writes short passages that would answer the query,
+# and the vector index is searched with those passages. The keyword index only ever sees the query
+# as written. Every index is shared with production, so no ingestion starts.
+# Needs the providers of production.yaml and examples/providers/openai-compatible-llm.yaml.
+# HyDE helps most when queries are short and documents are long; measure it with an evaluation.
+name: hyde
+nodes:
+  - id: parse
+    type: parse
+    routes:                                   # the first matching route wins
+      - {mime: "text/*", provider: builtin-text}
+      - {mime: "*/*", provider: docling, options: {ocr: true}}
+  - id: chunk
+    type: chunk
+    inputs: [parse]
+    strategy: structure
+    options: {max_chars: 1200, overlap_chars: 150, include_heading_path: true}
+  - id: embed
+    type: embed
+    inputs: [chunk]
+    provider: openai-small
+  - id: vec
+    type: index_vector
+    inputs: [embed]
+    provider: local-sqlite
+    options: {metric: cosine}
+  - id: fts
+    type: index_fts
+    inputs: [chunk]
+    options: {tokenizer: unicode61}
+retrieval:
+  transform:
+    mode: hyde
+    provider: ollama-chat
+    n: 1                         # one hypothetical passage
+    include_original: true
+  sources:
+    - {id: dense, index: vec, top_k: 30}
+    - {id: sparse, index: fts, top_k: 30}
+  fusion: {method: rrf, k: 60, weights: {dense: 1.0, sparse: 1.0}}
+  rerank: {provider: reranker, top_n: 30}
+  expand: {neighbors: 1}
+  top_k: 8

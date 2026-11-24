@@ -1,0 +1,7 @@
+# Start Ollama and download the example model with: ollama pull llama3.2
+name: ollama-chat
+kind: llm
+type: openai_compatible
+config:
+  base_url: http://localhost:11434/v1
+  model: llama3.2

@@ -43,6 +43,9 @@ export function buildScenario(name: ScenarioName): MockState {
   completeRuns(state, baseline.nodes.map((n) => n.node_fp), undefined, 60 * 24 * 11);
   const rerank = createPipeline(state, support.id, hybrid("rerank-jina", { rerank: true }), 60 * 24 * 5);
   completeRuns(state, rerank.nodes.map((n) => n.node_fp));
+  // The same indexes as the baseline plus a query transform, so it needs no indexing of its own.
+  const multi = createPipeline(state, support.id, hybrid("multi-query", { transform: { mode: "multi_query", provider: "local-chat", n: 3 } }), 60 * 24 * 2);
+  completeRuns(state, multi.nodes.map((n) => n.node_fp));
 
   const structure = createPipeline(state, support.id, hybrid("structure-1200", { chunk: "structure", maxChars: 1200 }), name === "ready" ? 60 * 26 : 180);
   const supportDocs = state.documents.filter((d) => d.corpus_id === support.id);

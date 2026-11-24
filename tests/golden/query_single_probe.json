@@ -1,0 +1,2509 @@
+{
+ "dense/refund payment": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.235702276,
+    "sources": {
+     "dense": [
+      1,
+      0.235702276
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.213200688,
+    "sources": {
+     "dense": [
+      2,
+      0.213200688
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "dense/twelve months": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.471404552,
+    "sources": {
+     "dense": [
+      1,
+      0.471404552
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.267261267,
+    "sources": {
+     "dense": [
+      2,
+      0.267261267
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "dense/warranty": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.654653698,
+    "sources": {
+     "dense": [
+      1,
+      0.654653698
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.577350289,
+    "sources": {
+     "dense": [
+      2,
+      0.577350289
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.5,
+    "sources": {
+     "dense": [
+      3,
+      0.5
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.288675129,
+    "sources": {
+     "dense": [
+      4,
+      0.288675129
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "dense/warranty claims receipt": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.846352726,
+    "sources": {
+     "dense": [
+      1,
+      0.846352726
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.377964497,
+    "sources": {
+     "dense": [
+      2,
+      0.377964497
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.333333313,
+    "sources": {
+     "dense": [
+      3,
+      0.333333313
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.17407763,
+    "sources": {
+     "dense": [
+      4,
+      0.17407763
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.166666687,
+    "sources": {
+     "dense": [
+      5,
+      0.166666687
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": -0.17407763,
+    "sources": {
+     "dense": [
+      6,
+      -0.17407763
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "dense/zzz unknown": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.204124153,
+    "sources": {
+     "dense": [
+      1,
+      0.204124153
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      2,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "expand/refund payment": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [
+     "Returns\n\nReturns are accepted within thirty days with a receipt."
+    ],
+    "rank": 1,
+    "score": 0.032522475,
+    "sources": {
+     "dense": [
+      2,
+      0.213200688
+     ],
+     "sparse": [
+      1,
+      1.22988508
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.016393443,
+    "sources": {
+     "dense": [
+      1,
+      0.235702276
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [
+     "Refunds\n\nRefunds go back to the original payment method."
+    ],
+    "before": [],
+    "rank": 3,
+    "score": 0.015873016,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [
+     "Shipping\n\nParcels ship within three days and arrive by courier."
+    ],
+    "before": [
+     "Warranty\n\nWarranty lasts twenty four months."
+    ],
+    "rank": 4,
+    "score": 0.015625,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "before": [],
+    "rank": 5,
+    "score": 0.015384615,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "expand/twelve months": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.032786885,
+    "sources": {
+     "dense": [
+      1,
+      0.471404552
+     ],
+     "sparse": [
+      1,
+      1.941855542
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "before": [],
+    "rank": 2,
+    "score": 0.032258065,
+    "sources": {
+     "dense": [
+      2,
+      0.267261267
+     ],
+     "sparse": [
+      2,
+      0.662558113
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [
+     "Refunds\n\nRefunds go back to the original payment method."
+    ],
+    "before": [],
+    "rank": 3,
+    "score": 0.015873016,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [
+     "Shipping\n\nParcels ship within three days and arrive by courier."
+    ],
+    "before": [
+     "Warranty\n\nWarranty lasts twenty four months."
+    ],
+    "rank": 4,
+    "score": 0.015625,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [
+     "Returns\n\nReturns are accepted within thirty days with a receipt."
+    ],
+    "rank": 5,
+    "score": 0.015384615,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "expand/warranty": {
+  "partial": false,
+  "results": [
+   {
+    "after": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "before": [],
+    "rank": 1,
+    "score": 0.032786885,
+    "sources": {
+     "dense": [
+      1,
+      0.654653698
+     ],
+     "sparse": [
+      1,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.032258065,
+    "sources": {
+     "dense": [
+      2,
+      0.577350289
+     ],
+     "sparse": [
+      2,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [
+     "Shipping\n\nParcels ship within three days and arrive by courier."
+    ],
+    "before": [
+     "Warranty\n\nWarranty lasts twenty four months."
+    ],
+    "rank": 3,
+    "score": 0.031746032,
+    "sources": {
+     "dense": [
+      3,
+      0.5
+     ],
+     "sparse": [
+      3,
+      1.445e-06
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "rank": 4,
+    "score": 0.03125,
+    "sources": {
+     "dense": [
+      4,
+      0.288675129
+     ],
+     "sparse": [
+      4,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [
+     "Refunds\n\nRefunds go back to the original payment method."
+    ],
+    "before": [],
+    "rank": 5,
+    "score": 0.015384615,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [
+     "Returns\n\nReturns are accepted within thirty days with a receipt."
+    ],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "expand/warranty claims receipt": {
+  "partial": false,
+  "results": [
+   {
+    "after": [
+     "Shipping\n\nParcels ship within three days and arrive by courier."
+    ],
+    "before": [
+     "Warranty\n\nWarranty lasts twenty four months."
+    ],
+    "rank": 1,
+    "score": 0.032786885,
+    "sources": {
+     "dense": [
+      1,
+      0.846352726
+     ],
+     "sparse": [
+      1,
+      2.752450151
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "before": [],
+    "rank": 2,
+    "score": 0.032002048,
+    "sources": {
+     "dense": [
+      2,
+      0.377964497
+     ],
+     "sparse": [
+      3,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [
+     "Refunds\n\nRefunds go back to the original payment method."
+    ],
+    "before": [],
+    "rank": 3,
+    "score": 0.031754032,
+    "sources": {
+     "dense": [
+      4,
+      0.17407763
+     ],
+     "sparse": [
+      2,
+      0.556391531
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.031498016,
+    "sources": {
+     "dense": [
+      3,
+      0.333333313
+     ],
+     "sparse": [
+      4,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "rank": 5,
+    "score": 0.030769231,
+    "sources": {
+     "dense": [
+      5,
+      0.166666687
+     ],
+     "sparse": [
+      5,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [
+     "Returns\n\nReturns are accepted within thirty days with a receipt."
+    ],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      -0.17407763
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "expand/zzz unknown": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "rank": 1,
+    "score": 0.016393443,
+    "sources": {
+     "dense": [
+      1,
+      0.204124153
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.016129032,
+    "sources": {
+     "dense": [
+      2,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [
+     "Refunds\n\nRefunds go back to the original payment method."
+    ],
+    "before": [],
+    "rank": 3,
+    "score": 0.015873016,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [
+     "Shipping\n\nParcels ship within three days and arrive by courier."
+    ],
+    "before": [
+     "Warranty\n\nWarranty lasts twenty four months."
+    ],
+    "rank": 4,
+    "score": 0.015625,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [
+     "Claims\n\nWarranty claims require a receipt."
+    ],
+    "before": [],
+    "rank": 5,
+    "score": 0.015384615,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [
+     "Returns\n\nReturns are accepted within thirty days with a receipt."
+    ],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "rerank/refund payment": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.50093,
+    "sources": {
+     "dense": [
+      2,
+      0.213200688
+     ],
+     "sparse": [
+      1,
+      1.22988508
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.000949,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.000943,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.000932,
+    "sources": {
+     "dense": [
+      1,
+      0.235702276
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.000932,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.000923,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "rerank/twelve months": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 1.000932,
+    "sources": {
+     "dense": [
+      1,
+      0.471404552
+     ],
+     "sparse": [
+      1,
+      1.941855542
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.500949,
+    "sources": {
+     "dense": [
+      2,
+      0.267261267
+     ],
+     "sparse": [
+      2,
+      0.662558113
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.000943,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.000932,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.00093,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.000923,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "rerank/warranty": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 1.000949,
+    "sources": {
+     "dense": [
+      1,
+      0.654653698
+     ],
+     "sparse": [
+      1,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 1.000943,
+    "sources": {
+     "dense": [
+      3,
+      0.5
+     ],
+     "sparse": [
+      3,
+      1.445e-06
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 1.000932,
+    "sources": {
+     "dense": [
+      2,
+      0.577350289
+     ],
+     "sparse": [
+      2,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 1.000923,
+    "sources": {
+     "dense": [
+      4,
+      0.288675129
+     ],
+     "sparse": [
+      4,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.000932,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.00093,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "rerank/warranty claims receipt": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 1.000943,
+    "sources": {
+     "dense": [
+      1,
+      0.846352726
+     ],
+     "sparse": [
+      1,
+      2.752450151
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.334282,
+    "sources": {
+     "dense": [
+      2,
+      0.377964497
+     ],
+     "sparse": [
+      3,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.334265,
+    "sources": {
+     "dense": [
+      4,
+      0.17407763
+     ],
+     "sparse": [
+      2,
+      0.556391531
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.334265,
+    "sources": {
+     "dense": [
+      3,
+      0.333333313
+     ],
+     "sparse": [
+      4,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.334256,
+    "sources": {
+     "dense": [
+      5,
+      0.166666687
+     ],
+     "sparse": [
+      5,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.00093,
+    "sources": {
+     "dense": [
+      6,
+      -0.17407763
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "rerank/zzz unknown": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.000949,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.000943,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.000932,
+    "sources": {
+     "dense": [
+      2,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.000932,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.00093,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.000923,
+    "sources": {
+     "dense": [
+      1,
+      0.204124153
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "rrf/refund payment": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.032522475,
+    "sources": {
+     "dense": [
+      2,
+      0.213200688
+     ],
+     "sparse": [
+      1,
+      1.22988508
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.016393443,
+    "sources": {
+     "dense": [
+      1,
+      0.235702276
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.015873016,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.015625,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.015384615,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "rrf/twelve months": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.032786885,
+    "sources": {
+     "dense": [
+      1,
+      0.471404552
+     ],
+     "sparse": [
+      1,
+      1.941855542
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.032258065,
+    "sources": {
+     "dense": [
+      2,
+      0.267261267
+     ],
+     "sparse": [
+      2,
+      0.662558113
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.015873016,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.015625,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.015384615,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "rrf/warranty": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.032786885,
+    "sources": {
+     "dense": [
+      1,
+      0.654653698
+     ],
+     "sparse": [
+      1,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.032258065,
+    "sources": {
+     "dense": [
+      2,
+      0.577350289
+     ],
+     "sparse": [
+      2,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.031746032,
+    "sources": {
+     "dense": [
+      3,
+      0.5
+     ],
+     "sparse": [
+      3,
+      1.445e-06
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.03125,
+    "sources": {
+     "dense": [
+      4,
+      0.288675129
+     ],
+     "sparse": [
+      4,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.015384615,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "rrf/warranty claims receipt": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.032786885,
+    "sources": {
+     "dense": [
+      1,
+      0.846352726
+     ],
+     "sparse": [
+      1,
+      2.752450151
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.032002048,
+    "sources": {
+     "dense": [
+      2,
+      0.377964497
+     ],
+     "sparse": [
+      3,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.031754032,
+    "sources": {
+     "dense": [
+      4,
+      0.17407763
+     ],
+     "sparse": [
+      2,
+      0.556391531
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.031498016,
+    "sources": {
+     "dense": [
+      3,
+      0.333333313
+     ],
+     "sparse": [
+      4,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.030769231,
+    "sources": {
+     "dense": [
+      5,
+      0.166666687
+     ],
+     "sparse": [
+      5,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      -0.17407763
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "rrf/zzz unknown": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 0.016393443,
+    "sources": {
+     "dense": [
+      1,
+      0.204124153
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.016129032,
+    "sources": {
+     "dense": [
+      2,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.015873016,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.015625,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.015384615,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.015151515,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "sparse/refund payment": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 1.22988508,
+    "sources": {
+     "sparse": [
+      1,
+      1.22988508
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "sparse/twelve months": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 1.941855542,
+    "sources": {
+     "sparse": [
+      1,
+      1.941855542
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.662558113,
+    "sources": {
+     "sparse": [
+      2,
+      0.662558113
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   }
+  ]
+ },
+ "sparse/warranty": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 1.67e-06,
+    "sources": {
+     "sparse": [
+      1,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 1.595e-06,
+    "sources": {
+     "sparse": [
+      2,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 1.445e-06,
+    "sources": {
+     "sparse": [
+      3,
+      1.445e-06
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 9.1e-07,
+    "sources": {
+     "sparse": [
+      4,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "sparse/warranty claims receipt": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 2.752450151,
+    "sources": {
+     "sparse": [
+      1,
+      2.752450151
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.556391531,
+    "sources": {
+     "sparse": [
+      2,
+      0.556391531
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 1.67e-06,
+    "sources": {
+     "sparse": [
+      3,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 1.595e-06,
+    "sources": {
+     "sparse": [
+      4,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 9.1e-07,
+    "sources": {
+     "sparse": [
+      5,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "sparse/zzz unknown": {
+  "partial": false,
+  "results": []
+ },
+ "weighted/refund payment": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 2.809067708,
+    "sources": {
+     "dense": [
+      2,
+      0.213200688
+     ],
+     "sparse": [
+      1,
+      1.22988508
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 2.0,
+    "sources": {
+     "dense": [
+      1,
+      0.235702276
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "weighted/twelve months": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 3.0,
+    "sources": {
+     "dense": [
+      1,
+      0.471404552
+     ],
+     "sparse": [
+      1,
+      1.941855542
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 1.133893448,
+    "sources": {
+     "dense": [
+      2,
+      0.267261267
+     ],
+     "sparse": [
+      2,
+      0.662558113
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   }
+  ]
+ },
+ "weighted/warranty": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 3.0,
+    "sources": {
+     "dense": [
+      1,
+      0.654653698
+     ],
+     "sparse": [
+      1,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 2.664947045,
+    "sources": {
+     "dense": [
+      2,
+      0.577350289
+     ],
+     "sparse": [
+      2,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 2.231373902,
+    "sources": {
+     "dense": [
+      3,
+      0.5
+     ],
+     "sparse": [
+      3,
+      1.445e-06
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.881917051,
+    "sources": {
+     "dense": [
+      4,
+      0.288675129
+     ],
+     "sparse": [
+      4,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "weighted/warranty claims receipt": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 3.0,
+    "sources": {
+     "dense": [
+      1,
+      0.846352726
+     ],
+     "sparse": [
+      1,
+      2.752450151
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 1.081979312,
+    "sources": {
+     "dense": [
+      2,
+      0.377964497
+     ],
+     "sparse": [
+      3,
+      1.67e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.994504068,
+    "sources": {
+     "dense": [
+      3,
+      0.333333313
+     ],
+     "sparse": [
+      4,
+      1.595e-06
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.884513295,
+    "sources": {
+     "dense": [
+      4,
+      0.17407763
+     ],
+     "sparse": [
+      2,
+      0.556391531
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.667844335,
+    "sources": {
+     "dense": [
+      5,
+      0.166666687
+     ],
+     "sparse": [
+      5,
+      9.1e-07
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      -0.17407763
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ },
+ "weighted/zzz unknown": {
+  "partial": false,
+  "results": [
+   {
+    "after": [],
+    "before": [],
+    "rank": 1,
+    "score": 2.0,
+    "sources": {
+     "dense": [
+      1,
+      0.204124153
+     ]
+    },
+    "text": "Shipping\n\nParcels ship within three days and arrive by courier."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 2,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      2,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twelve months for refurbished devices."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 3,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      3,
+      0.0
+     ]
+    },
+    "text": "Returns\n\nReturns are accepted within thirty days with a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 4,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      4,
+      0.0
+     ]
+    },
+    "text": "Claims\n\nWarranty claims require a receipt."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 5,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      5,
+      0.0
+     ]
+    },
+    "text": "Warranty\n\nWarranty lasts twenty four months."
+   },
+   {
+    "after": [],
+    "before": [],
+    "rank": 6,
+    "score": 0.0,
+    "sources": {
+     "dense": [
+      6,
+      0.0
+     ]
+    },
+    "text": "Refunds\n\nRefunds go back to the original payment method."
+   }
+  ]
+ }
+}

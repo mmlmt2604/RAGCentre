@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS llm_usage (
   provider_id TEXT NOT NULL, day TEXT NOT NULL, tokens INTEGER NOT NULL,
   PRIMARY KEY (provider_id, day)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS query_transforms (
+  transform_fp TEXT NOT NULL, query_sha256 TEXT NOT NULL,
+  output TEXT NOT NULL, created_at TEXT NOT NULL,
+  PRIMARY KEY (transform_fp, query_sha256)
+) WITHOUT ROWID;
 """
 
 

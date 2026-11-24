@@ -1,7 +1,7 @@
 // Turn a provider type's `config_schema` (JSON Schema from pydantic, or the mock's simpler form)
 // into form fields, and convert and validate form values. Used by the provider forms and the mock.
 
-export type FieldKind = "string" | "integer" | "number" | "boolean" | "enum";
+export type FieldKind = "string" | "integer" | "number" | "boolean" | "enum" | "object";
 
 export interface ConfigField {
   key: string;
@@ -48,7 +48,7 @@ export function configFields(schema: Record<string, unknown> | undefined): Confi
       const nullable = variants.some((v) => v.type === "null");
       const options = Array.isArray(main.enum) ? (main.enum as unknown[]).map(String) : [];
       const t = main.type;
-      const kind: FieldKind = options.length ? "enum" : t === "integer" ? "integer" : t === "number" ? "number" : t === "boolean" ? "boolean" : "string";
+      const kind: FieldKind = options.length ? "enum" : t === "integer" || t === "number" || t === "boolean" || t === "object" ? t : "string";
       const description = typeof raw.description === "string" ? raw.description : null;
       return {
         key,
@@ -76,6 +76,7 @@ export function initialValues(fields: ConfigField[], config: Record<string, unkn
   for (const f of fields) {
     const v = f.key in config ? config[f.key] : f.default;
     if (f.kind === "boolean") out[f.key] = v === true;
+    else if (f.kind === "object") out[f.key] = v == null ? "" : JSON.stringify(v, null, 2);
     else out[f.key] = v === null || v === undefined ? "" : String(v);
   }
   return out;
@@ -98,6 +99,19 @@ export function toConfig(fields: ConfigField[], values: FormValues): { config: R
       if (f.required) errors[f.key] = `${f.label} is required.`;
       else if (f.nullable && f.default === null) config[f.key] = null;
       // otherwise omitted: the server applies the default
+      continue;
+    }
+    if (f.kind === "object") {
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+          errors[f.key] = "Enter a JSON object.";
+        } else {
+          config[f.key] = parsed;
+        }
+      } catch {
+        errors[f.key] = "Enter valid JSON.";
+      }
       continue;
     }
     if (f.kind === "integer" || f.kind === "number") {
@@ -148,5 +162,6 @@ export const METADATA_FIELD_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 export function display(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "boolean") return v ? "true" : "false";
+  if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }

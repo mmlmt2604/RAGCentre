@@ -593,6 +593,8 @@ class QueryRequest(RequestModel):
     filter: dict[str, Any] | None = None
     allow_partial: bool = False
     debug: bool = False
+    # False skips the pipeline's query transform for this request; unset or true uses it.
+    transform: bool | None = None
 
 
 class QuerySource(ResponseModel):
@@ -623,6 +625,20 @@ class QueryResult(ResponseModel):
     context_before: list[str]
     context_after: list[str]
     sources: dict[str, QuerySource]
+    # Indexes of the probes that retrieved this chunk. Only sent for a transformed query with debug on.
+    probes: list[int] | None = None
+
+
+class QueryProbe(ResponseModel):
+    index: int
+    text: str
+    kind: Literal["original", "rewrite", "paraphrase", "hypothetical", "sub_question"]
+
+
+class QueryTransformInfo(ResponseModel):
+    mode: Literal["rewrite", "multi_query", "hyde", "decompose"]
+    probes: list[QueryProbe]
+    cached: bool
 
 
 class QueryResponse(ResponseModel):
@@ -633,6 +649,9 @@ class QueryResponse(ResponseModel):
     enriched_sources: list[str]
     results: list[QueryResult]
     timings_ms: dict[str, float]
+    # What the language model produced from the query; null when the pipeline has no transform
+    # or the request turned it off.
+    transform: QueryTransformInfo | None = None
 
 
 # ---------- Evaluation ----------
@@ -752,6 +771,14 @@ class EvalItemComparison(ResponseModel):
 
 class GcRequest(RequestModel):
     dry_run: bool = True
+
+
+class CacheClearRequest(RequestModel):
+    transforms: bool = False
+
+
+class CacheClearReport(ResponseModel):
+    transforms_deleted: int
 
 
 class GcIndex(ResponseModel):

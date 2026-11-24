@@ -18,6 +18,8 @@ describe("providers (UI-1)", () => {
     expect(within(row).getByText("not set")).toBeInTheDocument();
     const stores = screen.getByRole("heading", { name: /Vector stores/ }).closest("section")!;
     expect(within(stores).getByText("from $QDRANT_API_KEY")).toBeInTheDocument();
+    const llms = screen.getByRole("heading", { name: /Language models/ }).closest("section")!;
+    expect(within(llms).getByRole("link", { name: "Add language model" })).toHaveAttribute("href", "/providers/new?kind=llm");
   });
 
   it.each(providerTypes.map((t) => [t.kind, t.type, t.label] as const))(
@@ -41,6 +43,40 @@ describe("providers (UI-1)", () => {
       if (t.fingerprint_fields.includes("service_version")) expect(created.config.service_version).toBeTruthy();
     },
   );
+
+  it("saves additional language model settings as a JSON object and tests the connection", async () => {
+    const user = userEvent.setup();
+    const { state } = renderApp("/providers/new?kind=llm&type=openai_compatible");
+    await user.type(await screen.findByLabelText(/^Name/), "local-llm");
+    await user.type(screen.getByLabelText(/base_url$/), "http://localhost:11434/v1");
+    await user.type(screen.getByLabelText(/model$/), "local-chat");
+    expect(screen.getByLabelText(/timeout_seconds$/)).toHaveValue("120");
+    expect(screen.getByLabelText(/max_tokens$/)).toHaveValue("1024");
+    expect(screen.getByLabelText(/temperature$/)).toHaveValue("0");
+    expect(screen.getByLabelText(/top_p$/)).toHaveValue("");
+    expect(screen.getByLabelText(/seed$/)).toHaveValue("");
+    expect(screen.getByLabelText(/revision$/)).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /supports_images/ }));
+    await user.click(within(screen.getByRole("radiogroup", { name: "Source for api_key" })).getByRole("radio", { name: "Skip" }));
+
+    const extra = screen.getByRole("textbox", { name: /extra_body$/ });
+    await user.clear(extra);
+    await user.click(extra);
+    await user.paste("[1]");
+    await user.click(screen.getByRole("button", { name: "Create provider" }));
+    expect(await screen.findByText("Enter a JSON object.")).toBeInTheDocument();
+    await user.clear(extra);
+    await user.click(extra);
+    await user.paste('{"chat_template_kwargs":{"thinking":false}}');
+    await user.click(screen.getByRole("button", { name: "Create provider" }));
+    expect(await screen.findByRole("heading", { name: "local-llm" })).toBeInTheDocument();
+    expect(state.providers.find((p) => p.name === "local-llm")?.config).toMatchObject({
+      supports_images: true,
+      extra_body: { chat_template_kwargs: { thinking: false } },
+    });
+    await user.click(screen.getByRole("button", { name: "Test connection" }));
+    expect(await screen.findByText("Connection works")).toBeInTheDocument();
+  });
 
   it("shows field errors and keeps the user on the form", async () => {
     const user = userEvent.setup();

@@ -332,6 +332,16 @@
   gap: var(--space-4);
 }
 
+.retr__note {
+  margin: 0;
+  max-width: 62ch;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.retr__note--warn {
+  color: var(--warn);
+}
+
 /* ---------- plan panel ---------- */
 .plan {
   display: flex;

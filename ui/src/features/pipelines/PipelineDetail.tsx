@@ -193,6 +193,16 @@ function Detail({ p, status, statusError, corpusId, documentCount, back }: { p: 
                 <dd className="mono">{nodeSummary(n)}</dd>
               </div>
             ))}
+            {p.config.retrieval.transform ? (
+              <div>
+                <dt>Query transform</dt>
+                <dd className="mono">
+                  {p.config.retrieval.transform.mode} via {p.config.retrieval.transform.provider}
+                  {p.config.retrieval.transform.mode === "rewrite" ? "" : `, up to ${p.config.retrieval.transform.n ?? 3}`}
+                  {p.config.retrieval.transform.include_original === false ? ", original not searched" : ""}
+                </dd>
+              </div>
+            ) : null}
             <div>
               <dt>Sources</dt>
               <dd className="mono">{p.config.retrieval.sources.map((s) => `${s.id}: ${s.index} top ${s.top_k}`).join(" · ")}</dd>

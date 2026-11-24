@@ -90,7 +90,7 @@ describe("mock chunk enrichment", () => {
     expect(messages.some((m) => m.includes("not an llm"))).toBe(true);
 
     const two = hybrid("two", { enrich: "situate" });
-    two.nodes.push({ id: "enrich_2", type: "enrich", inputs: ["chunk"], provider: "qwen-llm", options: { mode: "keywords" } });
+    two.nodes.push({ id: "enrich_2", type: "enrich", inputs: ["chunk"], provider: "local-chat", options: { mode: "keywords" } });
     two.nodes = two.nodes.map((n) => (n.id === "fts" && n.type === "index_fts" ? { ...n, inputs: ["enrich_2"] } : n));
     expect(resolvePipeline(state, two).problems.some((p) => p.message.includes("At most one enrich node"))).toBe(true);
   });
@@ -98,7 +98,7 @@ describe("mock chunk enrichment", () => {
   it("lets enrich nodes stack, but not read from a parse node", () => {
     const state = buildScenario("ready");
     const stacked = hybrid("stacked", { enrich: "situate" });
-    stacked.nodes.push({ id: "enrich_2", type: "enrich", inputs: ["enrich"], provider: "qwen-llm", options: { mode: "keywords" } });
+    stacked.nodes.push({ id: "enrich_2", type: "enrich", inputs: ["enrich"], provider: "local-chat", options: { mode: "keywords" } });
     stacked.nodes = stacked.nodes.map((n) => (n.type === "embed" || n.type === "index_fts" ? { ...n, inputs: ["enrich_2"] } : n));
     expect(resolvePipeline(state, stacked).problems).toEqual([]);
     const wrong = hybrid("wrong", { enrich: "situate" });

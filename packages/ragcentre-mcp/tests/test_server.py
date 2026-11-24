@@ -135,6 +135,24 @@ async def test_search_returns_cited_results() -> None:
     assert sent == {"query": "stem bolt torque", "top_k": 3, "max_chars": 12000}
 
 
+async def test_search_passes_transform_through_and_lists_the_probes() -> None:
+    fake = FakeApi(transform_probes=["bolt torque values", 'stem "bolt"\nspecs'])
+    async with connected(fake, Options(corpora=("manuals",))) as client:
+        result = await call(client, "search", query="stem bolt torque", top_k=1)
+        skipped = await call(client, "search", query="stem bolt torque", top_k=1, transform=False)
+    sent = [b for m, p, b in fake.requests if m == "POST"]
+    assert "transform" not in sent[0] and sent[1]["transform"] is False
+    assert result.structured_content["searched_as"] == ["bolt torque values", 'stem "bolt"\nspecs']
+    assert 'Also searched for: "bolt torque values"; "stem \'bolt\' specs".' in text_of(result)
+    assert skipped.structured_content["searched_as"] == [] and "Also searched" not in text_of(skipped)
+
+
+async def test_search_without_a_transform_has_no_probe_line() -> None:
+    async with connected(FakeApi(), Options(corpora=("manuals",))) as client:
+        result = await call(client, "search", query="x", top_k=1)
+    assert result.structured_content["searched_as"] == [] and "Also searched" not in text_of(result)
+
+
 async def test_search_needs_corpus_when_several() -> None:
     async with connected(FakeApi()) as client:
         result = await call(client, "search", query="x")

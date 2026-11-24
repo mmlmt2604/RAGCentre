@@ -1,27 +1,55 @@
-"""LLM client for any server exposing an OpenAI-compatible ``POST /chat/completions``.
+"""Non-streaming chat completions from an OpenAI-compatible endpoint.
 
-Covers llama-server, vLLM, Ollama, LM Studio and hosted APIs. Request:
-``{"model", "messages", "max_tokens", "temperature"}``; the document (when there is one) is the
-system message so that servers with prefix caching reuse it across a document's chunks. The
-answer is ``choices[0].message.content``; ``usage.prompt_tokens`` and ``usage.completion_tokens``
-are read when present.
-
-The two budget fields are operational: they never change what is written, only whether a run is
-allowed to spend the tokens, so they stay out of the fingerprint and can be edited later.
+The two token budget fields are operational: they never change what is written, only whether a
+run may spend the tokens, so they stay out of the fingerprint and can be edited later.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from base64 import b64encode
+from collections.abc import Sequence
+from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, JsonValue, field_validator
 
-from ragcentre.providers.base import BuildEnv, Completion, HttpConfig, HttpService, ProviderTypeSpec, invalid_response
+from ragcentre.errors import ValidationFailed
+from ragcentre.hashing import CanonicalJsonError, canonical
+from ragcentre.providers.base import (
+    BuildEnv,
+    Completion,
+    ContentPart,
+    HttpConfig,
+    HttpService,
+    Message,
+    ProviderTypeSpec,
+    invalid_response,
+)
+
+_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp"})
+_RESERVED_FIELDS = frozenset({
+    "model", "messages", "stream", "temperature", "top_p", "seed", "max_tokens",
+    "max_completion_tokens", "response_format",
+})  # fmt: skip
 
 
-class OpenAICompatibleLlmConfig(HttpConfig):
-    model: str = Field(min_length=1, description="Model name")
-    revision: str = Field(default="", description="Optional revision tag; change it to force a new fingerprint")
+class OpenAICompatibleLLMConfig(HttpConfig):
+    timeout_seconds: float = Field(default=120, gt=0, le=3600, description="Request timeout in seconds")
+    model: str = Field(min_length=1, description="Chat model name")
+    temperature: float | None = Field(
+        default=0.0, ge=0, le=2, description="Sampling temperature; empty to use the server default"
+    )
+    top_p: float | None = Field(default=None, ge=0, le=1, description="Nucleus sampling probability")
+    seed: int | None = Field(default=None, description="Sampling seed")
+    max_tokens: int = Field(default=1024, ge=1, le=131072, description="Maximum output tokens per request")
+    token_limit_field: Literal["max_tokens", "max_completion_tokens"] = Field(
+        default="max_tokens",
+        description="Request field for the token limit; OpenAI reasoning models need max_completion_tokens",
+    )
+    supports_images: bool = Field(default=False, description="Allow PNG, JPEG and WebP input")
+    extra_body: dict[str, JsonValue] = Field(
+        default_factory=dict, description="Additional request parameters as a JSON object"
+    )
+    revision: str = Field(default="", description="Optional revision tag for the model")
     max_tokens_per_run: int | None = Field(
         default=None,
         ge=1,
@@ -33,61 +61,125 @@ class OpenAICompatibleLlmConfig(HttpConfig):
         description="Stop enriching for the rest of the UTC day once this many tokens have been used",
     )
 
+    @field_validator("extra_body")
+    @classmethod
+    def validate_extra_body(cls, value: dict[str, JsonValue]) -> dict[str, JsonValue]:
+        reserved = _RESERVED_FIELDS.intersection(value)
+        if reserved:
+            raise ValueError(f"Cannot override request fields: {', '.join(sorted(reserved))}")
+        try:
+            canonical(value)
+        except (CanonicalJsonError, UnicodeEncodeError) as exc:
+            raise ValueError("Additional request parameters must be valid UTF-8 JSON with finite numbers.") from exc
+        return value
 
-def _token_count(value: Any) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
-
-class OpenAICompatibleLlm(HttpService):
-    def __init__(self, config: OpenAICompatibleLlmConfig, secrets: dict[str, str], env: BuildEnv) -> None:
+class OpenAICompatibleLLM(HttpService):
+    def __init__(self, config: OpenAICompatibleLLMConfig, secrets: dict[str, str], env: BuildEnv) -> None:
         super().__init__(config, secrets, env)
         self.config = config
+        self.supports_images = config.supports_images
         self.max_concurrency = config.max_concurrency
 
-    def complete(self, system: str | None, prompt: str, max_tokens: int, temperature: float) -> Completion:
-        messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-        body = self.json(
-            "POST",
-            "/chat/completions",
-            json={
-                "model": self.config.model,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            },
-        )
+    def _part(self, part: ContentPart) -> dict[str, Any]:
+        if isinstance(part, str):
+            return {"type": "text", "text": part}
+        if not self.supports_images:
+            raise ValidationFailed("This language model provider does not support images.")
+        if part.mime_type not in _IMAGE_TYPES:
+            raise ValidationFailed("Language model images must use image/png, image/jpeg or image/webp.")
+        encoded = b64encode(part.data).decode("ascii")
+        return {"type": "image_url", "image_url": {"url": f"data:{part.mime_type};base64,{encoded}"}}
+
+    def complete(
+        self,
+        messages: Sequence[Message],
+        *,
+        max_tokens: int | None = None,
+        json_output: bool = False,
+        temperature: float | None = None,
+    ) -> Completion:
+        limit = self.config.max_tokens
+        if max_tokens is not None:
+            if max_tokens < 1:
+                raise ValidationFailed("max_tokens must be at least 1.")
+            limit = min(max_tokens, limit)
+        payload: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": [
+                {
+                    "role": msg.role,
+                    "content": msg.content
+                    if isinstance(msg.content, str)
+                    else [self._part(part) for part in msg.content],
+                }
+                for msg in messages
+            ],
+            self.config.token_limit_field: limit,
+            "stream": False,
+            **self.config.extra_body,
+        }
+        # A call's own temperature (enrich nodes set one) wins over the provider's default.
+        effective_temperature = self.config.temperature if temperature is None else temperature
+        if effective_temperature is not None:
+            payload["temperature"] = effective_temperature
+        if self.config.top_p is not None:
+            payload["top_p"] = self.config.top_p
+        if self.config.seed is not None:
+            payload["seed"] = self.config.seed
+        if json_output:
+            payload["response_format"] = {"type": "json_object"}
+
+        body = self.json("POST", "/chat/completions", json=payload)
         choices = body.get("choices") if isinstance(body, dict) else None
         if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-            raise invalid_response(self.name, "missing 'choices' list")
-        message = choices[0].get("message")
+            raise invalid_response(self.name, "expected a non-empty 'choices' list with an object as the first choice")
+        choice = choices[0]
+        message = choice.get("message")
+        reason = choice.get("finish_reason")
         content = message.get("content") if isinstance(message, dict) else None
-        if content is None:
-            content = ""
-        if not isinstance(content, str):
-            raise invalid_response(self.name, "choices[0].message.content must be a string")
-        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        if content is None and reason == "length":
+            content = ""  # the limit was reached before any answer text, typically while reasoning
+        if not isinstance(content, str) or not (content.strip() or reason == "length"):
+            detail = "expected non-empty text in choices[0].message.content"
+            if isinstance(message, dict) and (message.get("reasoning_content") or message.get("reasoning")):
+                detail += "; the model returned reasoning without answer text"
+            raise invalid_response(self.name, detail)
+
+        usage = body.get("usage")
+        input_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+        output_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+        model = body.get("model")
         return Completion(
             text=content,
-            input_tokens=_token_count(usage.get("prompt_tokens")),
-            output_tokens=_token_count(usage.get("completion_tokens")),
+            finish_reason=reason if reason in ("stop", "length") else "other",
+            model=model if isinstance(model, str) and model else None,
+            input_tokens=input_tokens if type(input_tokens) is int else None,
+            output_tokens=output_tokens if type(output_tokens) is int else None,
         )
 
 
-def _factory(config: Any, secrets: dict[str, str], env: BuildEnv) -> OpenAICompatibleLlm:
-    assert isinstance(config, OpenAICompatibleLlmConfig)
-    return OpenAICompatibleLlm(config, secrets, env)
+def _factory(config: Any, secrets: dict[str, str], env: BuildEnv) -> OpenAICompatibleLLM:
+    assert isinstance(config, OpenAICompatibleLLMConfig)
+    return OpenAICompatibleLLM(config, secrets, env)
 
 
 SPEC = ProviderTypeSpec(
     kind="llm",
     type="openai_compatible",
     label="OpenAI-compatible chat completions",
-    description="Any server exposing POST /chat/completions (llama-server, vLLM, Ollama, hosted APIs).",
-    config_model=OpenAICompatibleLlmConfig,
-    fingerprint_fields=("model", "revision"),
+    description="A language model server exposing POST /chat/completions.",
+    config_model=OpenAICompatibleLLMConfig,
+    fingerprint_fields=(
+        "model",
+        "temperature",
+        "top_p",
+        "seed",
+        "max_tokens",
+        "supports_images",
+        "extra_body",
+        "revision",
+    ),
     secret_keys=("api_key",),
     factory=_factory,
 )

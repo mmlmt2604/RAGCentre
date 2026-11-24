@@ -33,7 +33,9 @@ app = typer.Typer(
     pretty_exceptions_enable=False,
     add_completion=False,
 )
-provider_app = typer.Typer(help="Parsers, chunkers, embedders, rerankers and vector stores.", no_args_is_help=True)
+provider_app = typer.Typer(
+    help="Parsers, chunkers, embedders, rerankers, language models and vector stores.", no_args_is_help=True
+)
 corpus_app = typer.Typer(help="Corpora: document collections with a metadata schema.", no_args_is_help=True)
 docs_app = typer.Typer(help="Documents in a corpus.", no_args_is_help=True)
 pipeline_app = typer.Typer(
@@ -42,6 +44,7 @@ pipeline_app = typer.Typer(
 eval_app = typer.Typer(help="Evaluation datasets and runs.", no_args_is_help=True)
 parser_app = typer.Typer(help="Check parser and OCR services.", no_args_is_help=True)
 store_app = typer.Typer(help="Check vector stores against live data.", no_args_is_help=True)
+cache_app = typer.Typer(help="Caches kept next to the database.", no_args_is_help=True)
 app.add_typer(provider_app, name="provider")
 app.add_typer(corpus_app, name="corpus")
 app.add_typer(docs_app, name="docs")
@@ -49,6 +52,7 @@ app.add_typer(pipeline_app, name="pipeline")
 app.add_typer(eval_app, name="eval")
 app.add_typer(parser_app, name="parser")
 app.add_typer(store_app, name="store")
+app.add_typer(cache_app, name="cache")
 
 log = logging.getLogger("ragcentre")
 
@@ -260,6 +264,30 @@ def provider_list() -> None:
     with _api() as api:
         items = list(api.paginate("/providers"))
     _emit(items, lambda: _provider_rows(items))
+
+
+@provider_app.command("edit")
+def provider_edit(
+    name: Annotated[str, typer.Argument(help="Provider name or id.")],
+    file: Annotated[Path, typer.Option("-f", "--file", help="YAML or JSON mapping of config fields to change.")],
+) -> None:
+    """Update a provider's operational settings."""
+    config = _load_file(file)
+    if not isinstance(config, dict):
+        _fail(f"{file} must contain a mapping of config fields to change")
+    with _api() as api:
+        p = api.provider(name)
+        updated = api.call("PATCH", f"/providers/{p['id']}", json={"config": config})
+    _emit(updated, lambda: typer.echo(f"Updated provider {updated['name']}."))
+
+
+@provider_app.command("delete")
+def provider_delete(name: Annotated[str, typer.Argument(help="Provider name or id.")]) -> None:
+    """Delete an unused provider."""
+    with _api() as api:
+        p = api.provider(name)
+        api.delete(f"/providers/{p['id']}")
+    _emit({"deleted": p["id"]}, lambda: typer.echo(f"Deleted provider {p['name']}."))
 
 
 @provider_app.command("test")
@@ -818,9 +846,14 @@ def query(
     ] = None,
     allow_partial: Annotated[bool, typer.Option("--allow-partial", help="Query a pipeline still building.")] = False,
     full: Annotated[bool, typer.Option("--full", help="Print whole chunk texts.")] = False,
+    no_transform: Annotated[
+        bool, typer.Option("--no-transform", help="Skip the pipeline's query transform for this search.")
+    ] = False,
 ) -> None:
     """Search a corpus."""
     body: dict[str, Any] = {"query": question, "allow_partial": allow_partial}
+    if no_transform:
+        body["transform"] = False
     if top_k is not None:
         body["top_k"] = top_k
     if filter_json is not None:
@@ -837,6 +870,11 @@ def query(
     def human() -> None:
         if res["partial"]:
             typer.echo("(partial: the pipeline is still building)")
+        info = res.get("transform")
+        if info:
+            typer.echo(f"Query transform: {info['mode']}{' (cached)' if info['cached'] else ''}")
+            for probe in info["probes"]:
+                typer.echo(f"  [{probe['index']}] {probe['kind']}: {' '.join(probe['text'].split())}")
         if not res["results"]:
             typer.echo("No results.")
         for r in res["results"]:
@@ -853,6 +891,25 @@ def query(
             typer.echo(f"({len(res['results'])} results in {total:.0f} ms)")
 
     _emit(res, human)
+
+
+@cache_app.command("clear")
+def cache_clear(
+    transforms: Annotated[
+        bool,
+        typer.Option(
+            "--transforms",
+            help="Forget generated query rewrites, so the next query asks the language model again. "
+            "Use it after the model behind a provider changes.",
+        ),
+    ] = False,
+) -> None:
+    """Empty a cache."""
+    if not transforms:
+        _fail("Choose what to clear, for example --transforms.", 2)
+    with _api() as api:
+        report = api.post("/admin/cache/clear", json={"transforms": True})
+    _emit(report, lambda: typer.echo(f"Cleared {report['transforms_deleted']} cached query transforms."))
 
 
 # ---- evaluation --------------------------------------------------------------------------------
