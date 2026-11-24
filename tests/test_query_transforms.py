@@ -527,3 +527,90 @@ def test_cli_cache_clear(server: str) -> None:  # noqa: F811
     assert code == 0 and json.loads(out) == {"transforms_deleted": 0}
     code, out = run(server, "cache", "clear")
     assert code == 2 and "Choose what to clear" in out
+
+
+# ---- API and CLI -------------------------------------------------------------------------------
+
+
+def _post(env: Env, pid: str, **body: Any) -> dict[str, Any]:
+    response = env.client.post(
+        f"/v1/corpora/{env.corpus}/query", json={"pipeline_id": pid, "query": "fast car", "top_k": 5, **body}
+    )
+    assert response.status_code == 200, response.text
+    out: dict[str, Any] = response.json()
+    return out
+
+
+def test_api_returns_the_probes_and_honours_the_opt_out(env: Env, fakes: FakeServices) -> None:
+    pid = env.make({"mode": "multi_query", "n": 2}, **SPARSE)
+    body = _post(env, pid)
+    assert body["transform"] == {
+        "mode": "multi_query",
+        "probes": [
+            {"index": 0, "text": "fast car", "kind": "original"},
+            {"index": 1, "text": "quick automobile", "kind": "paraphrase"},
+            {"index": 2, "text": "car fast", "kind": "paraphrase"},
+        ],
+        "cached": False,
+    }
+    assert body["results"][0]["probes"] is None  # only with debug
+    assert _post(env, pid)["transform"]["cached"] is True
+    calls = fakes.count("llm", CHAT)
+    skipped = _post(env, pid, transform=False)
+    assert skipped["transform"] is None and skipped["results"] == []
+    assert fakes.count("llm", CHAT) == calls
+    assert _post(env, pid, debug=True)["results"][0]["probes"] == [1]
+    assert _post(env, env.base)["transform"] is None
+
+
+def test_api_reports_a_failing_model_as_502(env: Env, fakes: FakeServices) -> None:
+    pid = env.make({"mode": "rewrite"}, **SPARSE)
+    fakes.script("llm", CHAT, [fakes.llm_reply("nope")])
+    response = env.client.post(f"/v1/corpora/{env.corpus}/query", json={"pipeline_id": pid, "query": "fast car"})
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "provider_error"
+    assert "chat" in response.json()["error"]["message"]
+
+
+def test_cli_prints_the_probes_and_can_skip_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    from contextlib import contextmanager
+
+    from typer.testing import CliRunner
+
+    from ragcentre import cli
+
+    sent: list[dict[str, Any]] = []
+    transform = {
+        "mode": "multi_query",
+        "cached": True,
+        "probes": [
+            {"index": 0, "text": "fast car", "kind": "original"},
+            {"index": 1, "text": "quick\nautomobile", "kind": "paraphrase"},
+        ],
+    }
+
+    class FakeClient:
+        def corpus(self, ref: str) -> dict[str, Any]:
+            return {"id": "c1"}
+
+        def post(self, path: str, json: dict[str, Any]) -> dict[str, Any]:
+            sent.append(json)
+            return {
+                "partial": False,
+                "results": [],
+                "timings_ms": {"total": 3.0},
+                "transform": None if json.get("transform") is False else transform,
+            }
+
+    @contextmanager
+    def fake_api() -> Any:
+        yield FakeClient()
+
+    monkeypatch.setattr(cli, "_api", fake_api)
+    shown = CliRunner().invoke(cli.app, ["query", "docs", "fast car"])
+    assert shown.exit_code == 0, shown.output
+    assert "Query transform: multi_query (cached)" in shown.output
+    assert "[0] original: fast car" in shown.output and "[1] paraphrase: quick automobile" in shown.output
+    assert "transform" not in sent[0]
+    skipped = CliRunner().invoke(cli.app, ["query", "docs", "fast car", "--no-transform"])
+    assert "Query transform" not in skipped.output and sent[1]["transform"] is False

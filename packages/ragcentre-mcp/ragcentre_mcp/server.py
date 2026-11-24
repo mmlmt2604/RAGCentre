@@ -303,11 +303,23 @@ def build_server(api: RagcentreApi, catalog: Catalog, options: Options) -> MCPSe
         corpus: Annotated[str | None, Field(description="Corpus name or id.")] = None,
         top_k: Annotated[int | None, Field(ge=1, le=50, description="How many passages to return.")] = None,
         filter: Annotated[dict[str, Any] | None, Field(description="Metadata filter.")] = None,
+        transform: Annotated[
+            bool | None,
+            Field(
+                description="Set false to search exactly the words you wrote, without the knowledge base's own "
+                "query rewriting. Leave unset normally."
+            ),
+        ] = None,
     ) -> Annotated[CallToolResult, SearchOutput]:
         target = await catalog.resolve(corpus)
         try:
             resp = await api.query(
-                target.id, query, top_k=top_k or options.default_top_k, filter=filter, max_chars=options.max_chars
+                target.id,
+                query,
+                top_k=top_k or options.default_top_k,
+                filter=filter,
+                max_chars=options.max_chars,
+                transform=transform,
             )
         except (ApiError, Unreachable) as exc:
             raise _tool_error(exc, corpus=target, filter=filter) from None
@@ -326,7 +338,12 @@ def build_server(api: RagcentreApi, catalog: Catalog, options: Options) -> MCPSe
             for i, r in enumerate(resp.results, start=1)
         ]
         hits, cut = _fit_hits(hits, options.max_chars)
-        out = SearchOutput(corpus=target.name, query=query, results=hits, truncated=resp.truncated or cut)
+        searched_as = (
+            [p.text for p in resp.transform.probes if p.kind != "original"] if resp.transform is not None else []
+        )
+        out = SearchOutput(
+            corpus=target.name, query=query, results=hits, truncated=resp.truncated or cut, searched_as=searched_as
+        )
         return _result(out, render_search(out))
 
     async def fetch(

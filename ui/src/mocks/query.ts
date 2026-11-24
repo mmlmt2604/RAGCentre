@@ -193,9 +193,10 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
       context_before: neighbors ? siblings.slice(Math.max(0, pos - neighbors), pos).map((x) => x.text) : [],
       context_after: neighbors ? siblings.slice(pos + 1, pos + 1 + neighbors).map((x) => x.text) : [],
       sources: src,
+      probes: null,
     };
   });
   timings.total = Object.values(timings).reduce((a, b) => a + b, 0) + (performance.now() - started) * 0.05;
   for (const k of Object.keys(timings)) timings[k] = Number(timings[k]!.toFixed(2));
-  return { pipeline_id: p.id, pipeline_fingerprint: p.fingerprint, partial: health.status !== "ready", results, timings_ms: timings };
+  return { pipeline_id: p.id, pipeline_fingerprint: p.fingerprint, partial: health.status !== "ready", results, timings_ms: timings, transform: null };
 }

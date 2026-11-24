@@ -846,9 +846,14 @@ def query(
     ] = None,
     allow_partial: Annotated[bool, typer.Option("--allow-partial", help="Query a pipeline still building.")] = False,
     full: Annotated[bool, typer.Option("--full", help="Print whole chunk texts.")] = False,
+    no_transform: Annotated[
+        bool, typer.Option("--no-transform", help="Skip the pipeline's query transform for this search.")
+    ] = False,
 ) -> None:
     """Search a corpus."""
     body: dict[str, Any] = {"query": question, "allow_partial": allow_partial}
+    if no_transform:
+        body["transform"] = False
     if top_k is not None:
         body["top_k"] = top_k
     if filter_json is not None:
@@ -865,6 +870,11 @@ def query(
     def human() -> None:
         if res["partial"]:
             typer.echo("(partial: the pipeline is still building)")
+        info = res.get("transform")
+        if info:
+            typer.echo(f"Query transform: {info['mode']}{' (cached)' if info['cached'] else ''}")
+            for probe in info["probes"]:
+                typer.echo(f"  [{probe['index']}] {probe['kind']}: {' '.join(probe['text'].split())}")
         if not res["results"]:
             typer.echo("No results.")
         for r in res["results"]:

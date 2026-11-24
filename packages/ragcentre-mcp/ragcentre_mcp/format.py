@@ -59,12 +59,19 @@ def render_corpora(out: ListCorporaOutput) -> str:
     return "\n".join(lines)
 
 
+def _one_line(text: str, limit: int = 120) -> str:
+    flat = " ".join(text.split()).replace('"', "'")
+    return flat if len(flat) <= limit else flat[: limit - 1] + "…"
+
+
 def render_search(out: SearchOutput) -> str:
     if not out.results:
         return f'No results in corpus "{out.corpus}" for "{out.query}".'
     head = f'{len(out.results)} results from corpus "{out.corpus}" for "{out.query}". {UNTRUSTED}'
     if out.truncated:
         head += " Results were cut to fit the size limit; fetch a chunk_id to read more."
+    if out.searched_as:
+        head += " Also searched for: " + "; ".join(f'"{_one_line(q)}"' for q in out.searched_as) + "."
     blocks = [head]
     for r in out.results:
         label = source_label(r.filename, r.page_start, r.page_end, r.heading_path)

@@ -63,9 +63,21 @@ class QueryResult(_Api):
     document: ResultDocument
 
 
+class QueryProbe(_Api):
+    index: int
+    text: str
+    kind: str
+
+
+class QueryTransform(_Api):
+    mode: str
+    probes: list[QueryProbe] = Field(default_factory=list)
+
+
 class QueryResponse(_Api):
     results: list[QueryResult]
     truncated: bool = False
+    transform: QueryTransform | None = None
 
 
 class ApiChunk(_Api):
@@ -146,6 +158,10 @@ class SearchOutput(BaseModel):
     query: str
     results: list[SearchHit]
     truncated: bool = Field(description="True when results or their text were cut to fit the size limit.")
+    searched_as: list[str] = Field(
+        default_factory=list,
+        description="Other queries the knowledge base generated from yours and searched too. Empty when it does not rewrite queries.",
+    )
 
 
 class FetchedChunk(BaseModel):

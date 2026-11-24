@@ -109,11 +109,20 @@ class RagcentreApi:
                 return out
 
     async def query(
-        self, corpus_id: str, query: str, *, top_k: int, filter: dict[str, Any] | None, max_chars: int
+        self,
+        corpus_id: str,
+        query: str,
+        *,
+        top_k: int,
+        filter: dict[str, Any] | None,
+        max_chars: int,
+        transform: bool | None = None,
     ) -> QueryResponse:
         body: dict[str, Any] = {"query": query, "top_k": top_k, "max_chars": max_chars}
         if filter:
             body["filter"] = filter
+        if transform is not None:
+            body["transform"] = transform
         return QueryResponse.model_validate(await self._request("POST", f"/corpora/{_seg(corpus_id)}/query", json=body))
 
     async def chunk(self, chunk_id: str, *, before: int, after: int) -> ChunkWindow:
