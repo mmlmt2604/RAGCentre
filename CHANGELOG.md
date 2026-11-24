@@ -4,6 +4,10 @@
 
 - Add pluggable language model providers, starting with OpenAI-compatible chat completions.
   Configure and test them through the API, CLI, or web UI.
+- Add optional query transforms to a pipeline's retrieval settings: rewriting, multi-query, HyDE and
+  decomposition with a language model provider. A transform adds no indexing work, caches its
+  answers, can be skipped per request, and shows the generated queries in the API, CLI, MCP search
+  tool and web UI. `ragcentre cache clear --transforms` forgets cached answers.
 - Add CLI commands to edit provider settings and delete unused providers.
 
 ## 0.0.3

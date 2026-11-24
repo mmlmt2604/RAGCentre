@@ -80,10 +80,52 @@ on the recheck interval. Nothing runs while the UI is closed.
 - **Corpus**: a set of documents with a typed metadata schema for filtering.
 - **Pipeline**: parse → chunk → embed → index (vector and/or full-text), plus retrieval settings
   (fusion, reranking, neighbour expansion). See [`examples/pipelines/`](examples/pipelines/).
+- **Query transform**: an optional step in a pipeline's retrieval settings. A language model turns
+  the query into the queries that are actually searched. See [Query transforms](#query-transforms).
 - **Evaluation**: a JSON Lines dataset of questions whose answers are named by document, page and
   text, so the same ground truth works for any chunking. Runs compute hit rate, recall,
   precision, nDCG and MRR at several k, with paired-bootstrap confidence intervals between
   pipelines.
+
+## Query transforms
+
+A pipeline can ask a language model provider to reshape the query before searching. Add a
+`retrieval.transform` block ([`multi-query.yaml`](examples/pipelines/multi-query.yaml),
+[`hyde.yaml`](examples/pipelines/hyde.yaml)):
+
+```yaml
+retrieval:
+  transform: {mode: multi_query, provider: ollama-chat, n: 3}
+```
+
+| `mode` | The model writes | What is searched |
+|---|---|---|
+| `rewrite` | one clearer query | the rewrite, and the original |
+| `multi_query` | up to `n` alternative phrasings | the original and each phrasing |
+| `hyde` | up to `n` short passages that would answer the query | vector sources search the passages; keyword sources search the original |
+| `decompose` | up to `n` sub-questions | each sub-question, with an equal share of the results |
+
+A transform is off unless you add it. It changes only the query path: indexes are shared with the
+pipeline that has no transform, so adding one never re-indexes anything. Settings: `n` (1 to 8,
+default 3), `include_original` (default true), `original_weight` and `k` (how the queries of one
+source are merged by reciprocal rank fusion) and `instructions` (extra text for the prompt, such as
+your documents' vocabulary).
+
+- **Cost.** One language model call before the search of every query that has not been seen before.
+  Answers are cached in the data directory, so a repeated query makes no call and evaluation runs
+  are repeatable. After the model behind a provider changes, run `ragcentre cache clear --transforms`.
+- **Failures are errors.** If the model fails or answers with something unusable, the query fails
+  with a 502 naming the provider. It does not quietly search the raw query.
+- **Results.** The response lists the generated queries under `transform`. Each result still has one
+  rank per source. With `debug: true`, a result also lists which queries found it.
+- **Skipping it.** `"transform": false` in a query request (`--no-transform` in the CLI, a toggle on
+  the query page, an argument of the MCP `search` tool) searches the query as written. Agents that
+  already rewrite their own queries can use it.
+- **Measure first.** Create the pipeline next to one without a transform and run
+  `ragcentre eval run DATASET PLAIN TRANSFORMED`. Transforms help most on short or differently
+  worded queries, and can hurt on exact lookups. Reasoning models may spend their output limit
+  thinking and return nothing, which fails the query; the editor warns when a provider allows fewer
+  than 512 output tokens.
 
 ## Command line
 
@@ -100,7 +142,8 @@ ragcentre provider set-secret NAME KEY (--env VAR | --value-stdin)
 ragcentre corpus create NAME [--schema schema.yaml] | list | activate CORPUS PIPELINE [--force]
 ragcentre docs add CORPUS PATH... [--metadata k=v] [--external-id ID] | list CORPUS | rm ID
 ragcentre pipeline create CORPUS -f pipeline.yaml [--dry-run] | list CORPUS | status ID [--watch] | diff A B | archive ID
-ragcentre query CORPUS "question" [--pipeline ID] [--top-k N] [--filter JSON]
+ragcentre query CORPUS "question" [--pipeline ID] [--top-k N] [--filter JSON] [--no-transform]
+ragcentre cache clear --transforms
 ragcentre eval import CORPUS NAME file.jsonl | run DATASET PIPELINE... [--wait] | show RUN
 ```
 

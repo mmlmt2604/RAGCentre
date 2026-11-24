@@ -75,3 +75,21 @@ against Ollama with `qwen2.5:0.5b` passed the connection test, plain and JSON-mo
 and a truncated completion. Reasoning models and OpenAI itself have not been run. See the [OpenAI Chat Completions reference](https://platform.openai.com/docs/api-reference/chat/create)
 and [Ollama OpenAI compatibility reference](https://docs.ollama.com/api/openai-compatibility)
 for server-specific options.
+
+## Consumers
+
+RAGCentre uses this protocol for [query transforms](../../README.md#query-transforms). Each call
+sends one system message and the raw query as the user message, asks for a JSON object
+(`json_output`), and limits the answer to about 60 tokens per generated query (200 per
+hypothetical passage) plus a small allowance for the envelope. The answer must be
+
+```json
+{"queries": ["...", "..."]}
+```
+
+Items are trimmed, empty ones and repeats of the query are dropped, each is cut to 1,000
+characters, and only the first `n` are kept. An answer that is not that object, has no usable item,
+or was cut off before the JSON was complete fails the query with a 502 naming the provider. A
+valid object returned with `finish_reason` `length` is accepted. The query path makes one request
+and does not retry.
+

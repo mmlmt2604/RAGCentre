@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from ragcentre.context import AppContext
 from ragcentre.errors import ProviderFailed
+from ragcentre.eval.runner import run_eval
 from ragcentre.hashing import pipeline_fp, sha256_text
 from ragcentre.pipeline.graph import Resolution
 from ragcentre.pipeline.planner import create_pipeline, resolve_for_corpus
@@ -628,3 +630,60 @@ def test_cli_prints_the_probes_and_can_skip_them(monkeypatch: pytest.MonkeyPatch
     assert "transform" not in sent[0]
     skipped = CliRunner().invoke(cli.app, ["query", "docs", "fast car", "--no-transform"])
     assert "Query transform" not in skipped.output and sent[1]["transform"] is False
+
+
+# ---- evaluation --------------------------------------------------------------------------------
+
+
+def test_an_evaluation_compares_a_transformed_pipeline_with_the_same_one_without(env: Env, fakes: FakeServices) -> None:
+    cid, client = env.corpus, env.client
+    plain = env.make(None, **SPARSE)
+    transformed = env.make({"mode": "multi_query", "n": 2}, **SPARSE)
+    items = [{"question": "fast car", "targets": [{"document": "engine"}]}]
+    body = "\n".join(json.dumps(item) for item in items).encode()
+    dataset = client.post(
+        f"/v1/corpora/{cid}/eval/datasets", data={"name": "qa"}, files={"file": ("qa.jsonl", body, "application/jsonl")}
+    ).json()
+
+    def run() -> dict[str, Any]:
+        started = client.post(
+            "/v1/eval/runs", json={"dataset_id": dataset["id"], "pipeline_ids": [plain, transformed], "k_values": [3]}
+        )
+        assert started.status_code == 201, started.text
+        run_eval(env.ctx, started.json()["id"])
+        detail: dict[str, Any] = client.get(f"/v1/eval/runs/{started.json()['id']}").json()
+        assert detail["status"] == "finished"
+        return detail
+
+    first = run()
+    metrics = {s["pipeline_id"]: s["metrics"] for s in first["summaries"]}
+    assert metrics[plain]["hit_rate@3"] == 0.0
+    assert metrics[transformed]["hit_rate@3"] == 1.0
+    assert all(s["error_count"] == 0 for s in first["summaries"])
+    assert fakes.count("llm", CHAT) == 1
+    # The same questions again: the cached rewrites make the run repeatable and free.
+    second = run()
+    assert fakes.count("llm", CHAT) == 1
+    assert {s["pipeline_id"]: s["metrics"] for s in second["summaries"]} == metrics
+
+
+# ---- examples ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["multi-query", "hyde"])
+def test_example_pipelines_are_valid_and_share_production_indexes(ctx: AppContext, name: str) -> None:
+    import yaml  # the CLI reads these files with PyYAML
+
+    root = Path(__file__).resolve().parent.parent / "examples" / "pipelines"
+    ctx.providers.create("docling", "parser", "http", {"base_url": "http://parser.test"})
+    ctx.providers.create("openai-small", "embedder", "builtin_hash", {})
+    ctx.providers.create("local-sqlite", "vector_store", "sqlite_vec", {})
+    ctx.providers.create("reranker", "reranker", "http", {"base_url": RERANKER_URL, "model": "test"})
+    ctx.providers.create("ollama-chat", "llm", "openai_compatible", {"base_url": LLM_URL, "model": "llama3.2"})
+    corpus = _m5_corpus(ctx)
+    production = _resolve(ctx, corpus, yaml.safe_load((root / "production.yaml").read_text()))
+    example = _resolve(ctx, corpus, yaml.safe_load((root / f"{name}.yaml").read_text()))
+    assert production.valid, production.problems
+    assert example.valid, example.problems
+    assert [n.node_fp for n in example.nodes] == [n.node_fp for n in production.nodes]
+    assert example.retrieval_runtime["transform"]["mode"] == name.replace("-", "_")
