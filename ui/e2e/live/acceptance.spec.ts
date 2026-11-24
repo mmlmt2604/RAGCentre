@@ -34,6 +34,7 @@ test('1. first run: create providers, corpus, documents, hybrid pipeline, activa
     await expect(page.getByText('Connection works', { exact: true })).toBeVisible();
   }
   await page.goto('/');
+  await page.getByRole('button', { name: 'Set up on my own' }).click();
   await page.getByRole('link', { name: 'New corpus' }).first().click();
   await page.getByRole('textbox', { name: 'Name *', exact: true }).fill(`${prefix}-bikes`);
   const corpus = await submit<Corpus>(page, '/corpora', () => page.getByRole('button', { name: 'Create corpus' }).click());
