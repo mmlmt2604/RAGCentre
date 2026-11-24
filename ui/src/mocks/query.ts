@@ -5,6 +5,7 @@ import type { Chunk, QueryRequest, QueryResponse, QueryResult } from "../api/typ
 import { filterFields, FilterError, matches, validateFilter } from "../lib/filters";
 import { chunks as chunksOf } from "./documents";
 import { fp } from "./hash";
+import { mockProbes, type MockProbe } from "./transform";
 import { MockError } from "./providers";
 import { activeDocs, indexRuns, pipelineHealth, runKey, type MockState, type PipelineRec } from "./store";
 
@@ -78,6 +79,14 @@ function pipelineFor(state: MockState, corpusId: string, pipelineId: string | un
   return p;
 }
 
+const TRANSFORM_CACHE = new WeakMap<MockState, Set<string>>();
+/** Queries the mock language model has already answered, so a repeat reports `cached`. */
+function transformCache(state: MockState): Set<string> {
+  let seen = TRANSFORM_CACHE.get(state);
+  if (!seen) TRANSFORM_CACHE.set(state, (seen = new Set()));
+  return seen;
+}
+
 export function query(state: MockState, corpusId: string, body: QueryRequest): QueryResponse {
   const started = performance.now();
   const p = pipelineFor(state, corpusId, body.pipeline_id);
@@ -120,54 +129,122 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
     byDoc.set(d.id, cs);
     for (const c of cs) cands.push({ chunk: c, docId: d.id, tokens: chunkTokens(c) });
   }
-  const q = tokens(body.query);
   const timings: Record<string, number> = {};
-  const sources: Record<string, [string, number][]> = {};
-  for (const s of cfg.sources) {
-    const n = indexNodes.get(s.index)!;
-    if (n.type === "index_vector") {
-      const embedder = String((p.config.nodes.find((x) => x.type === "embed") as { provider?: string } | undefined)?.provider ?? "");
-      timings.embed ??= 18 + 40 * jitter(`${embedder}:${body.query}`);
-      sources[s.id] = ranked(denseScores(q, cands, embedder), s.top_k);
-    } else sources[s.id] = ranked(keywordScores(q, cands), s.top_k);
-    timings[s.id] = 2 + 6 * jitter(`${s.id}:${body.query}`);
+
+  // 1. The probes to search (the query itself when there is no transform, or the request skipped it).
+  const tcfg = body.transform === false ? undefined : cfg.transform;
+  let probes: MockProbe[] = [{ index: 0, text: body.query, kind: "original", vector: true, keyword: true }];
+  let cached = false;
+  if (tcfg) {
+    const fault = state.serviceFaults[tcfg.provider];
+    if (fault?.down) throw new MockError(502, "provider_error", `${tcfg.provider} failed: ${fault.down}`, { provider: tcfg.provider, cause: "provider_error" });
+    const seen = transformCache(state);
+    const key = `${p.fingerprint}:${body.query}`;
+    cached = seen.has(key);
+    seen.add(key);
+    probes = mockProbes(tcfg, body.query, cfg.sources.some((s) => indexNodes.get(s.index)?.type === "index_fts"));
+    timings.transform = cached ? 1.2 : 320 + 500 * jitter(`llm:${body.query}`);
   }
 
-  // Fusion
-  let order: [string, number][];
-  if (cfg.sources.length > 1) {
-    const fused = new Map<string, number>();
-    const w = cfg.fusion?.weights ?? {};
+  // 2. Search every probe on every source it applies to, then merge a source's probes with RRF.
+  const found = new Map<string, Set<number>>();
+  const perProbe = new Map<number, Record<string, [string, number][]>>();
+  for (const probe of probes) {
+    const q = tokens(probe.text);
+    const lists: Record<string, [string, number][]> = {};
     for (const s of cfg.sources) {
-      const list = sources[s.id]!;
-      const max = Math.max(...list.map((x) => x[1]), 1e-9);
-      list.forEach(([id, score], i) => {
-        const add = cfg.fusion?.method === "weighted" ? (w[s.id] ?? 1) * (score / max) : (w[s.id] ?? 1) / ((cfg.fusion?.k ?? 60) + i + 1);
-        fused.set(id, (fused.get(id) ?? 0) + add);
-      });
+      const n = indexNodes.get(s.index)!;
+      if (n.type === "index_vector" && probe.vector) {
+        const embedder = String((p.config.nodes.find((x) => x.type === "embed") as { provider?: string } | undefined)?.provider ?? "");
+        timings.embed = (timings.embed ?? 0) + 18 + 40 * jitter(`${embedder}:${probe.text}`);
+        lists[s.id] = ranked(denseScores(q, cands, embedder), s.top_k);
+      } else if (n.type === "index_fts" && probe.keyword) lists[s.id] = ranked(keywordScores(q, cands), s.top_k);
+      else continue;
+      timings[s.id] = Math.max(timings[s.id] ?? 0, 2 + 6 * jitter(`${s.id}:${probe.text}`));
+      for (const [id] of lists[s.id]!) found.set(id, (found.get(id) ?? new Set()).add(probe.index));
     }
-    order = ranked(fused, Number.MAX_SAFE_INTEGER);
-    timings.fusion = 0.4;
-  } else order = sources[cfg.sources[0]!.id] ?? [];
+    perProbe.set(probe.index, lists);
+  }
+  const mergeProbes = (sourceId: string, topK: number): [string, number][] => {
+    const lists = probes.map((pr) => ({ pr, list: perProbe.get(pr.index)?.[sourceId] })).filter((x): x is { pr: MockProbe; list: [string, number][] } => Boolean(x.list));
+    if (lists.length === 1) return lists[0]!.list;
+    const fused = new Map<string, number>();
+    for (const { pr, list } of lists) {
+      const weight = pr.index === 0 ? (tcfg?.original_weight ?? 1) : 1;
+      list.forEach(([id], i) => fused.set(id, (fused.get(id) ?? 0) + weight / ((tcfg?.k ?? 60) + i + 1)));
+    }
+    return ranked(fused, topK);
+  };
 
+  // 3. Fuse sources and rerank, per group: one group, or one per sub-question when decomposing.
+  const byId = new Map(cands.map((c) => [c.chunk.id, c]));
   if (cfg.rerank) {
     const fault = state.serviceFaults[cfg.rerank.provider];
     if (fault?.down) throw new MockError(502, "provider_error", `${cfg.rerank.provider} failed: ${fault.down}`, { provider: cfg.rerank.provider, cause: "provider_error" });
-    const head = order.slice(0, cfg.rerank.top_n);
-    const qs = new Set(q);
-    const byId = new Map(cands.map((c) => [c.chunk.id, c]));
-    order = head
-      .map(([id]): [string, number] => {
-        const c = byId.get(id)!;
-        const covered = [...qs].filter((t) => c.tokens.includes(t)).length / Math.max(1, qs.size);
-        return [id, Number((0.05 + 0.85 * covered + 0.1 * jitter(`rerank:${id}:${body.query}`)).toFixed(4))];
-      })
-      .sort((a, b) => b[1] - a[1]);
-    timings.rerank = 60 + 80 * jitter(`rr:${body.query}`);
+  }
+  const topK = body.top_k ?? cfg.top_k;
+  const rankGroup = (sources: Record<string, [string, number][]>, text: string): [string, number][] => {
+    let order: [string, number][];
+    if (cfg.sources.length > 1) {
+      const fused = new Map<string, number>();
+      const w = cfg.fusion?.weights ?? {};
+      for (const s of cfg.sources) {
+        const list = sources[s.id] ?? [];
+        const max = Math.max(...list.map((x) => x[1]), 1e-9);
+        list.forEach(([id, score], i) => {
+          const add = cfg.fusion?.method === "weighted" ? (w[s.id] ?? 1) * (score / max) : (w[s.id] ?? 1) / ((cfg.fusion?.k ?? 60) + i + 1);
+          fused.set(id, (fused.get(id) ?? 0) + add);
+        });
+      }
+      order = ranked(fused, Number.MAX_SAFE_INTEGER);
+      timings.fusion = 0.4;
+    } else order = sources[cfg.sources[0]!.id] ?? [];
+    if (cfg.rerank) {
+      const qs = new Set(tokens(text));
+      order = order
+        .slice(0, cfg.rerank.top_n)
+        .map(([id]): [string, number] => {
+          const c = byId.get(id)!;
+          const covered = [...qs].filter((t) => c.tokens.includes(t)).length / Math.max(1, qs.size);
+          return [id, Number((0.05 + 0.85 * covered + 0.1 * jitter(`rerank:${id}:${text}`)).toFixed(4))];
+        })
+        .sort((a, b) => b[1] - a[1]);
+      timings.rerank = 60 + 80 * jitter(`rr:${body.query}`);
+    }
+    return order;
+  };
+
+  let sources: Record<string, [string, number][]>;
+  let order: [string, number][];
+  if (tcfg?.mode === "decompose" && probes.length > 1) {
+    const groups = probes.map((pr) => {
+      const lists = perProbe.get(pr.index) ?? {};
+      return { lists, order: rankGroup(lists, pr.text).slice(0, topK) };
+    });
+    // Take turns between the groups, so one sub-question cannot fill the whole list.
+    order = [];
+    sources = Object.fromEntries(cfg.sources.map((s) => [s.id, [] as [string, number][]]));
+    const taken = new Set<string>();
+    const at = groups.map(() => 0);
+    while (order.length < topK && groups.some((g, i) => at[i]! < g.order.length)) {
+      groups.forEach((g, i) => {
+        while (at[i]! < g.order.length && taken.has(g.order[at[i]!]![0])) at[i]!++;
+        const item = g.order[at[i]!];
+        if (!item || order.length >= topK) return;
+        at[i]!++;
+        taken.add(item[0]);
+        order.push(item);
+        for (const s of cfg.sources) {
+          const r = g.lists[s.id]?.findIndex((x) => x[0] === item[0]) ?? -1;
+          if (r >= 0) sources[s.id]!.push([item[0], g.lists[s.id]![r]![1]]);
+        }
+      });
+    }
+  } else {
+    sources = Object.fromEntries(cfg.sources.map((s) => [s.id, mergeProbes(s.id, s.top_k)]));
+    order = rankGroup(sources, body.query);
   }
 
-  const topK = body.top_k ?? cfg.top_k;
-  const byId = new Map(cands.map((c) => [c.chunk.id, c]));
   const neighbors = cfg.expand?.neighbors ?? 0;
   const results: QueryResult[] = order.slice(0, topK).map(([id, score], i) => {
     const c = byId.get(id)!;
@@ -193,10 +270,11 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
       context_before: neighbors ? siblings.slice(Math.max(0, pos - neighbors), pos).map((x) => x.text) : [],
       context_after: neighbors ? siblings.slice(pos + 1, pos + 1 + neighbors).map((x) => x.text) : [],
       sources: src,
-      probes: null,
+      probes: body.debug && tcfg ? [...(found.get(id) ?? [])].sort((x, y) => x - y) : null,
     };
   });
   timings.total = Object.values(timings).reduce((a, b) => a + b, 0) + (performance.now() - started) * 0.05;
   for (const k of Object.keys(timings)) timings[k] = Number(timings[k]!.toFixed(2));
-  return { pipeline_id: p.id, pipeline_fingerprint: p.fingerprint, partial: health.status !== "ready", results, timings_ms: timings, transform: null };
+  const transform = tcfg ? { mode: tcfg.mode, probes: probes.map(({ index, text, kind }) => ({ index, text, kind })), cached } : null;
+  return { pipeline_id: p.id, pipeline_fingerprint: p.fingerprint, partial: health.status !== "ready", results, timings_ms: timings, transform };
 }

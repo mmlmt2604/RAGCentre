@@ -163,4 +163,59 @@ describe("pipelines (UI-3)", () => {
     expect(await within(dialog).findByText(/is the active pipeline\. Make another pipeline active before archiving it\./)).toBeInTheDocument();
     expect(within(dialog).getByText("Make another pipeline active first, then archive this one.")).toBeInTheDocument();
   });
+
+  it("adds a query transform to a clone without any new indexing work", async () => {
+    const user = userEvent.setup();
+    const { state } = renderApp(`${base}/new?from=${pid("baseline-hybrid")}`);
+    const name = await screen.findByLabelText(/^Name/);
+    await user.clear(name);
+    await user.type(name, "hyde-clone");
+    await user.click(screen.getByRole("checkbox", { name: /Transform the query with a language model/ }));
+    expect(screen.getByLabelText("Language model")).toHaveValue("local-chat");
+    // Only language models are offered.
+    expect(within(screen.getByLabelText("Language model")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose…", "local-chat"]);
+    await user.selectOptions(screen.getByLabelText("Transform"), "hyde");
+    expect(screen.getByText(/searches with them \(vector sources only\)/)).toBeInTheDocument();
+    await user.clear(screen.getByLabelText(/^Queries to generate/));
+    await user.type(screen.getByLabelText(/^Queries to generate/), "2");
+    const plan = screen.getByRole("complementary", { name: "Plan" });
+    await waitFor(() => expect(within(plan).getByText("Valid")).toBeInTheDocument(), { timeout: 3000 });
+    expect(within(plan).getByText(/No ingestion needed/)).toBeInTheDocument();
+    await user.click(within(plan).getByRole("button", { name: "Create pipeline" }));
+    await waitFor(() => expect(state.pipelines.some((p) => p.name === "hyde-clone")).toBe(true));
+    const created = state.pipelines.find((p) => p.name === "hyde-clone")!;
+    expect(created.config.retrieval.transform).toMatchObject({ mode: "hyde", provider: "local-chat", n: 2 });
+    // Same indexes as the baseline, so only the retrieval part of the fingerprint differs.
+    const baseline = state.pipelines.find((p) => p.name === "baseline-hybrid")!;
+    expect(created.nodes.map((n) => n.node_fp)).toEqual(baseline.nodes.map((n) => n.node_fp));
+    expect(created.fingerprint).not.toBe(baseline.fingerprint);
+  });
+
+  it("explains a transform that cannot work, next to the field", async () => {
+    const user = userEvent.setup();
+    renderApp(`${base}/new?template=dense`, "ready", (s) => {
+      s.providers = s.providers.filter((p) => p.kind !== "llm");
+    });
+    await user.type(await screen.findByLabelText(/^Name/), "no-llm");
+    await user.click(screen.getByRole("checkbox", { name: /Transform the query with a language model/ }));
+    const plan = screen.getByRole("complementary", { name: "Plan" });
+    expect(await within(plan).findByText("Choose a language model provider.", undefined, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findAllByText("Choose a language model provider.")).not.toHaveLength(0);
+    expect(within(plan).getByRole("button", { name: "Create pipeline" })).toBeDisabled();
+  });
+
+  it("warns when the language model allows few output tokens", async () => {
+    const user = userEvent.setup();
+    renderApp(`${base}/new?template=dense`, "ready", (s) => {
+      s.providers.find((p) => p.name === "local-chat")!.config.max_tokens = 256;
+    });
+    await screen.findByLabelText(/^Name/);
+    await user.click(screen.getByRole("checkbox", { name: /Transform the query with a language model/ }));
+    expect(screen.getByRole("status")).toHaveTextContent(/local-chat allows only 256 output tokens/);
+  });
+
+  it("lists the query transform on the pipeline page", async () => {
+    renderApp(`${base}/${pid("multi-query")}`);
+    expect(await screen.findByText("multi_query via local-chat, up to 3")).toBeInTheDocument();
+  });
 });

@@ -47,6 +47,8 @@ export function QueryPlayground() {
   const sk = params.get("k") ? Number(params.get("k")) : undefined;
   const sf = parseFilter(params.get("f"));
   const spartial = params.get("partial") === "1";
+  const sskip = params.get("nt") === "1";
+  const sdebug = params.get("dbg") === "1";
 
   // The form (starts from the URL)
   const [text, setText] = useState(sq);
@@ -56,13 +58,23 @@ export function QueryPlayground() {
   const [filter, setFilter] = useState<FilterState>({ filter: sf, error: null });
   const [showFilter, setShowFilter] = useState(Boolean(sf));
   const [partial, setPartial] = useState(spartial);
+  const [skip, setSkip] = useState(sskip);
+  const [debug, setDebug] = useState(sdebug);
   const [recent, setRecent] = useState(() => recentQueries(corpusId));
   const [hovered, setHovered] = useState<string | null>(null);
 
   const effA = sa || activeId || items[0]?.id || "";
   const base = (pipelineId: string): QueryRequest | null =>
     sq.trim() && pipelineId
-      ? { query: sq, pipeline_id: pipelineId, ...(sk ? { top_k: sk } : {}), ...(sf ? { filter: sf } : {}), allow_partial: spartial }
+      ? {
+          query: sq,
+          pipeline_id: pipelineId,
+          ...(sk ? { top_k: sk } : {}),
+          ...(sf ? { filter: sf } : {}),
+          allow_partial: spartial,
+          ...(sskip ? { transform: false } : {}),
+          ...(sdebug ? { debug: true } : {}),
+        }
       : null;
   const resA = useQueryResults(corpusId, base(effA));
   const resB = useQueryResults(corpusId, sb ? base(sb) : null);
@@ -80,6 +92,8 @@ export function QueryPlayground() {
     if (k) next.set("k", String(k));
     if (filter.filter) next.set("f", JSON.stringify(filter.filter));
     if (override?.partial ?? partial) next.set("partial", "1");
+    if (skip) next.set("nt", "1");
+    if (debug) next.set("dbg", "1");
     if (next.toString() === params.toString()) {
       void resA.refetch();
       if (sb) void resB.refetch();
@@ -100,6 +114,7 @@ export function QueryPlayground() {
     );
   }
   const name = (id: string) => items.find((p) => p.id === id);
+  const transforms = [effA, sb].some((id) => Boolean(name(id)?.config.retrieval.transform));
   const pipelineOptions = items.map((p) => (
     <option key={p.id} value={p.id}>
       {p.name}
@@ -143,6 +158,8 @@ export function QueryPlayground() {
             Filter{filter.filter ? " (on)" : ""}
           </Button>
           <Checkbox checked={partial} onChange={(e) => setPartial(e.target.checked)} label="Allow partial indexes" />
+          {transforms ? <Checkbox checked={skip} onChange={(e) => setSkip(e.target.checked)} label="Skip query transform" /> : null}
+          {transforms ? <Checkbox checked={debug} onChange={(e) => setDebug(e.target.checked)} label="Show which query found each result" /> : null}
         </div>
         {showFilter && corpus.data ? (
           <div className="qform__filter">

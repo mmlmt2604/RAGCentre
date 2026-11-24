@@ -282,3 +282,45 @@
     margin-left: 0;
   }
 }
+
+/* ---------- query transform: the probes a query was turned into ---------- */
+.qprobes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--seam);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  font-size: var(--text-xs);
+}
+.qprobes__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+}
+.qprobes__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.qprobes__item {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: var(--space-3);
+  align-items: baseline;
+  overflow-wrap: anywhere;
+}
+.qprobes__kind {
+  color: var(--text-2);
+}
+.qres__probes {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}

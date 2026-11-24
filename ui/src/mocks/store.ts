@@ -19,6 +19,7 @@ import type {
   RunState,
 } from "../api/types";
 import { fp } from "./hash";
+import { TRANSFORM_IMPL } from "./transform";
 
 export interface CorpusRec {
   id: string;
@@ -256,6 +257,18 @@ export function resolvePipeline(state: MockState, config: PipelineConfig): Resol
     const p = state.providers.find((x) => x.name === r.rerank?.provider);
     if (!p || p.kind !== "reranker") problems.push({ node_id: null, path: "retrieval.rerank.provider", message: "Choose a reranker provider." });
   }
+  const t = r.transform;
+  if (t) {
+    const p = state.providers.find((x) => x.name === t.provider);
+    if (!p || p.kind !== "llm") problems.push({ node_id: null, path: "retrieval.transform.provider", message: "Choose a language model provider." });
+    const n = t.n ?? 3;
+    if (n < 1 || n > 8) problems.push({ node_id: null, path: "retrieval.transform.n", message: "n must be between 1 and 8." });
+    if ((t.original_weight ?? 1) < 0 || (t.original_weight ?? 1) > 10) problems.push({ node_id: null, path: "retrieval.transform.original_weight", message: "original_weight must be between 0 and 10." });
+    if ((t.k ?? 60) < 1) problems.push({ node_id: null, path: "retrieval.transform.k", message: "k must be at least 1." });
+    if ((t.instructions ?? "").length > 2000) problems.push({ node_id: null, path: "retrieval.transform.instructions", message: "Instructions are limited to 2000 characters." });
+    if (t.mode === "hyde" && !r.sources.some((s) => byId.get(s.index)?.type === "index_vector"))
+      problems.push({ node_id: null, path: "retrieval.transform.mode", message: "HyDE only changes vector search; add a vector source or choose another mode." });
+  }
   const minSource = Math.min(...r.sources.map((s) => s.top_k), r.rerank?.top_n ?? Infinity);
   if (r.top_k < 1 || (Number.isFinite(minSource) && r.top_k > minSource))
     problems.push({ node_id: null, path: "retrieval.top_k", message: "The final top_k must be at least 1 and no larger than the sources feeding it." });
@@ -280,6 +293,19 @@ export function resolvePipeline(state: MockState, config: PipelineConfig): Resol
     ...r,
     sources: r.sources.map((s) => ({ ...s, index: fps.get(s.index) })),
     rerank: r.rerank ? { ...r.rerank, provider: providerFp(state, r.rerank.provider) } : undefined,
+    // Only present when set, so pipelines without a transform keep their fingerprint.
+    transform: t
+      ? {
+          mode: t.mode,
+          provider: providerFp(state, t.provider),
+          n: t.mode === "rewrite" ? 1 : (t.n ?? 3),
+          include_original: t.include_original ?? true,
+          original_weight: t.original_weight ?? 1,
+          k: t.k ?? 60,
+          instructions_sha256: fp(t.instructions ?? ""),
+          impl_version: TRANSFORM_IMPL[t.mode],
+        }
+      : undefined,
   };
   const fingerprint = fp({ nodes: nodes.map((n) => n.node_fp).sort(), retrieval });
   return { nodes, problems: [], fingerprint };

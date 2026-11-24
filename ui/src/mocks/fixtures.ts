@@ -1,5 +1,5 @@
 // Synthetic demonstration data. Names and text are invented; nothing here is a real result.
-import type { MetadataSchema, PipelineConfig, Provider, ProviderType } from "../api/types";
+import type { MetadataSchema, PipelineConfig, Provider, ProviderType, QueryTransformConfig } from "../api/types";
 import { fp, rng, uuidFrom } from "./hash";
 import { ago, type CorpusRec, type DocRec } from "./store";
 
@@ -105,6 +105,7 @@ export function allProviders(): Provider[] {
     provider("docling", "parser", "http", { base_url: "http://parse-01:5001", timeout_seconds: 600, max_concurrency: 2, service_name: "docling-shim", service_version: "2.14.0", revision: "", on_version_drift: "fail" }),
     provider("bge-small", "embedder", "openai_compatible", { base_url: "http://gpu-01:8080/v1", model: "BAAI/bge-small-en-v1.5", dimensions: 384, normalize: true, query_prefix: "Represent this sentence for searching relevant passages: ", document_prefix: "", batch_size: 64, revision: "" }),
     provider("bge-m3", "embedder", "openai_compatible", { base_url: "http://gpu-02:8080/v1", model: "BAAI/bge-m3", dimensions: 1024, normalize: true, query_prefix: "", document_prefix: "", batch_size: 32, revision: "" }),
+    provider("local-chat", "llm", "openai_compatible", { base_url: "http://gpu-01:8082/v1", model: "qwen3-4b-instruct", temperature: 0, max_tokens: 1024, token_limit_field: "max_tokens", supports_images: false, extra_body: {}, revision: "" }),
     provider("jina-rerank", "reranker", "http", { base_url: "http://gpu-01:8081", model: "jina-reranker-v2-base-multilingual", revision: "" }),
     provider("local-sqlite", "vector_store", "sqlite_vec", { path: "data/vectors.db" }),
     provider("qdrant-main", "vector_store", "qdrant", { url: "http://qdrant:6333" }, { secrets: { api_key: { source: "env", set: true, env_var: "QDRANT_API_KEY" } } }),
@@ -180,7 +181,7 @@ export function documents(c: CorpusRec, count: number, seed: number): DocRec[] {
 
 const parseNode = () => ({ id: "parse", type: "parse" as const, routes: [{ mime: "text/*", provider: "builtin-text" }, { mime: "*/*", provider: "docling", options: { ocr: true } }] });
 
-export function hybrid(name: string, opts: { chunk?: "recursive" | "structure"; maxChars?: number; embedder?: string; rerank?: boolean } = {}): PipelineConfig {
+export function hybrid(name: string, opts: { chunk?: "recursive" | "structure"; maxChars?: number; embedder?: string; rerank?: boolean; transform?: QueryTransformConfig } = {}): PipelineConfig {
   const strategy = opts.chunk ?? "recursive";
   return {
     name,
@@ -192,6 +193,7 @@ export function hybrid(name: string, opts: { chunk?: "recursive" | "structure"; 
       { id: "fts", type: "index_fts", inputs: ["chunk"], options: { tokenizer: "unicode61" } },
     ],
     retrieval: {
+      ...(opts.transform ? { transform: opts.transform } : {}),
       sources: [{ id: "dense", index: "vec", top_k: 30 }, { id: "sparse", index: "fts", top_k: 30 }],
       fusion: { method: "rrf", k: 60, weights: { dense: 1, sparse: 1 } },
       ...(opts.rerank ? { rerank: { provider: "jina-rerank", top_n: 30 } } : {}),

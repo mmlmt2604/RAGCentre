@@ -52,7 +52,7 @@ function parseConfig(text: string): { config?: PipelineConfig; error?: string } 
     if (!object(c.retrieval)) return { error: "retrieval must be an object." };
     if (!Array.isArray(c.retrieval.sources) || c.retrieval.sources.some((s) => !object(s) || typeof s.id !== "string" || typeof s.index !== "string" || typeof s.top_k !== "number")) return { error: "retrieval.sources must contain an id, index and numeric top_k." };
     if (typeof c.retrieval.top_k !== "number") return { error: "retrieval.top_k must be a number." };
-    for (const key of ["fusion", "rerank", "expand"] as const) {
+    for (const key of ["fusion", "rerank", "expand", "transform"] as const) {
       if (c.retrieval[key] !== undefined && !object(c.retrieval[key])) return { error: `retrieval.${key} must be an object.` };
     }
     return { config: { name: typeof c.name === "string" ? c.name : "", nodes: c.nodes, retrieval: c.retrieval } };
