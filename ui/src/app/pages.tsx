@@ -1,4 +1,4 @@
-import { Database, FolderSearch, Hammer, Plus } from "lucide-react";
+import { Database, FolderSearch, Hammer, Plus, Sparkles } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Link, useRouteError } from "react-router";
 import { useCorpora } from "../api/hooks";
@@ -68,9 +68,22 @@ export function CorpusList() {
       {corpora.isError && !corpora.data ? (
         <ErrorState error={corpora.error} onRetry={() => void corpora.refetch()} />
       ) : corpora.data && corpora.data.items.length === 0 ? (
-        <EmptyState icon={Database} title="No corpora yet" action={<ButtonLink to="/corpora/new" variant="primary" icon={Plus}>New corpus</ButtonLink>}>
+        <EmptyState
+          icon={Database}
+          title="No corpora yet"
+          action={
+            <span className="inline-gap">
+              <ButtonLink to="/?setup" variant="primary" icon={Sparkles}>
+                Guided setup
+              </ButtonLink>
+              <ButtonLink to="/corpora/new" icon={Plus}>
+                New corpus
+              </ButtonLink>
+            </span>
+          }
+        >
           <p>A corpus is a set of documents that you search together. Pipelines, queries and evaluations all belong to one corpus.</p>
-          <p>You can create one before registering any providers.</p>
+          <p>Guided setup picks a parser, embedder and vector store, creates a corpus and its first pipeline, and takes about two minutes.</p>
         </EmptyState>
       ) : (
         <div className="panel">

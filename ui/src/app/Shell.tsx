@@ -6,6 +6,7 @@ import { useCorpus, useHealth } from "../api/hooks";
 import { StatusIndicator } from "../components/Status";
 import { OcrBarStatus } from "../features/ocr/OcrBarStatus";
 import { OcrWatcher } from "../features/ocr/OcrWatcher";
+import { WelcomeSetup } from "../features/welcome/WelcomeSetup";
 import { count } from "../lib/format";
 import { useTheme, type ThemePref } from "../lib/theme";
 import { TokenPrompt } from "./TokenPrompt";
@@ -151,6 +152,7 @@ export function Shell() {
       <StatusBar />
       <TokenPrompt />
       <OcrWatcher />
+      <WelcomeSetup />
     </div>
   );
 }
