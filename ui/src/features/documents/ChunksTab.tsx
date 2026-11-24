@@ -58,6 +58,12 @@ function ChunkColumn({ doc, pipeline }: { doc: Document; pipeline: Pipeline }) {
                   {c.context}
                 </p>
               ) : null}
+              {c.enrichment ? (
+                <p className="chunk__context chunk__enrichment">
+                  <span className="chunk__context-label">enrichment</span>
+                  {c.enrichment}
+                </p>
+              ) : null}
               <p className="chunk__text">{c.text}</p>
             </li>
           ))}

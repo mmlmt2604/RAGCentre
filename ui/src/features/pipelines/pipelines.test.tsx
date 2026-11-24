@@ -34,6 +34,34 @@ describe("pipelines (UI-3)", () => {
     expect(await screen.findByRole("heading", { name: "from-scratch" })).toBeInTheDocument();
   });
 
+  it("adds an enrich node, wires the embed and keyword nodes to it, and lists only LLM providers", async () => {
+    const user = userEvent.setup();
+    const { state } = renderApp(`${base}/new?template=hybrid`);
+    await user.type(await screen.findByLabelText(/^Name/), "contextual");
+    const graph = screen.getByRole("group", { name: "Pipeline steps" });
+    await user.click(within(graph).getByRole("button", { name: "Enrich" }));
+    const editor = screen.getByRole("region", { name: "Settings for enrich" });
+    expect(within(editor).getByLabelText("Reads from")).toHaveValue("chunk");
+    const llm = within(editor).getByLabelText("LLM");
+    expect(within(llm).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose…", "qwen-llm (openai_compatible)"]);
+    await user.selectOptions(llm, "qwen-llm");
+    await user.selectOptions(within(editor).getByLabelText("Mode"), "keywords");
+    expect(within(editor).getByText(/keywords and synonyms/)).toBeInTheDocument();
+    for (const id of ["embed", "fts"]) {
+      await user.click(within(graph).getByText(id).closest("button")!);
+      await user.selectOptions(screen.getByLabelText("Reads from"), "enrich");
+    }
+    const plan = screen.getByRole("complementary", { name: "Plan" });
+    await waitFor(() => expect(within(plan).getByText("Valid")).toBeInTheDocument(), { timeout: 3000 });
+    // Parse and chunk already exist on this corpus; the enrich step and everything after it are new.
+    const enrich = within(plan).getByText("enrich").closest("li")!;
+    expect(within(enrich).getByText(/new · 640 runs/)).toBeInTheDocument();
+    await user.click(within(plan).getByRole("button", { name: "Create pipeline" }));
+    await waitFor(() => expect(state.pipelines.some((p) => p.name === "contextual")).toBe(true));
+    const created = state.pipelines.find((p) => p.name === "contextual")!;
+    expect(created.config.nodes.find((n) => n.id === "enrich")).toMatchObject({ type: "enrich", provider: "qwen-llm", options: { mode: "keywords" } });
+  });
+
   it("shows each validation problem next to the node it names", async () => {
     const user = userEvent.setup();
     renderApp(`${base}/new?template=dense`, "ready", (s) => {

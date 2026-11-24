@@ -3,7 +3,7 @@
 // different lists. Errors and their order follow src/ragcentre/retrieval/engine.py.
 import type { Chunk, QueryRequest, QueryResponse, QueryResult } from "../api/types";
 import { filterFields, FilterError, matches, validateFilter } from "../lib/filters";
-import { chunks as chunksOf } from "./documents";
+import { chunks as chunksOf, enrichChain } from "./documents";
 import { fp } from "./hash";
 import { MockError } from "./providers";
 import { activeDocs, indexRuns, pipelineHealth, runKey, type MockState, type PipelineRec } from "./store";
@@ -15,10 +15,12 @@ export function tokens(text: string): string[] {
 }
 
 const TOKEN_CACHE = new WeakMap<Chunk, string[]>();
-function chunkTokens(c: Chunk): string[] {
-  let t = TOKEN_CACHE.get(c);
-  if (!t) TOKEN_CACHE.set(c, (t = tokens(`${c.context ?? ""} ${c.text}`)));
-  return t;
+/** The words a chunk is found by: its context and text, and its enrichment for sources that index it. */
+function chunkTokens(c: Chunk, enriched: boolean): string[] {
+  const cached = TOKEN_CACHE.get(c);
+  const plain = cached ?? tokens(`${c.context ?? ""} ${c.text}`);
+  if (!cached) TOKEN_CACHE.set(c, plain);
+  return enriched && c.enrichment ? [...tokens(c.enrichment), ...plain] : plain;
 }
 
 /** A stable pseudo-random number in [0, 1) for a key: the "semantic" part of a dense score. */
@@ -30,6 +32,11 @@ interface Candidate {
   chunk: Chunk;
   docId: string;
   tokens: string[];
+}
+
+/** The candidates as one source sees them: with the enriched text when that source indexes it. */
+function view(cands: Candidate[], enriched: boolean): Candidate[] {
+  return enriched ? cands.map((c) => ({ ...c, tokens: chunkTokens(c.chunk, true) })) : cands;
 }
 
 function denseScores(q: string[], cands: Candidate[], embedder: string): Map<string, number> {
@@ -118,8 +125,18 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
   for (const d of allowed) {
     const cs = chunksOf(state, d, p.id, chunkNode?.node_id ?? null, index);
     byDoc.set(d.id, cs);
-    for (const c of cs) cands.push({ chunk: c, docId: d.id, tokens: chunkTokens(c) });
+    for (const c of cs) cands.push({ chunk: c, docId: d.id, tokens: chunkTokens(c, false) });
   }
+  // Sources whose index holds the enriched text: those reading from the enrich node that feeds retrieval.
+  const enrichChainNodes = chunkNode ? enrichChain(p, chunkNode.node_id) : [];
+  const enrichNode = enrichChainNodes.at(-1);
+  const textOf = (id: string): string | undefined => {
+    const inputs = new Map(p.config.nodes.map((n) => [n.id, "inputs" in n ? n.inputs?.[0] : undefined]));
+    let cur: string | undefined = id;
+    while (cur && !["chunk", "enrich"].includes(p.nodes.find((n) => n.node_id === cur)?.type ?? "")) cur = inputs.get(cur);
+    return cur;
+  };
+  const enrichedSources = enrichNode ? cfg.sources.filter((s) => textOf(s.index) === enrichNode.node_id).map((s) => s.id) : [];
   const q = tokens(body.query);
   const timings: Record<string, number> = {};
   const sources: Record<string, [string, number][]> = {};
@@ -128,8 +145,8 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
     if (n.type === "index_vector") {
       const embedder = String((p.config.nodes.find((x) => x.type === "embed") as { provider?: string } | undefined)?.provider ?? "");
       timings.embed ??= 18 + 40 * jitter(`${embedder}:${body.query}`);
-      sources[s.id] = ranked(denseScores(q, cands, embedder), s.top_k);
-    } else sources[s.id] = ranked(keywordScores(q, cands), s.top_k);
+      sources[s.id] = ranked(denseScores(q, view(cands, enrichedSources.includes(s.id)), embedder), s.top_k);
+    } else sources[s.id] = ranked(keywordScores(q, view(cands, enrichedSources.includes(s.id))), s.top_k);
     timings[s.id] = 2 + 6 * jitter(`${s.id}:${body.query}`);
   }
 
@@ -159,7 +176,7 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
     order = head
       .map(([id]): [string, number] => {
         const c = byId.get(id)!;
-        const covered = [...qs].filter((t) => c.tokens.includes(t)).length / Math.max(1, qs.size);
+        const covered = [...qs].filter((t) => chunkTokens(c.chunk, enrichNode !== undefined).includes(t)).length / Math.max(1, qs.size);
         return [id, Number((0.05 + 0.85 * covered + 0.1 * jitter(`rerank:${id}:${body.query}`)).toFixed(4))];
       })
       .sort((a, b) => b[1] - a[1]);
@@ -186,6 +203,7 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
       rank: i + 1,
       text: c.chunk.text,
       context: c.chunk.context,
+      enrichment: enrichNode ? c.chunk.enrichment : null,
       page_start: c.chunk.page_start,
       page_end: c.chunk.page_end,
       heading_path: c.chunk.heading_path,
@@ -197,5 +215,5 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
   });
   timings.total = Object.values(timings).reduce((a, b) => a + b, 0) + (performance.now() - started) * 0.05;
   for (const k of Object.keys(timings)) timings[k] = Number(timings[k]!.toFixed(2));
-  return { pipeline_id: p.id, pipeline_fingerprint: p.fingerprint, partial: health.status !== "ready", results, timings_ms: timings };
+  return { pipeline_id: p.id, pipeline_fingerprint: p.fingerprint, partial: health.status !== "ready", enriched_sources: enrichedSources, results, timings_ms: timings };
 }

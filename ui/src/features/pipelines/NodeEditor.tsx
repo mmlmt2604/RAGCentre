@@ -2,13 +2,13 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { useOcr } from "../../api/hooks";
-import type { PipelineConfig, PipelineNode, Provider, ProviderType } from "../../api/types";
+import type { EnrichMode, PipelineConfig, PipelineNode, Provider, ProviderType } from "../../api/types";
 import { Button, IconButton } from "../../components/Button";
 import { Checkbox, Field, Select, TextInput } from "../../components/Field";
 import { NumberInput } from "../../components/NumberInput";
 import { OcrServiceStatus } from "../ocr/OcrIndicator";
 import { isProblem, ocrLabel } from "../ocr/model";
-import { INPUT_TYPE } from "./graph";
+import { INPUT_TYPES } from "./graph";
 import { NODE_LABEL } from "./model";
 import { optionSpecs } from "./optionsSchema";
 import { ParserOptions } from "./ParserOptions";
@@ -19,6 +19,12 @@ const STRATEGY_HINT: Record<string, string> = {
   structure: "Follows headings: never merges across a heading, keeps tables and code whole.",
   page: "One chunk per page; falls back to structure when the document has no pages.",
   http: "Your own chunking service (ragcentre.chunker/v1). Options are passed through.",
+};
+const MODE_HINT: Record<EnrichMode, string> = {
+  situate: "A sentence or two placing the chunk within its document, so it can be found on its own (contextual retrieval).",
+  summary: "A one or two sentence summary of the chunk.",
+  keywords: "A short list of keywords and synonyms the chunk is about.",
+  questions: "Questions the chunk answers, in the words a user might ask them.",
 };
 const DEFAULTS: Record<string, Record<string, number | boolean>> = {
   fixed: { max_chars: 1000, overlap_chars: 100 },
@@ -153,8 +159,10 @@ export function NodeEditor({
     const full = `nodes[${index}].${prefix}`;
     return problems.filter((p) => p.path === full || p.path.startsWith(`${full}.`) || p.path.startsWith(`${full}[`)).map((p) => ({ path: p.path.slice(full.length), message: p.message }));
   };
-  const wantInput = INPUT_TYPE[node.type];
-  const candidates = wantInput ? config.nodes.filter((n) => n.type === wantInput) : [];
+  const wantInput = INPUT_TYPES[node.type];
+  // Stacked enrich nodes may not read from themselves.
+  const candidates = config.nodes.filter((n) => wantInput.includes(n.type) && n.id !== node.id);
+  const wantLabel = wantInput.map((t) => NODE_LABEL[t]!.toLowerCase()).join(" or ");
   const input = "inputs" in node ? (node.inputs?.[0] ?? "") : "";
 
   return (
@@ -172,8 +180,8 @@ export function NodeEditor({
         <Field label="Node id" hint="Lowercase letters, digits and underscores. Retrieval sources refer to index nodes by id." error={errAt("id") ?? null}>
           {(a11y) => <TextInput {...a11y} mono key={node.id} defaultValue={node.id} onBlur={(e) => e.target.value !== node.id && onRename(e.target.value.trim())} />}
         </Field>
-        {wantInput ? (
-          <Field label="Reads from" hint={`A ${NODE_LABEL[wantInput]!.toLowerCase()} node.`} error={errAt("inputs") ?? null}>
+        {wantInput.length ? (
+          <Field label="Reads from" hint={`A ${wantLabel} node.`} error={errAt("inputs") ?? null}>
             {(a11y) => (
               <Select {...a11y} value={input} onChange={(e) => onChange({ ...node, inputs: [e.target.value] } as PipelineNode)}>
                 <option value="">Choose…</option>
@@ -283,6 +291,56 @@ export function NodeEditor({
               ) : null}
             </>
           )}
+        </div>
+      ) : null}
+
+      {node.type === "enrich" ? (
+        <div className="cfg-grid">
+          <ProviderSelect kind="llm" label="LLM" value={node.provider} onChange={(v) => onChange({ ...node, provider: v })} providers={providers} error={errAt("provider")} />
+          <Field label="Mode" hint={MODE_HINT[node.options?.mode ?? "situate"]} error={errAt("options.mode") ?? null}>
+            {(a11y) => (
+              <Select {...a11y} value={node.options?.mode ?? "situate"} onChange={(e) => onChange({ ...node, options: { ...node.options, mode: e.target.value as EnrichMode } })}>
+                {(Object.keys(MODE_HINT) as EnrichMode[]).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <NumberInput
+            label="Document characters"
+            min={1000}
+            placeholder="default"
+            hint="How much of the document the model sees with each chunk. Longer documents are cut."
+            value={node.options?.max_doc_chars}
+            onChange={(v) => onChange({ ...node, options: { ...node.options, max_doc_chars: v } })}
+            error={errAt("options.max_doc_chars")}
+          />
+          <NumberInput
+            label="Max answer tokens"
+            min={1}
+            placeholder="default"
+            hint="Caps the text written per chunk."
+            value={node.options?.max_tokens}
+            onChange={(v) => onChange({ ...node, options: { ...node.options, max_tokens: v } })}
+            error={errAt("options.max_tokens")}
+          />
+          <Field label="Custom prompt" hint="Replaces the built-in prompt for this mode. It must contain {chunk}; {context}, {heading_path} and {title} are also filled in. The document itself is always sent first as the system message. Leave blank to use the built-in prompt." error={errAt("options.prompt") ?? null}>
+            {(a11y) => (
+              <TextInput
+                {...a11y}
+                mono
+                key={node.id}
+                defaultValue={node.options?.prompt ?? ""}
+                placeholder="Write one sentence about {chunk}"
+                onBlur={(e) => onChange({ ...node, options: { ...node.options, prompt: e.target.value.trim() || undefined } })}
+              />
+            )}
+          </Field>
+          <p className="node-ed__desc">
+            Each chunk is sent to the model once; answers are cached by model and prompt, so editing a later step or a copy of this pipeline costs no new calls. At most one enrich node may feed the retrieval sources.
+          </p>
         </div>
       ) : null}
 

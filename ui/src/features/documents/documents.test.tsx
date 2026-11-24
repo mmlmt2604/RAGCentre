@@ -2,7 +2,8 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { tick } from "../../mocks/engine";
+import { completeRuns, createPipeline, tick } from "../../mocks/engine";
+import { hybrid } from "../../mocks/fixtures";
 import { uuidFrom } from "../../mocks/hash";
 import { buildScenario } from "../../mocks/scenarios";
 import { renderApp } from "../../test/render";
@@ -110,6 +111,22 @@ describe("documents (UI-2)", () => {
     expect(within(a).queryByText("context")).toBeNull();
     await user.selectOptions(screen.getByLabelText("Compare with"), "rerank-jina");
     expect(await screen.findByText(/Both pipelines use the same chunk step/)).toBeInTheDocument();
+  });
+
+  it("shows a chunk's enrichment only for a pipeline with an enrich node", async () => {
+    const user = userEvent.setup();
+    const docId = buildScenario("ready").documents.find((d) => d.corpus_id === support)!.id;
+    renderApp(`/corpora/${support}/documents/${docId}?tab=chunks`, "ready", (s) => {
+      const p = createPipeline(s, support, hybrid("enriched", { enrich: "situate" }));
+      completeRuns(s, p.nodes.map((n) => n.node_fp));
+    });
+    await user.selectOptions(await screen.findByLabelText("Chunks from"), screen.getByRole("option", { name: "baseline-hybrid" }));
+    const plain = await screen.findByRole("region", { name: "Chunks from baseline-hybrid" });
+    await within(plain).findAllByText(/^#\d+$/);
+    expect(within(plain).queryByText("enrichment")).toBeNull();
+    await user.selectOptions(screen.getByLabelText("Compare with"), "enriched");
+    const enriched = await screen.findByRole("region", { name: "Chunks from enriched" });
+    expect((await within(enriched).findAllByText("enrichment")).length).toBeGreaterThan(0);
   });
 
   it("validates metadata edits against the corpus schema", async () => {

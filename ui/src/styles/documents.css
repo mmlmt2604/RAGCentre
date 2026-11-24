@@ -487,6 +487,10 @@
   font-size: var(--text-xs);
   font-family: var(--font-mono);
 }
+.chunk__enrichment {
+  font-family: inherit;
+  white-space: pre-wrap;
+}
 .chunk__context-label {
   margin-right: var(--space-4);
   color: var(--text-3);

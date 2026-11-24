@@ -3,6 +3,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+import { completeRuns, createPipeline } from "../../mocks/engine";
+import { hybrid } from "../../mocks/fixtures";
 import { uuidFrom } from "../../mocks/hash";
 import { renderApp, server } from "../../test/render";
 
@@ -25,6 +27,22 @@ describe("query playground (UI-4)", () => {
     expect(within(first).getByLabelText("Rank and score in each source")).toHaveTextContent(/(dense|sparse) #\d+ \d\.\d{3}/);
     expect(within(col).getByLabelText("Timings")).toHaveTextContent(/total/);
     expect(within(col).getByLabelText("Timings")).toHaveTextContent(/embed/);
+  });
+
+  it("shows what the enrich node wrote for each result, and which sources read it", async () => {
+    const { state } = renderApp(`${base}?q=${q}&a=${pid("baseline-hybrid")}&b=${pid("enriched")}`, "ready", (s) => {
+      const p = createPipeline(s, support, hybrid("enriched", { enrich: "summary" }));
+      completeRuns(s, p.nodes.map((n) => n.node_fp));
+    });
+    expect(state.pipelines.some((p) => p.name === "enriched")).toBe(true);
+    const plain = await screen.findByRole("region", { name: "Results from baseline-hybrid" });
+    const enriched = await screen.findByRole("region", { name: "Results from enriched" });
+    await within(enriched).findAllByRole("listitem");
+    await within(plain).findAllByRole("listitem");
+    expect(within(enriched).getByLabelText("Enriched sources")).toHaveTextContent("dense, sparse");
+    expect((await within(enriched).findAllByText("enrichment")).length).toBeGreaterThan(0);
+    expect(within(plain).queryByText("enrichment")).toBeNull();
+    expect(within(plain).queryByLabelText("Enriched sources")).toBeNull();
   });
 
   it("puts two pipelines side by side and links the chunks they share", async () => {

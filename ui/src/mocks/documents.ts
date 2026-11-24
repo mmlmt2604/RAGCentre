@@ -1,10 +1,10 @@
 // Mock document operations: upload, edit, replace, delete, and the parsed IR and chunks a pipeline
 // produced. Mirrors the backend's documents router (IMPLEMENTATION_PLAN.md §7, §9, §16).
-import type { Chunk, MetadataSchema, RunState, Scalar } from "../api/types";
+import type { Chunk, MetadataSchema, PipelineConfig, RunState, Scalar } from "../api/types";
 import { fp, uuidFrom } from "./hash";
 import type { Form } from "./multipart";
 import { MockError } from "./providers";
-import { indexRuns, now, planRuns, runKey, type DocRec, type MockState, type PipelineRec } from "./store";
+import { indexRuns, now, planRuns, runKey, type DocRec, type MockState, type NodeRec, type PipelineRec } from "./store";
 
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
@@ -293,14 +293,72 @@ export function chunks(state: MockState, d: DocRec, pipelineId: string, nodeId: 
   if (index.get(runKey(d.id, node.node_fp))?.status !== "succeeded") return [];
   // Chunks depend only on the content and the chunk node: cache them (queries and evaluations reuse them).
   const key = `${node.node_fp}|${d.id}|${d.revision}|${d.content_sha256}`;
-  const hit = CHUNK_CACHE.get(key);
+  let base = CHUNK_CACHE.get(key);
+  if (!base) CHUNK_CACHE.set(key, (base = makeChunks(d, node)));
+  const enrich = enrichChain(p, node.node_id);
+  if (!enrich.length || enrich.some((n) => index.get(runKey(d.id, n.node_fp))?.status !== "succeeded")) return base;
+  // Enrichment keeps the chunk ids; it depends on the enrich nodes too, so it has its own cache.
+  const ekey = `${key}|${enrich.map((n) => n.node_fp).join(",")}`;
+  const hit = ENRICHED_CACHE.get(ekey);
   if (hit) return hit;
-  const made = makeChunks(d, node);
-  CHUNK_CACHE.set(key, made);
+  const made = base.map((c) => ({ ...c, enrichment: enrichmentFor(d, c, enrich) }));
+  ENRICHED_CACHE.set(ekey, made);
   return made;
 }
 
 const CHUNK_CACHE = new Map<string, Chunk[]>();
+const ENRICHED_CACHE = new Map<string, Chunk[]>();
+
+type PipelineNodes = NodeRec[];
+
+/**
+ * The enrich nodes whose text results show for a chunk node, upstream first: the chain feeding the
+ * retrieval sources, or else the longest chain reading from this chunk node.
+ */
+export function enrichChain(p: { nodes: PipelineNodes; config: PipelineConfig }, chunkNodeId: string): PipelineNodes {
+  const inputOf = new Map(p.config.nodes.map((n) => [n.id, "inputs" in n ? n.inputs?.[0] : undefined]));
+  const recs = new Map(p.nodes.map((n) => [n.node_id, n]));
+  const chainTo = (id: string | undefined): PipelineNodes => {
+    const out: PipelineNodes = [];
+    for (let cur = id; cur && recs.get(cur)?.type === "enrich"; cur = inputOf.get(cur)) out.unshift(recs.get(cur)!);
+    return out;
+  };
+  const rootOf = (id: string | undefined): string | undefined => {
+    let cur = id;
+    while (cur && recs.get(cur)?.type !== "chunk") cur = inputOf.get(cur);
+    return cur;
+  };
+  const feeding = new Set(
+    p.config.retrieval.sources.map((s) => {
+      let cur: string | undefined = s.index;
+      while (cur && !["chunk", "enrich"].includes(recs.get(cur)?.type ?? "")) cur = inputOf.get(cur);
+      return cur;
+    }),
+  );
+  const candidates = p.config.nodes.filter((n) => n.type === "enrich" && rootOf(n.id) === chunkNodeId).map((n) => chainTo(n.id));
+  const fed = candidates.filter((c) => feeding.has(c.at(-1)?.node_id));
+  const pool = fed.length ? fed : candidates;
+  return pool.sort((a, b) => b.length - a.length)[0] ?? [];
+}
+
+/** Deterministic stand-in for what an LLM would write, by mode. Stacked nodes join with a blank line. */
+function enrichmentFor(d: DocRec, c: Chunk, chain: PipelineNodes): string {
+  const words = (c.text.toLowerCase().match(/[a-z]{4,}/g) ?? []).filter((w) => !["that", "this", "with", "from", "your", "have", "will", "when", "which"].includes(w));
+  const top = [...new Set(words)].sort((a, b) => words.filter((w) => w === b).length - words.filter((w) => w === a).length).slice(0, 5);
+  const parts = chain.map((n) => {
+    switch (String(n.resolved.mode)) {
+      case "summary":
+        return `Summary: ${c.text.replace(/\s+/g, " ").slice(0, 90).trimEnd()}…`;
+      case "keywords":
+        return top.join(", ");
+      case "questions":
+        return `What does ${d.filename} say about ${top[0] ?? "this topic"}?\nHow does ${top[1] ?? "it"} work?`;
+      default:
+        return `From ${d.filename}${c.heading_path.length ? `, under ${c.heading_path.join(" › ")}` : ""}: this passage covers ${top.slice(0, 3).join(", ") || "the document"}.`;
+    }
+  });
+  return parts.join("\n\n");
+}
 
 /** Drop cached chunks for a (corpus, chunk-node) pair, e.g. after garbage collection. */
 export function clearChunksFor(corpusId: string, nodeFp: string): void {
@@ -348,6 +406,7 @@ function makeChunks(d: DocRec, node: { node_fp: string; resolved: Record<string,
       ordinal,
       text: pc.text,
       context: pc.context ?? null,
+      enrichment: null,
       page_start: pages.length ? Math.min(...pages) : null,
       page_end: pages.length ? Math.max(...pages) : null,
       heading_path: bs[0]?.heading_path ?? [],

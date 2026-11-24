@@ -2,15 +2,24 @@
 import type { PipelineConfig, PipelineDiff, PipelineNode } from "../../api/types";
 
 export type NodeType = PipelineNode["type"];
-export const COLUMNS: { key: string; label: string; types: NodeType[] }[] = [
+/** `optional` columns are drawn only when they hold a node (or can take one, in the builder). */
+export const COLUMNS: { key: string; label: string; types: NodeType[]; optional?: boolean }[] = [
   { key: "parse", label: "Parse", types: ["parse"] },
   { key: "chunk", label: "Chunk", types: ["chunk"] },
+  { key: "enrich", label: "Enrich", types: ["enrich"], optional: true },
   { key: "embed", label: "Embed", types: ["embed"] },
   { key: "index", label: "Index", types: ["index_vector", "index_fts"] },
 ];
 
-/** What each node type reads from. */
-export const INPUT_TYPE: Record<NodeType, NodeType | null> = { parse: null, chunk: "parse", embed: "chunk", index_vector: "embed", index_fts: "chunk" };
+/** What each node type reads from. Anything that reads chunk text also reads an enrich node. */
+export const INPUT_TYPES: Record<NodeType, NodeType[]> = {
+  parse: [],
+  chunk: ["parse"],
+  enrich: ["chunk", "enrich"],
+  embed: ["chunk", "enrich"],
+  index_vector: ["embed"],
+  index_fts: ["chunk", "enrich"],
+};
 
 export function inputsOf(n: PipelineNode): string[] {
   return "inputs" in n && Array.isArray(n.inputs) ? n.inputs : [];
@@ -26,6 +35,8 @@ export function nodeSummary(n: PipelineNode): string {
       const size = typeof o.max_chars === "number" ? ` ${o.max_chars}` : "";
       return `${n.strategy}${size}${n.strategy === "http" && n.provider ? ` via ${n.provider}` : ""}`;
     }
+    case "enrich":
+      return `${n.options?.mode ?? "situate"}${n.options?.prompt ? " (custom prompt)" : ""} · ${n.provider || "no llm"}`;
     case "embed":
       return n.provider || "no embedder";
     case "index_vector":
@@ -43,15 +54,17 @@ export function freshId(config: PipelineConfig, base: string): string {
 }
 
 export function blankNode(type: NodeType, config: PipelineConfig): PipelineNode {
-  const want = INPUT_TYPE[type];
-  const input = want ? config.nodes.filter((n) => n.type === want).at(-1)?.id : undefined;
-  const base = { parse: "parse", chunk: "chunk", embed: "embed", index_vector: "vec", index_fts: "fts" }[type];
+  const want = INPUT_TYPES[type];
+  const input = want.length ? config.nodes.filter((n) => want.includes(n.type)).at(-1)?.id : undefined;
+  const base = { parse: "parse", chunk: "chunk", enrich: "enrich", embed: "embed", index_vector: "vec", index_fts: "fts" }[type];
   const id = freshId(config, base);
   switch (type) {
     case "parse":
       return { id, type, routes: [{ mime: "text/*", provider: "builtin-text" }] };
     case "chunk":
       return { id, type, inputs: [input ?? ""], strategy: "recursive", options: { max_chars: 1000, overlap_chars: 100 } };
+    case "enrich":
+      return { id, type, inputs: [input ?? ""], provider: "", options: { mode: "situate" } };
     case "embed":
       return { id, type, inputs: [input ?? ""], provider: "" };
     case "index_vector":
@@ -125,7 +138,7 @@ export function problemNodeIndex(path: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-const STAGE: Record<string, string> = { parse: "Parse", chunk: "Chunk", embed: "Embed", index_vector: "Index", index_fts: "Index" };
+const STAGE: Record<string, string> = { parse: "Parse", chunk: "Chunk", enrich: "Enrich", embed: "Embed", index_vector: "Index", index_fts: "Index" };
 
 function sentence(xs: string[]): string {
   const words = xs.map((s, i) => (i ? s.toLowerCase() : s));

@@ -4,7 +4,8 @@
 .pg {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 1fr);
   gap: var(--space-7);
   padding: var(--space-5);
   border: 1px solid var(--seam);
@@ -532,7 +533,7 @@
   gap: var(--space-6);
 }
 .diff-graphs .pg {
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-auto-columns: minmax(120px, 1fr);
   gap: var(--space-5);
 }
 .diff-graphs__title {

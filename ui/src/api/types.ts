@@ -16,7 +16,7 @@ export interface Health {
 }
 
 // ---------- Providers ----------
-export type ProviderKind = "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
+export type ProviderKind = "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm";
 
 export interface StoreCapabilities {
   metrics: Metric[]; max_batch: number; multi_vector: boolean; native_hybrid: boolean;
@@ -114,18 +114,23 @@ export interface Document {
 export interface Chunk {
   id: UUID; document_id: UUID; ordinal: number;
   text: string; context: string | null;
+  enrichment: string | null;                 // what an enrich node wrote for the chunk, if one ran
   page_start: number | null; page_end: number | null;
   heading_path: string[]; block_ids: string[]; char_count: number;
 }
 // GET /documents/{id}/parsed returns the Document IR of section 7 plus `heading_path` on each block.
 
 // ---------- Pipelines ----------
+export type EnrichMode = "situate" | "summary" | "keywords" | "questions";
 export type PipelineNode =
   | { id: string; type: "parse";
       routes: { mime: string; provider: string; options?: Record<string, unknown> }[] }
   | { id: string; type: "chunk"; inputs: [string];
       strategy: "fixed" | "recursive" | "structure" | "page" | "http";
       options?: Record<string, unknown>; provider?: string }
+  | { id: string; type: "enrich"; inputs: [string]; provider: string;
+      options?: { mode?: EnrichMode; prompt?: string; max_doc_chars?: number;
+                  max_tokens?: number; temperature?: number } }
   | { id: string; type: "embed"; inputs: [string]; provider: string }
   | { id: string; type: "index_vector"; inputs: [string]; provider: string;
       options?: { metric?: Metric } }
@@ -199,6 +204,7 @@ export interface QueryRequest {
 export interface QueryResult {
   chunk_id: UUID; document_id: UUID; score: number; rank: number;
   text: string; context: string | null;
+  enrichment: string | null;                 // null without an enrich node
   page_start: number | null; page_end: number | null; heading_path: string[];
   document: { filename: string; external_id: string | null;
               metadata: Record<string, Scalar>; attributes: Record<string, unknown> };
@@ -207,6 +213,7 @@ export interface QueryResult {
 }
 export interface QueryResponse {
   pipeline_id: UUID; pipeline_fingerprint: string; partial: boolean;
+  enriched_sources: string[];                // source ids whose index holds the enriched text
   results: QueryResult[];
   timings_ms: Record<string, number>;        // always includes "total"
 }

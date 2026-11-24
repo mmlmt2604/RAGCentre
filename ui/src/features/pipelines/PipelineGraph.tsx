@@ -22,7 +22,7 @@ interface Edge {
 }
 
 /**
- * The pipeline as fixed columns by node type (parse → chunk → embed → index) with edges drawn
+ * The pipeline as fixed columns by node type (parse → chunk → enrich → embed → index; enrich only when used) with edges drawn
  * between cards. Selection makes the cards buttons; without `onSelect` the graph is read-only.
  */
 export function PipelineGraph({
@@ -31,6 +31,7 @@ export function PipelineGraph({
   onSelect,
   label,
   footer,
+  showColumns,
 }: {
   nodes: GraphNode[];
   selected?: string | null;
@@ -38,6 +39,8 @@ export function PipelineGraph({
   label: string;
   /** Per-column footer, e.g. an "add node" button. */
   footer?: (column: string) => ReactNode;
+  /** Optional columns to draw even when empty, so two graphs side by side line up. */
+  showColumns?: string[];
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -84,6 +87,7 @@ export function PipelineGraph({
       </svg>
       {COLUMNS.map((col) => {
         const items = nodes.filter((n) => col.types.includes(n.type));
+        if (col.optional && !items.length && !footer && !showColumns?.includes(col.key)) return null;
         return (
           <div key={col.key} className="pg__col">
             <div className="pg__colhead">{col.label}</div>

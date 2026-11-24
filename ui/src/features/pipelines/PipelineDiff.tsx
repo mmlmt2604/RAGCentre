@@ -46,6 +46,8 @@ export function PipelineDiff() {
   const pa = usePipeline(a ?? undefined);
   const pb = usePipeline(b ?? undefined);
   const diff = usePipelineDiff(a, b);
+  // Draw the optional enrich column in both graphs when either pipeline uses it, so they line up.
+  const enrichColumn = [pa.data, pb.data].some((p) => p?.config.nodes.some((n) => n.type === "enrich")) ? ["enrich"] : [];
   const items = list.data?.items ?? [];
   const pick = (key: "a" | "b", id: string) =>
     setParams(
@@ -125,13 +127,13 @@ export function PipelineDiff() {
               <h2 className="diff-graphs__title">
                 <Badge>a</Badge> <span className="mono">{pa.data.name}</span>
               </h2>
-              <PipelineGraph label={`${pa.data.name} steps`} nodes={graphFor(pa.data, diff.data, "a")} />
+              <PipelineGraph label={`${pa.data.name} steps`} nodes={graphFor(pa.data, diff.data, "a")} showColumns={enrichColumn} />
             </section>
             <section aria-label={`Pipeline b: ${pb.data.name}`}>
               <h2 className="diff-graphs__title">
                 <Badge>b</Badge> <span className="mono">{pb.data.name}</span>
               </h2>
-              <PipelineGraph label={`${pb.data.name} steps`} nodes={graphFor(pb.data, diff.data, "b")} />
+              <PipelineGraph label={`${pb.data.name} steps`} nodes={graphFor(pb.data, diff.data, "b")} showColumns={enrichColumn} />
             </section>
           </div>
 
