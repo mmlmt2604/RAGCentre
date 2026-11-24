@@ -29,8 +29,15 @@ PARSER_URL = "http://parser.test"
 EMBEDDER_URL = "http://embedder.test/v1"
 RERANKER_URL = "http://reranker.test"
 CHUNKER_URL = "http://chunker.test"
+LLM_URL = "http://llm.test/v1"
 
-HOSTS = {"parser.test": "parser", "embedder.test": "embedder", "reranker.test": "reranker", "chunker.test": "chunker"}
+HOSTS = {
+    "parser.test": "parser",
+    "embedder.test": "embedder",
+    "reranker.test": "reranker",
+    "chunker.test": "chunker",
+    "llm.test": "llm",
+}
 
 Step = int | httpx.Response | Callable[[httpx.Request], httpx.Response]
 
@@ -130,7 +137,7 @@ class FakeServices:
         if service is None:
             raise httpx.ConnectError(f"no fake service at {request.url.host}", request=request)
         path = request.url.path
-        if service == "embedder" and path.startswith("/v1"):
+        if service in {"embedder", "llm"} and path.startswith("/v1/"):
             path = path[3:]
         if service == "parser" and path.startswith("/jobs/"):
             return self._parser_job(request, path)
@@ -232,6 +239,20 @@ class FakeServices:
         data = [{"object": "embedding", "index": i, "embedding": hash_embed(t, dim)} for i, t in enumerate(inputs)]
         data.reverse()  # exercise ordering by index
         return httpx.Response(200, json={"object": "list", "data": data, "model": body["model"]})
+
+    # ---- language model -----------------------------------------------------------------------
+
+    def _llm_chat_completions(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        content = '{"reply": "OK"}' if body.get("response_format") == {"type": "json_object"} else "OK"
+        return httpx.Response(
+            200,
+            json={
+                "model": body["model"],
+                "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 1},
+            },
+        )
 
     # ---- reranker -----------------------------------------------------------------------------
 

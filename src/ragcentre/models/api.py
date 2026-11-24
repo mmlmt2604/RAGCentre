@@ -20,7 +20,7 @@ T = TypeVar("T")
 Metric = Literal["cosine", "l2", "dot"]
 FieldType = Literal["str", "int", "float", "bool"]
 Scalar = str | int | float | bool
-ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store"]
+ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "llm", "vector_store"]
 
 
 class RequestModel(BaseModel):

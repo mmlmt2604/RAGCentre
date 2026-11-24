@@ -16,7 +16,7 @@ export interface Health {
 }
 
 // ---------- Providers ----------
-export type ProviderKind = "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
+export type ProviderKind = "parser" | "chunker" | "embedder" | "reranker" | "llm" | "vector_store";
 
 export interface StoreCapabilities {
   metrics: Metric[]; max_batch: number; multi_vector: boolean; native_hybrid: boolean;

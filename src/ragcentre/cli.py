@@ -33,7 +33,9 @@ app = typer.Typer(
     pretty_exceptions_enable=False,
     add_completion=False,
 )
-provider_app = typer.Typer(help="Parsers, chunkers, embedders, rerankers and vector stores.", no_args_is_help=True)
+provider_app = typer.Typer(
+    help="Parsers, chunkers, embedders, rerankers, language models and vector stores.", no_args_is_help=True
+)
 corpus_app = typer.Typer(help="Corpora: document collections with a metadata schema.", no_args_is_help=True)
 docs_app = typer.Typer(help="Documents in a corpus.", no_args_is_help=True)
 pipeline_app = typer.Typer(
@@ -260,6 +262,30 @@ def provider_list() -> None:
     with _api() as api:
         items = list(api.paginate("/providers"))
     _emit(items, lambda: _provider_rows(items))
+
+
+@provider_app.command("edit")
+def provider_edit(
+    name: Annotated[str, typer.Argument(help="Provider name or id.")],
+    file: Annotated[Path, typer.Option("-f", "--file", help="YAML or JSON mapping of config fields to change.")],
+) -> None:
+    """Update a provider's operational settings."""
+    config = _load_file(file)
+    if not isinstance(config, dict):
+        _fail(f"{file} must contain a mapping of config fields to change")
+    with _api() as api:
+        p = api.provider(name)
+        updated = api.call("PATCH", f"/providers/{p['id']}", json={"config": config})
+    _emit(updated, lambda: typer.echo(f"Updated provider {updated['name']}."))
+
+
+@provider_app.command("delete")
+def provider_delete(name: Annotated[str, typer.Argument(help="Provider name or id.")]) -> None:
+    """Delete an unused provider."""
+    with _api() as api:
+        p = api.provider(name)
+        api.delete(f"/providers/{p['id']}")
+    _emit({"deleted": p["id"]}, lambda: typer.echo(f"Deleted provider {p['name']}."))
 
 
 @provider_app.command("test")

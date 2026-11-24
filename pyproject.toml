@@ -65,6 +65,7 @@ chunker_http = "ragcentre.providers.chunkers.http:SPEC"
 embedder_builtin_hash = "ragcentre.providers.embedders.builtin_hash:SPEC"
 embedder_openai_compatible = "ragcentre.providers.embedders.openai_compatible:SPEC"
 reranker_http = "ragcentre.providers.rerankers.http:SPEC"
+llm_openai_compatible = "ragcentre.providers.llms.openai_compatible:SPEC"
 
 [project.entry-points."ragcentre.chunk_strategies"]
 fixed = "ragcentre.chunking.fixed:FixedStrategy"

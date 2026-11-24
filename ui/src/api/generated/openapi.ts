@@ -1622,7 +1622,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "llm" | "vector_store";
             /** Name */
             name: string;
             /** Secrets */
@@ -1646,7 +1646,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "llm" | "vector_store";
             /** Name */
             name: string;
             /** Type */
@@ -1689,7 +1689,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "llm" | "vector_store";
             /** Label */
             label: string;
             /** Secret Keys */

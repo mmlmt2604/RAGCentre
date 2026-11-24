@@ -27,8 +27,8 @@ from ragcentre.logs import redact
 if TYPE_CHECKING:
     from ragcentre.stores.base import Capabilities
 
-ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store"]
-KINDS: tuple[ProviderKind, ...] = ("parser", "chunker", "embedder", "reranker", "vector_store")
+ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "llm", "vector_store"]
+KINDS: tuple[ProviderKind, ...] = ("parser", "chunker", "embedder", "reranker", "llm", "vector_store")
 Role = Literal["document", "query"]
 
 RETRYABLE_STATUS = frozenset({408, 429})
@@ -84,6 +84,44 @@ class Embedder(Protocol):
 @runtime_checkable
 class Reranker(Protocol):
     def rerank(self, query: str, documents: Sequence[str], top_n: int) -> list[tuple[int, float]]: ...
+
+
+@dataclass(frozen=True)
+class ImagePart:
+    data: bytes
+    mime_type: str
+
+
+ContentPart = str | ImagePart
+
+
+@dataclass(frozen=True)
+class Message:
+    role: Literal["system", "user", "assistant"]
+    content: str | Sequence[ContentPart]
+
+
+@dataclass(frozen=True)
+class Completion:
+    # Empty only when finish_reason is "length": the limit was reached before any answer text.
+    text: str
+    finish_reason: Literal["stop", "length", "other"]
+    model: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+
+
+@runtime_checkable
+class LLM(Protocol):
+    supports_images: bool
+
+    def complete(
+        self,
+        messages: Sequence[Message],
+        *,
+        max_tokens: int | None = None,
+        json_output: bool = False,
+    ) -> Completion: ...
 
 
 @runtime_checkable

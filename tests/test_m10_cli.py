@@ -20,6 +20,7 @@ from ragcentre.api.app import create_app
 from ragcentre.cli import app
 from ragcentre.context import open_context
 from ragcentre.settings import Settings
+from ragcentre.testing.fakes import LLM_URL, FakeServices
 
 ROOT = Path(__file__).resolve().parent.parent
 QUICKSTART = ROOT / "examples" / "quickstart.md"
@@ -32,10 +33,10 @@ def _free_port() -> int:
 
 
 @pytest.fixture
-def server(tmp_path: Path) -> Iterator[str]:
+def server(tmp_path: Path, fakes: FakeServices) -> Iterator[str]:
     """A real uvicorn server with workers, on a free port, with a fresh data directory."""
     settings = Settings(data_dir=tmp_path / "data", workers=2, idle_sleep_seconds=0.05, max_idle_sleep_seconds=0.1)
-    ctx = open_context(settings)
+    ctx = open_context(settings, http_client_factory=fakes.client_factory)
     ctx.start_workers(settings.workers)
     port = _free_port()
     srv = uvicorn.Server(uvicorn.Config(create_app(ctx), host="127.0.0.1", port=port, log_level="warning"))
@@ -149,6 +150,21 @@ def test_errors_are_reported_with_problems(server: str, tmp_path: Path) -> None:
 def test_unreachable_server() -> None:
     code, out = run(f"http://127.0.0.1:{_free_port()}", "corpus", "list")
     assert code == 1 and "Could not reach RAGCentre" in out and "ragcentre serve" in out
+
+
+def test_llm_provider_lifecycle(server: str, tmp_path: Path) -> None:
+    spec = tmp_path / "llm.yaml"
+    spec.write_text(
+        f"name: local-chat\nkind: llm\ntype: openai_compatible\nconfig: {{base_url: {LLM_URL}, model: some-model}}\n"
+    )
+    assert "Created llm provider local-chat" in ok(server, "provider", "add", "-f", str(spec))
+    assert "some-model" in ok(server, "provider", "test", "local-chat")
+    patch = tmp_path / "settings.yaml"
+    patch.write_text("timeout_seconds: 10\n")
+    edited = json.loads(ok(server, "--json", "provider", "edit", "local-chat", "-f", str(patch)))
+    assert edited["config"]["timeout_seconds"] == 10
+    assert "Deleted provider local-chat" in ok(server, "provider", "delete", "local-chat")
+    assert "local-chat" not in ok(server, "provider", "list")
 
 
 def test_provider_secrets(server: str, tmp_path: Path) -> None:

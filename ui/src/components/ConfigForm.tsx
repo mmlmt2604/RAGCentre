@@ -46,6 +46,18 @@ export function ConfigInput({
               </option>
             ))}
           </Select>
+        ) : field.kind === "object" ? (
+          <textarea
+            {...a11y}
+            className="rc-input mono"
+            rows={4}
+            value={String(value ?? "")}
+            placeholder="{}"
+            spellCheck={false}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+            required={field.required}
+          />
         ) : (
           <TextInput
             {...a11y}
@@ -72,7 +84,7 @@ function rangeHint(f: ConfigField): string | null {
 }
 
 function defaultHint(f: ConfigField): string | null {
-  if (f.default === undefined || f.default === null || f.default === "" || f.kind === "boolean") return null;
+  if (f.default === undefined || f.default === null || f.default === "" || f.kind === "boolean" || f.kind === "object") return null;
   return `default ${String(f.default)}`;
 }
 

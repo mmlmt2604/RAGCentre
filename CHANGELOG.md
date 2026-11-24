@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add pluggable language model providers, starting with OpenAI-compatible chat completions.
+  Configure and test them through the API, CLI, or web UI.
+- Add CLI commands to edit provider settings and delete unused providers.
+
 ## 0.0.3
 
 - Harden API request handling, outbound provider access, provider secret scoping,

@@ -70,11 +70,13 @@ on the recheck interval. Nothing runs while the UI is closed.
 
 ## Concepts
 
-- **Provider**: a configured parser, chunker, embedder, reranker or vector store. Built in:
+- **Provider**: a configured parser, chunker, embedder, reranker, language model or vector store. Built in:
   `builtin_text` (Markdown and plain text), `builtin_hash` (a lexical embedder for demos and
   tests) and `sqlite_vec`. Over HTTP: any parser or chunker speaking RAGCentre's protocols, any
-  OpenAI-compatible embeddings server, and Cohere/Jina-style rerankers. Vector stores: see
-  [Vector stores](#vector-stores).
+  OpenAI-compatible embeddings or chat-completions server, and Cohere/Jina-style rerankers.
+  Language model providers support configuration and connection tests. Chunk enrichment and
+  answer generation are planned separately. [Language model protocol](docs/protocols/llm-v1.md)
+  and [vector stores](#vector-stores).
 - **Corpus**: a set of documents with a typed metadata schema for filtering.
 - **Pipeline**: parse → chunk → embed → index (vector and/or full-text), plus retrieval settings
   (fusion, reranking, neighbour expansion). See [`examples/pipelines/`](examples/pipelines/).
@@ -93,7 +95,8 @@ pipeline or dataset is expected, and `ragcentre --json …` prints the API's JSO
 ```
 ragcentre serve [--host] [--port] [--workers N]
 ragcentre worker [--workers N]
-ragcentre provider add -f provider.yaml | list | test NAME | set-secret NAME KEY (--env VAR | --value-stdin)
+ragcentre provider add -f provider.yaml | list | test NAME | edit NAME -f settings.yaml | delete NAME
+ragcentre provider set-secret NAME KEY (--env VAR | --value-stdin)
 ragcentre corpus create NAME [--schema schema.yaml] | list | activate CORPUS PIPELINE [--force]
 ragcentre docs add CORPUS PATH... [--metadata k=v] [--external-id ID] | list CORPUS | rm ID
 ragcentre pipeline create CORPUS -f pipeline.yaml [--dry-run] | list CORPUS | status ID [--watch] | diff A B | archive ID
