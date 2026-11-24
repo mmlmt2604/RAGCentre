@@ -58,7 +58,12 @@ def _original(text: str, *, vector: bool = True, keyword: bool = True) -> Probe:
 
 
 def parse_queries(provider: str, content: str, original: str, limit: int, finish_reason: str) -> list[str]:
-    """Validate the model's answer and return up to ``limit`` usable queries."""
+    """Validate the model's answer and return up to ``limit`` queries that differ from the original.
+
+    An answer that only repeats the original (a model told to return a simple question as it is)
+    gives an empty list: nothing new to search, and nothing wrong. An answer with no text at all is
+    an error.
+    """
     try:
         data = json.loads(content)
     except ValueError:
@@ -71,16 +76,18 @@ def parse_queries(provider: str, content: str, original: str, limit: int, finish
         raise invalid_response(provider, 'expected a JSON object {"queries": [strings]}')
     seen = {original.strip().casefold()}
     out: list[str] = []
+    usable = 0
     for query in queries:
         cleaned = query.strip()[:MAX_PROBE_CHARS].strip()
+        if not cleaned:
+            continue
+        usable += 1
         key = cleaned.casefold()
-        if not cleaned or key in seen:
+        if key in seen or len(out) == limit:
             continue
         seen.add(key)
         out.append(cleaned)
-        if len(out) == limit:
-            break
-    if not out:
+    if not usable:
         raise invalid_response(provider, "the answer contained no usable queries")
     return out
 
@@ -144,6 +151,9 @@ def plan(
         llm_ms = round((time.perf_counter() - started) * 1000, 2)
         _cache_put(ctx, transform["fp"], query_sha, generated)
 
+    if not generated:
+        # The model had nothing new to add, so search what was asked, on every source.
+        return QueryPlan(mode, [_original(text)], cached, llm_ms)
     hyde = mode == "hyde"
     probes: list[Probe] = []
     if transform["include_original"]:

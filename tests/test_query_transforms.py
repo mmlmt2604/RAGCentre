@@ -266,6 +266,20 @@ def test_unusable_answers_are_a_502_naming_the_provider(ctx: AppContext, fakes: 
     assert ctx.cache.scalar("SELECT COUNT(*) FROM query_transforms") == 0  # failures are never cached
 
 
+@pytest.mark.parametrize("mode", ["rewrite", "multi_query", "decompose", "hyde"])
+@pytest.mark.parametrize("include_original", [True, False])
+def test_an_answer_that_only_repeats_the_query_searches_the_original(
+    ctx: AppContext, fakes: FakeServices, mode: str, include_original: bool
+) -> None:
+    runtime = _runtime(ctx, mode=mode, include_original=include_original)
+    fakes.script("llm", CHAT, [fakes.llm_reply('{"queries": ["Fast Car", "fast car"]}')])
+    result = plan(ctx, runtime, "fast car")
+    assert [(p.index, p.kind) for p in result.probes] == [(0, "original")]
+    assert result.probes[0].vector and result.probes[0].keyword
+    again = plan(ctx, runtime, "fast car")  # an empty answer is cached too
+    assert again.cached is True and fakes.count("llm", CHAT) == 1
+
+
 def test_truncated_answer_says_why(ctx: AppContext, fakes: FakeServices) -> None:
     runtime = _runtime(ctx)
     fakes.script("llm", CHAT, [fakes.llm_reply('{"queries": ["fast', "length")])
