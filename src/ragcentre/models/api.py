@@ -731,6 +731,14 @@ class GcRequest(RequestModel):
     dry_run: bool = True
 
 
+class CacheClearRequest(RequestModel):
+    transforms: bool = False
+
+
+class CacheClearReport(ResponseModel):
+    transforms_deleted: int
+
+
 class GcIndex(ResponseModel):
     id: str
     kind: Literal["vector", "fts"]

@@ -44,6 +44,7 @@ pipeline_app = typer.Typer(
 eval_app = typer.Typer(help="Evaluation datasets and runs.", no_args_is_help=True)
 parser_app = typer.Typer(help="Check parser and OCR services.", no_args_is_help=True)
 store_app = typer.Typer(help="Check vector stores against live data.", no_args_is_help=True)
+cache_app = typer.Typer(help="Caches kept next to the database.", no_args_is_help=True)
 app.add_typer(provider_app, name="provider")
 app.add_typer(corpus_app, name="corpus")
 app.add_typer(docs_app, name="docs")
@@ -51,6 +52,7 @@ app.add_typer(pipeline_app, name="pipeline")
 app.add_typer(eval_app, name="eval")
 app.add_typer(parser_app, name="parser")
 app.add_typer(store_app, name="store")
+app.add_typer(cache_app, name="cache")
 
 log = logging.getLogger("ragcentre")
 
@@ -879,6 +881,25 @@ def query(
             typer.echo(f"({len(res['results'])} results in {total:.0f} ms)")
 
     _emit(res, human)
+
+
+@cache_app.command("clear")
+def cache_clear(
+    transforms: Annotated[
+        bool,
+        typer.Option(
+            "--transforms",
+            help="Forget generated query rewrites, so the next query asks the language model again. "
+            "Use it after the model behind a provider changes.",
+        ),
+    ] = False,
+) -> None:
+    """Empty a cache."""
+    if not transforms:
+        _fail("Choose what to clear, for example --transforms.", 2)
+    with _api() as api:
+        report = api.post("/admin/cache/clear", json={"transforms": True})
+    _emit(report, lambda: typer.echo(f"Cleared {report['transforms_deleted']} cached query transforms."))
 
 
 # ---- evaluation --------------------------------------------------------------------------------

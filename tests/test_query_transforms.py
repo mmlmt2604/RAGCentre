@@ -22,6 +22,7 @@ from test_m5_pipelines import _add_providers, _base_pipeline
 from test_m5_pipelines import _corpus as _m5_corpus
 from test_m6_ingestion import _corpus, _pipeline, _upload
 from test_m7_retrieval import drain
+from test_m10_cli import run, server  # noqa: F401 (server is a fixture)
 
 
 def _setup(ctx: AppContext) -> str:
@@ -502,3 +503,27 @@ def test_failures_return_no_partial_results(env: Env, fakes: FakeServices) -> No
     assert info.value.details["provider"] == "chat"
     assert fakes.count("llm", CHAT) == 1
     assert env.ask(pid, "fast car")["results"]  # the next query works; the failure was not cached
+
+
+def test_clearing_the_transform_cache(env: Env, fakes: FakeServices, client: TestClient) -> None:
+    pid = env.make({"mode": "multi_query", "n": 2})
+    env.ask(pid, "fast car")
+    env.ask(pid, "big error")
+    calls = fakes.count("llm", CHAT)
+    assert env.ask(pid, "fast car")["transform"]["cached"] is True
+    assert fakes.count("llm", CHAT) == calls
+    assert client.post("/v1/admin/cache/clear", json={"transforms": False}).status_code == 422
+    cleared = client.post("/v1/admin/cache/clear", json={"transforms": True})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json() == {"transforms_deleted": 2}
+    assert env.ask(pid, "fast car")["transform"]["cached"] is False
+    assert fakes.count("llm", CHAT) == calls + 1
+
+
+def test_cli_cache_clear(server: str) -> None:  # noqa: F811
+    code, out = run(server, "cache", "clear", "--transforms")
+    assert code == 0 and "Cleared 0 cached query transforms." in out
+    code, out = run(server, "--json", "cache", "clear", "--transforms")
+    assert code == 0 and json.loads(out) == {"transforms_deleted": 0}
+    code, out = run(server, "cache", "clear")
+    assert code == 2 and "Choose what to clear" in out
