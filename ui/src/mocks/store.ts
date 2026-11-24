@@ -102,6 +102,7 @@ export interface MockState {
   /** Simulated provider service conditions, by provider name: down (with the error) or a newer version. */
   serviceFaults: Record<string, { down?: string; version?: string; ocr?: OcrState }>;
   /** URLs where a parser shim answers, whether or not it is a provider. */
+  inContainer: boolean;
   runningShims: string[];
   /** Runs started or finished per tick of the ingestion simulator. */
   throughput: number;
@@ -129,6 +130,7 @@ export function emptyState(): MockState {
     secretStorage: true,
     maxUploadBytes: 200 * 1024 * 1024,
     serviceFaults: {},
+    inContainer: true,
     runningShims: [],
     throughput: 60,
   };

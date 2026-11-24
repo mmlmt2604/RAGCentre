@@ -224,6 +224,7 @@ class OcrStatus(ResponseModel):
     services: list[OcrService]
     scanning: bool  # some address has not been looked at yet
     discovery_enabled: bool
+    in_container: bool
 
 
 # ---------- Corpora ----------

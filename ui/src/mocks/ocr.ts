@@ -62,5 +62,5 @@ export function ocrStatus(state: MockState): OcrStatus {
   const found = state.runningShims
     .filter((url) => !parsers.some((p) => p.config.base_url === url))
     .map((url) => service({ id: `found-${url}`, base_url: url, state: "detected", suggested_name: state.providers.some((p) => p.name === "docling") ? "docling-2" : "docling" }));
-  return { services: [...added, ...found], scanning: false, discovery_enabled: true };
+  return { services: [...added, ...found], scanning: false, discovery_enabled: true, in_container: state.inContainer };
 }

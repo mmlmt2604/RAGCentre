@@ -452,6 +452,7 @@ class OcrMonitor:
             "services": services,
             "scanning": any(w.last is None for w in everyone),
             "discovery_enabled": bool(self.candidates),
+            "in_container": self.container,
         }
 
     @staticmethod

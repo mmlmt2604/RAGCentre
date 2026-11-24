@@ -68,7 +68,7 @@ export interface OcrService {
   message: string; detail: string | null;
   checked_at: ISODate | null; check_seconds: number | null;
 }
-export interface OcrStatus { services: OcrService[]; scanning: boolean; discovery_enabled: boolean }
+export interface OcrStatus { services: OcrService[]; scanning: boolean; discovery_enabled: boolean; in_container: boolean }
 export interface ParserFinding { level: "error" | "warn" | "info"; check: string; message: string; lost: string | null }
 export interface ParserCheck { ok: boolean; blocks: number; pages: number; seconds: number; findings: ParserFinding[] }
 export interface StoreFinding { level: "error" | "warn" | "info"; check: string; message: string; ms: number; lost: string | null }

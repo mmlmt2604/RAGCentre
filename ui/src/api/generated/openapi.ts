@@ -1321,6 +1321,8 @@ export interface components {
         OcrStatus: {
             /** Discovery Enabled */
             discovery_enabled: boolean;
+            /** In Container */
+            in_container: boolean;
             /** Scanning */
             scanning: boolean;
             /** Services */
