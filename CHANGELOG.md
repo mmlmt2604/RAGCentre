@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- First-run setup creates a corpus and its first pipeline, guides you through starting an OCR shim, and selects it when it answers.
+
 ## 0.0.3
 
 - Harden API request handling, outbound provider access, provider secret scoping,
