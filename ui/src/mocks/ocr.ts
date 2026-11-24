@@ -1,5 +1,6 @@
 // Mock OCR readiness: the states of the backend's ocr/monitor.py, derived from the mock's providers and faults.
 import type { OcrService, OcrState, OcrStatus } from "../api/types";
+import { ENGINES, urlPort } from "../features/welcome/engines";
 import { ago, type MockState } from "./store";
 
 const STEPS: Record<OcrState, OcrService["steps"]> = {
@@ -59,8 +60,16 @@ export function ocrStatus(state: MockState): OcrStatus {
       detail: fault.down ?? null,
     });
   });
-  const found = state.runningShims
+  const now = Date.now();
+  state.runningShims = [...new Set([...state.runningShims, ...state.startingShims.filter((shim) => shim.at <= now).map((shim) => shim.url)])];
+  state.startingShims = state.startingShims.filter((shim) => shim.at > now);
+  const found = (state.discoveryEnabled ? state.runningShims : [])
     .filter((url) => !parsers.some((p) => p.config.base_url === url))
-    .map((url) => service({ id: `found-${url}`, base_url: url, state: "detected", suggested_name: state.providers.some((p) => p.name === "docling") ? "docling-2" : "docling" }));
-  return { services: [...added, ...found], scanning: false, discovery_enabled: true, in_container: state.inContainer };
+    .map((url) => {
+      const engine = ENGINES.find((entry) => entry.port === urlPort(url))?.id ?? "parser";
+      let suggested: string = engine;
+      for (let suffix = 2; state.providers.some((p) => p.name === suggested); suffix++) suggested = `${engine}-${suffix}`;
+      return service({ id: `found-${url}`, base_url: url, state: "detected", name: `${engine}-shim`, suggested_name: suggested });
+    });
+  return { services: [...added, ...found], scanning: false, discovery_enabled: state.discoveryEnabled, in_container: state.inContainer };
 }

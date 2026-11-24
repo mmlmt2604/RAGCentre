@@ -4,11 +4,12 @@ import { SEEDED_RUN_ID, seedFinishedRun, importDataset } from "./eval";
 import { allProviders, builtinText, corpus, documents, goldenJsonl, hybrid, providerTypes } from "./fixtures";
 import { emptyState, type MockState } from "./store";
 
-export const SCENARIOS = ["empty", "building", "degraded", "ready", "auth"] as const;
+export const SCENARIOS = ["empty", "no-shim", "building", "degraded", "ready", "auth"] as const;
 export type ScenarioName = (typeof SCENARIOS)[number];
 
 export const SCENARIO_LABELS: Record<ScenarioName, string> = {
   empty: "Empty — first run",
+  "no-shim": "Empty, no OCR shim running",
   building: "Building — ingestion in progress",
   degraded: "Degraded — failed and blocked runs",
   ready: "Ready — everything built",
@@ -21,11 +22,11 @@ export function buildScenario(name: ScenarioName): MockState {
   const state = emptyState();
   state.providerTypes = providerTypes;
 
-  if (name === "empty") {
+  if (name === "empty" || name === "no-shim") {
     // A fresh install: no RAGCENTRE_SECRET_KEY yet, so only environment-variable secrets work.
     state.providers = [builtinText()];
     state.secretStorage = false;
-    state.runningShims = ["http://docling:8701"];
+    if (name === "empty") state.runningShims = ["http://docling:8701"];
     return state;
   }
 

@@ -104,6 +104,8 @@ export interface MockState {
   /** URLs where a parser shim answers, whether or not it is a provider. */
   inContainer: boolean;
   runningShims: string[];
+  startingShims: { url: string; at: number }[];
+  discoveryEnabled: boolean;
   /** Runs started or finished per tick of the ingestion simulator. */
   throughput: number;
 }
@@ -132,6 +134,8 @@ export function emptyState(): MockState {
     serviceFaults: {},
     inContainer: true,
     runningShims: [],
+    startingShims: [],
+    discoveryEnabled: true,
     throughput: 60,
   };
 }

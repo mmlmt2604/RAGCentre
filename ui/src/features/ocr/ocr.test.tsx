@@ -77,7 +77,7 @@ describe("OCR readiness", () => {
     await within(bar()).findByText("OCR ready");
     state.runningShims = ["http://surya:8704"];
     await queryClient.invalidateQueries({ queryKey: keys.ocr });
-    expect(await within(screen.getByRole("region", { name: "Notifications" })).findByText("Found docling-shim")).toBeInTheDocument();
+    expect(await within(screen.getByRole("region", { name: "Notifications" })).findByText("Found surya-shim")).toBeInTheDocument();
   });
 
   it("offers found shims when adding a parser", async () => {
