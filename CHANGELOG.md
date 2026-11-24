@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.4
 
 - Add chunk enrichment. An `enrich` pipeline node asks an `llm` provider for a short text per chunk
   (`situate`, `summary`, `keywords` or `questions`, or your own prompt) and stores it beside the chunk,
