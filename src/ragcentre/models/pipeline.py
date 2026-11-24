@@ -95,7 +95,18 @@ class Expand(_Strict):
     neighbors: int = 0
 
 
+class Transform(_Strict):
+    mode: Literal["rewrite", "multi_query", "hyde", "decompose"]
+    provider: str
+    n: int = 3
+    include_original: bool = True
+    original_weight: float = 1.0
+    k: int = 60
+    instructions: str = ""
+
+
 class RetrievalConfig(_Strict):
+    transform: Transform | None = None
     sources: list[Source]
     fusion: Fusion | None = None
     rerank: Rerank | None = None
