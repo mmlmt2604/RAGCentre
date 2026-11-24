@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import copy
+import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+import pytest
+
 from ragcentre.context import AppContext
+from ragcentre.errors import ProviderFailed
 from ragcentre.hashing import pipeline_fp
 from ragcentre.pipeline.graph import Resolution
 from ragcentre.pipeline.planner import resolve_for_corpus
 from ragcentre.retrieval import prompts
-from ragcentre.testing.fakes import LLM_URL
+from ragcentre.retrieval.transform import Probe, QueryPlan, plan
+from ragcentre.testing.fakes import LLM_URL, FakeServices
 from test_m5_pipelines import _add_providers, _base_pipeline, _corpus
 
 
@@ -134,3 +140,168 @@ def test_unknown_mode_and_fields_are_structural_errors(ctx: AppContext) -> None:
     corpus = _setup(ctx)
     assert not _resolve(ctx, corpus, _with_transform(mode="magic")).valid
     assert not _resolve(ctx, corpus, _with_transform(extra=1)).valid
+
+
+# ---- probes: plan(), validation, cache ---------------------------------------------------------
+
+CHAT = "/chat/completions"
+
+
+def _runtime(ctx: AppContext, **overrides: Any) -> dict[str, Any]:
+    corpus = _setup_once(ctx)
+    res = _resolve(ctx, corpus, _with_transform(**overrides))
+    assert res.valid, res.problems
+    return res.retrieval_runtime["transform"]
+
+
+def _setup_once(ctx: AppContext) -> str:
+    if ctx.providers.by_name("chat") is None:
+        return _setup(ctx)
+    return str(ctx.db.scalar("SELECT id FROM corpora LIMIT 1"))
+
+
+def _texts(p: QueryPlan) -> list[str]:
+    return [probe.text for probe in p.probes]
+
+
+def test_plan_without_transform_is_the_original_only(ctx: AppContext, fakes: FakeServices) -> None:
+    result = plan(ctx, None, "fast car")
+    assert result == QueryPlan(None, [Probe(0, "fast car", "original", "query", True, True, 0)], False, None)
+    assert plan(ctx, _runtime(ctx), "fast car", enabled=False).mode is None
+    assert fakes.count("llm") == 0
+
+
+def test_multi_query_probes(ctx: AppContext) -> None:
+    result = plan(ctx, _runtime(ctx, n=3), "fast car")
+    assert result.mode == "multi_query"
+    assert [p.kind for p in result.probes] == ["original", "paraphrase", "paraphrase", "paraphrase"]
+    assert _texts(result) == ["fast car", "quick automobile", "car fast", "information about fast car"]
+    assert [p.index for p in result.probes] == [0, 1, 2, 3]
+    assert all(p.vector and p.keyword and p.role == "query" and p.group == 0 for p in result.probes)
+    assert result.cached is False
+    assert result.llm_ms is not None
+
+
+def test_include_original_false_drops_the_original(ctx: AppContext) -> None:
+    result = plan(ctx, _runtime(ctx, include_original=False, n=2), "fast car")
+    assert _texts(result) == ["quick automobile", "car fast"]
+    assert [p.index for p in result.probes] == [1, 2]
+
+
+def test_rewrite_makes_one_probe(ctx: AppContext) -> None:
+    result = plan(ctx, _runtime(ctx, mode="rewrite", n=5), "fast car")
+    assert [p.kind for p in result.probes] == ["original", "rewrite"]
+    assert result.probes[1].text == "quick automobile"
+
+
+def test_hyde_probes_are_documents_and_skip_keyword(ctx: AppContext, fakes: FakeServices) -> None:
+    fakes.hyde_passage = "The engine failed because of a worn valve."
+    result = plan(ctx, _runtime(ctx, mode="hyde", n=1), "why did it fail")
+    assert [(p.kind, p.role, p.vector, p.keyword) for p in result.probes] == [
+        ("original", "query", True, True),
+        ("hypothetical", "document", True, False),
+    ]
+    assert result.probes[1].text == "The engine failed because of a worn valve."
+
+
+def test_hyde_without_original_still_feeds_keyword_sources(ctx: AppContext) -> None:
+    runtime = _runtime(ctx, mode="hyde", n=1, include_original=False)
+    kept = plan(ctx, runtime, "why did it fail", has_keyword_source=True)
+    assert [(p.kind, p.vector, p.keyword) for p in kept.probes] == [
+        ("original", False, True),
+        ("hypothetical", True, False),
+    ]
+    only_vectors = plan(ctx, runtime, "why did it fail two", has_keyword_source=False)
+    assert [p.kind for p in only_vectors.probes] == ["hypothetical"]
+
+
+def test_decompose_groups(ctx: AppContext) -> None:
+    result = plan(ctx, _runtime(ctx, mode="decompose", n=3), "tax rules and filing dates and penalties")
+    assert _texts(result) == ["tax rules and filing dates and penalties", "tax rules", "filing dates", "penalties"]
+    assert [p.group for p in result.probes] == [0, 1, 2, 3]
+    assert all(p.kind == "sub_question" for p in result.probes[1:])
+
+
+def test_a_second_identical_query_is_served_from_the_cache(ctx: AppContext, fakes: FakeServices) -> None:
+    runtime = _runtime(ctx)
+    first = plan(ctx, runtime, "fast car")
+    assert fakes.count("llm", CHAT) == 1
+    second = plan(ctx, runtime, "fast car")
+    assert fakes.count("llm", CHAT) == 1
+    assert second.cached is True and second.llm_ms is None
+    assert _texts(second) == _texts(first)
+    plan(ctx, runtime, "big error")
+    assert fakes.count("llm", CHAT) == 2
+    # Other instructions are another transform, so they miss.
+    plan(ctx, _runtime(ctx, instructions="Prefer legal terms."), "fast car")
+    assert fakes.count("llm", CHAT) == 3
+
+
+def test_concurrent_identical_queries_both_succeed(ctx: AppContext, fakes: FakeServices) -> None:
+    runtime = _runtime(ctx)
+    with ThreadPoolExecutor(4) as pool:
+        results = list(pool.map(lambda _: plan(ctx, runtime, "fast car"), range(4)))
+    assert len({tuple(_texts(r)) for r in results}) == 1
+    assert ctx.cache.scalar("SELECT COUNT(*) FROM query_transforms") == 1
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["not json", "[]", '{"queries": "x"}', '{"queries": [1]}', '{"queries": []}', '{"queries": ["", "  "]}'],
+)
+def test_unusable_answers_are_a_502_naming_the_provider(ctx: AppContext, fakes: FakeServices, content: str) -> None:
+    runtime = _runtime(ctx)
+    fakes.script("llm", CHAT, [fakes.llm_reply(content)])
+    with pytest.raises(ProviderFailed) as info:
+        plan(ctx, runtime, "fast car")
+    assert "chat" in info.value.message
+    assert fakes.count("llm", CHAT) == 1  # no retry
+    assert ctx.cache.scalar("SELECT COUNT(*) FROM query_transforms") == 0  # failures are never cached
+
+
+def test_truncated_answer_says_why(ctx: AppContext, fakes: FakeServices) -> None:
+    runtime = _runtime(ctx)
+    fakes.script("llm", CHAT, [fakes.llm_reply('{"queries": ["fast', "length")])
+    with pytest.raises(ProviderFailed) as info:
+        plan(ctx, runtime, "fast car")
+    assert "token limit" in info.value.message
+    fakes.script("llm", CHAT, [fakes.llm_reply("", "length")])
+    with pytest.raises(ProviderFailed):
+        plan(ctx, runtime, "other query")
+
+
+def test_valid_json_cut_by_the_token_limit_is_accepted(ctx: AppContext, fakes: FakeServices) -> None:
+    runtime = _runtime(ctx)
+    fakes.script("llm", CHAT, [fakes.llm_reply('{"queries": ["quick car"]}', "length")])
+    assert _texts(plan(ctx, runtime, "fast car")) == ["fast car", "quick car"]
+
+
+@pytest.mark.parametrize("status", [429, 500])
+def test_http_failures_are_a_502_without_retry(ctx: AppContext, fakes: FakeServices, status: int) -> None:
+    runtime = _runtime(ctx)
+    fakes.script("llm", CHAT, [status])
+    with pytest.raises(ProviderFailed) as info:
+        plan(ctx, runtime, "fast car")
+    assert info.value.details["provider"] == "chat"
+    assert fakes.count("llm", CHAT) == 1
+
+
+def test_answers_are_cleaned(ctx: AppContext, fakes: FakeServices) -> None:
+    runtime = _runtime(ctx, n=2)
+    payload = {"queries": ["  Fast Car ", "FAST CAR", "a" * 1500, "second", "third"]}
+    fakes.script("llm", CHAT, [fakes.llm_reply(json.dumps(payload))])
+    result = plan(ctx, runtime, "fast car")
+    # The original (any case) and duplicates are dropped, long items cut, and only n are kept.
+    assert [len(t) for t in _texts(result)] == [len("fast car"), 1000, len("second")]
+
+
+def test_the_request_carries_the_prompt_and_asks_for_json(ctx: AppContext, fakes: FakeServices) -> None:
+    runtime = _runtime(ctx, mode="hyde", n=2, instructions="Corpus: veterinary manuals.")
+    plan(ctx, runtime, "sick cat")
+    body = json.loads(fakes.requests[-1].content)
+    assert body["response_format"] == {"type": "json_object"}
+    system, user = body["messages"]
+    assert system["content"].startswith("Task: hyde")
+    assert "up to 2" in system["content"] and "Corpus: veterinary manuals." in system["content"]
+    assert user == {"role": "user", "content": "sick cat"}
+    assert body["max_tokens"] == 64 + 2 * 200

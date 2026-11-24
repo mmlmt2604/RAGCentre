@@ -553,7 +553,12 @@ def resolve_pipeline(raw: Any, providers: ProviderLookup, existing_names: set[st
             "instructions_sha256": sha256_text(r.transform.instructions),
             "impl_version": TRANSFORM_IMPL[r.transform.mode],
         }
-        transform_runtime = {**transform_fp, "provider_id": llm.id, "fp": fp(transform_fp)}
+        transform_runtime = {
+            **transform_fp,
+            "provider_id": llm.id,
+            "instructions": r.transform.instructions,
+            "fp": fp(transform_fp),
+        }
         provider_ids.append(llm.id)
     resolution.retrieval = {
         "sources": [{"id": s.id, "index": fps[s.index], "top_k": s.top_k} for s in r.sources],

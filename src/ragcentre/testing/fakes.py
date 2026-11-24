@@ -24,12 +24,15 @@ import httpx
 
 from ragcentre.providers.embedders.builtin_hash import hash_embed
 from ragcentre.providers.parsers.builtin_text import decode, parse_text
+from ragcentre.retrieval.prompts import TRANSFORM_MODES
 
 PARSER_URL = "http://parser.test"
 EMBEDDER_URL = "http://embedder.test/v1"
 RERANKER_URL = "http://reranker.test"
 CHUNKER_URL = "http://chunker.test"
 LLM_URL = "http://llm.test/v1"
+
+SYNONYMS = {"fast": "quick", "car": "automobile", "buy": "purchase", "big": "large", "error": "fault"}
 
 HOSTS = {
     "parser.test": "parser",
@@ -84,6 +87,7 @@ class FakeServices:
         self._fail_on: dict[tuple[str, str], set[int]] = {}
         self.embed_dim = embed_dim
         self.embedded_texts: list[str] = []
+        self.hyde_passage: str | None = None  # what the fake LLM writes for a hyde prompt
         self.parser_name = "fake-parser"
         self.parser_version = "1.0.0"
         self.parser_mime_types = ["application/pdf", "text/*"]
@@ -242,8 +246,25 @@ class FakeServices:
 
     # ---- language model -----------------------------------------------------------------------
 
+    def llm_reply(self, content: str, finish_reason: str = "stop") -> httpx.Response:
+        """A scripted chat completion, for ``script("llm", "/chat/completions", [...])``."""
+        return httpx.Response(
+            200,
+            json={
+                "model": "local-chat",
+                "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": finish_reason}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 1},
+            },
+        )
+
     def _llm_chat_completions(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
+        system = next((m["content"] for m in body["messages"] if m["role"] == "system"), "")
+        task = re.match(r"Task: (\w+)", system) if isinstance(system, str) else None
+        if task is not None and task.group(1) in TRANSFORM_MODES:
+            user = next(m["content"] for m in reversed(body["messages"]) if m["role"] == "user")
+            n = int(match.group(1)) if (match := re.search(r"up to (\d+)", system)) else 1
+            return self.llm_reply(json.dumps({"queries": self._transform_queries(task.group(1), user, n)}))
         content = '{"reply": "OK"}' if body.get("response_format") == {"type": "json_object"} else "OK"
         return httpx.Response(
             200,
@@ -253,6 +274,23 @@ class FakeServices:
                 "usage": {"prompt_tokens": 5, "completion_tokens": 1},
             },
         )
+
+    def _transform_queries(self, mode: str, query: str, n: int) -> list[str]:
+        """Deterministic answers to the query-transform prompts."""
+        if mode == "hyde":
+            passage = self.hyde_passage or f"This passage discusses {query} in detail."
+            return [passage] + [f"{passage} (variant {i})" for i in range(2, n + 1)]
+        if mode == "decompose":
+            return [part.strip() for part in re.split(r"\s+and\s+", query, flags=re.IGNORECASE) if part.strip()][:n]
+        words = query.split()
+        swapped = " ".join(SYNONYMS.get(w.lower(), w) for w in words)
+        variants = [
+            swapped if swapped != query else f"information about {query}",
+            " ".join(reversed(words)),
+            f"information about {query}",
+        ]
+        variants += [f"details on {query} ({i})" for i in range(len(variants), n)]
+        return variants[: 1 if mode == "rewrite" else n]
 
     # ---- reranker -----------------------------------------------------------------------------
 

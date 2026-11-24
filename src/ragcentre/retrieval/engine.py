@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 from ragcentre.chunking.base import embedded_text
-from ragcentre.errors import ErrorCode, ExecutionError, GuardError, NotFound, ProviderFailed, ValidationFailed
+from ragcentre.errors import ErrorCode, GuardError, NotFound, ValidationFailed
 from ragcentre.models.filters import parse_filter, schema_types
+from ragcentre.retrieval.calls import provider_call as _provider_call
 from ragcentre.retrieval.expand import neighbours
 from ragcentre.retrieval.fts import fts_query
 from ragcentre.retrieval.fusion import SourceMatch, rrf, weighted
@@ -141,18 +142,6 @@ def _keyword_source(
         ],
         (time.perf_counter() - started) * 1000,
     )
-
-
-T = TypeVar("T")
-
-
-def _provider_call(ctx: AppContext, provider_id: str, call: Callable[[], T]) -> T:
-    """The query path does not retry: a provider failure is a 502 naming the provider."""
-    try:
-        return call()
-    except ExecutionError as exc:
-        name = exc.provider or ctx.providers.get(provider_id).name
-        raise ProviderFailed(f"{name} failed: {exc.message}", details={"provider": name, "cause": exc.code}) from None
 
 
 def query(

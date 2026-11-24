@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS embeddings (
   dim INTEGER NOT NULL, vector BLOB NOT NULL,
   PRIMARY KEY (embedder_fp, role, text_sha256)
 ) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS query_transforms (
+  transform_fp TEXT NOT NULL, query_sha256 TEXT NOT NULL,
+  output TEXT NOT NULL, created_at TEXT NOT NULL,
+  PRIMARY KEY (transform_fp, query_sha256)
+) WITHOUT ROWID;
 """
 
 
