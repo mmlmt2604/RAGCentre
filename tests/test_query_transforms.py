@@ -6,22 +6,28 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
 from ragcentre.context import AppContext
 from ragcentre.errors import ProviderFailed
-from ragcentre.hashing import pipeline_fp
+from ragcentre.hashing import pipeline_fp, sha256_text
 from ragcentre.pipeline.graph import Resolution
-from ragcentre.pipeline.planner import resolve_for_corpus
-from ragcentre.retrieval import prompts
+from ragcentre.pipeline.planner import create_pipeline, resolve_for_corpus
+from ragcentre.retrieval import engine, prompts
+from ragcentre.retrieval.engine import query
+from ragcentre.retrieval.fusion import interleave
 from ragcentre.retrieval.transform import Probe, QueryPlan, plan
-from ragcentre.testing.fakes import LLM_URL, FakeServices
-from test_m5_pipelines import _add_providers, _base_pipeline, _corpus
+from ragcentre.testing.fakes import LLM_URL, RERANKER_URL, FakeServices
+from test_m5_pipelines import _add_providers, _base_pipeline
+from test_m5_pipelines import _corpus as _m5_corpus
+from test_m6_ingestion import _corpus, _pipeline, _upload
+from test_m7_retrieval import drain
 
 
 def _setup(ctx: AppContext) -> str:
     _add_providers(ctx)
     ctx.providers.create("chat", "llm", "openai_compatible", {"base_url": LLM_URL, "model": "local-chat"})
-    return _corpus(ctx)
+    return _m5_corpus(ctx)
 
 
 def _with_transform(**overrides: Any) -> dict[str, Any]:
@@ -305,3 +311,194 @@ def test_the_request_carries_the_prompt_and_asks_for_json(ctx: AppContext, fakes
     assert "up to 2" in system["content"] and "Corpus: veterinary manuals." in system["content"]
     assert user == {"role": "user", "content": "sick cat"}
     assert body["max_tokens"] == 64 + 2 * 200
+
+
+# ---- engine: every mode end to end -------------------------------------------------------------
+
+DOCS = {
+    "engine": b"# Engine\n\nA quick automobile accelerates strongly on the highway.",
+    "pump": b"# Pump\n\nThe pump seal cracked under thermal stress during the second shift.",
+    "garden": b"# Garden\n\nTomatoes grow best with regular watering and plenty of sunlight.",
+    "tax": b"# Tax\n\nTax rules change every year for small businesses.",
+    "filing": b"# Filing\n\nFiling dates fall at the end of the quarter.",
+    "penalty": b"# Penalties\n\nPenalties apply when a report arrives late.",
+    "tax2": b"# Tax two\n\nTax rules also differ between regions and sectors.",
+    "tax3": b"# Tax three\n\nTax rules for foreign income are covered separately.",
+}
+PASSAGE = "The pump seal cracked under thermal stress during the second shift."
+
+
+class Env:
+    def __init__(self, ctx: AppContext, client: TestClient, fakes: FakeServices) -> None:
+        self.ctx, self.client, self.fakes = ctx, client, fakes
+        ctx.providers.create("hash", "embedder", "builtin_hash", {})
+        ctx.providers.create("store", "vector_store", "sqlite_vec", {})
+        ctx.providers.create("chat", "llm", "openai_compatible", {"base_url": LLM_URL, "model": "local-chat"})
+        ctx.providers.create("ranker", "reranker", "http", {"base_url": RERANKER_URL, "model": "test"})
+        self.corpus = _corpus(ctx)
+        for name, content in DOCS.items():
+            _upload(client, self.corpus, content, external_id=name)
+        self.count = 0
+        self.base = self.make(None)
+        drain(ctx)
+
+    def make(self, transform: dict[str, Any] | None, **retrieval: Any) -> str:
+        cfg = _pipeline()
+        self.count += 1
+        cfg["name"] = f"p{self.count}"
+        cfg["retrieval"] = {**cfg["retrieval"], **retrieval}
+        if transform is not None:
+            cfg["retrieval"]["transform"] = {"provider": "chat", **transform}
+        pid = create_pipeline(self.ctx, self.corpus, cfg)
+        drain(self.ctx)
+        return pid
+
+    def ask(self, pid: str, text: str, **kwargs: Any) -> dict[str, Any]:
+        kwargs.setdefault("top_k", 8)
+        return query(self.ctx, self.corpus, pid, text, **kwargs)
+
+    def names(self, response: dict[str, Any]) -> list[str]:
+        return [r["document"]["external_id"] for r in response["results"]]
+
+
+@pytest.fixture
+def env(ctx: AppContext, client: TestClient, fakes: FakeServices) -> Env:
+    return Env(ctx, client, fakes)
+
+
+DENSE = {"sources": [{"id": "dense", "index": "vec", "top_k": 20}], "fusion": None}
+SPARSE = {"sources": [{"id": "sparse", "index": "fts", "top_k": 20}], "fusion": None}
+
+
+def test_multi_query_finds_what_the_original_words_miss(env: Env) -> None:
+    plain = env.make(None, **SPARSE)
+    transformed = env.make({"mode": "multi_query", "n": 2}, **SPARSE)
+    assert env.ask(plain, "fast car")["results"] == []
+    response = env.ask(transformed, "fast car")
+    assert env.names(response) == ["engine"]
+    info = response["transform"]
+    assert info["mode"] == "multi_query" and info["cached"] is False
+    assert [(p["index"], p["kind"]) for p in info["probes"]] == [(0, "original"), (1, "paraphrase"), (2, "paraphrase")]
+    assert "transform" in response["timings_ms"]
+    # One rank per source, as before: the probe lists were merged inside the source.
+    assert response["results"][0]["sources"]["sparse"]["rank"] == 1
+
+
+def test_rewrite_searches_the_rewrite(env: Env) -> None:
+    pid = env.make({"mode": "rewrite"}, **SPARSE)
+    response = env.ask(pid, "fast car")
+    assert env.names(response) == ["engine"]
+    assert [p["kind"] for p in response["transform"]["probes"]] == ["original", "rewrite"]
+
+
+def test_hyde_finds_the_document_a_passage_resembles(env: Env, fakes: FakeServices) -> None:
+    fakes.hyde_passage = PASSAGE
+    pid = env.make({"mode": "hyde", "n": 1, "include_original": False}, **DENSE)
+    response = env.ask(pid, "why did it fail")
+    assert env.names(response)[0] == "pump"
+    assert response["results"][0]["sources"]["dense"]["rank"] == 1
+    assert [p["kind"] for p in response["transform"]["probes"]] == ["hypothetical"]
+
+
+def test_hyde_passages_are_documents_and_never_reach_keyword_search(
+    env: Env, fakes: FakeServices, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes.hyde_passage = PASSAGE
+    pid = env.make({"mode": "hyde", "n": 1, "include_original": False})
+    seen: list[str] = []
+    real = engine._keyword_source
+
+    def spy(ctx: AppContext, corpus_id: str, source: dict[str, Any], text: str, *rest: Any) -> Any:
+        seen.append(text)
+        return real(ctx, corpus_id, source, text, *rest)
+
+    monkeypatch.setattr(engine, "_keyword_source", spy)
+    response = env.ask(pid, "why did it fail")
+    assert seen == ["why did it fail"]  # the original, even though include_original is false
+    roles = {
+        r["role"]
+        for r in env.ctx.cache.all("SELECT role FROM embeddings WHERE text_sha256 = ?", (sha256_text(PASSAGE),))
+    }
+    assert roles == {"document"}
+    assert env.names(response)[0] == "pump"
+
+
+def test_decompose_gives_every_sub_question_a_share(env: Env, fakes: FakeServices) -> None:
+    pid = env.make(
+        {"mode": "decompose", "n": 3, "include_original": False},
+        rerank={"provider": "ranker", "top_n": 20},
+        top_k=4,
+    )
+    text = "tax rules and filing dates and penalties late"
+    response = env.ask(pid, text, top_k=4)
+    names = env.names(response)
+    # Three tax documents match the first sub-question best; the other two still get their turn.
+    assert names[:3] == ["tax", "filing", "penalty"]
+    assert sum(n.startswith("tax") for n in names) <= 2
+    assert [p["text"] for p in response["transform"]["probes"]] == ["tax rules", "filing dates", "penalties late"]
+    # Each group is reranked against its own sub-question.
+    queries = [json.loads(r.content)["query"] for r in fakes.requests if r.url.path == "/rerank"]
+    assert sorted(queries) == ["filing dates", "penalties late", "tax rules"]
+
+
+def test_interleave_is_fair_and_skips_duplicates() -> None:
+    groups = [[("a", 3.0), ("b", 2.0), ("c", 1.0), ("d", 0.5)], [("x", 9.0), ("a", 8.0)], [("y", 1.0)]]
+    picked = interleave(groups, 6)
+    ids = [c for _, c, _ in picked]
+    assert ids == ["a", "x", "y", "b", "c", "d"]
+    assert len(set(ids)) == len(ids)
+    assert [g for g, _, _ in picked[:3]] == [0, 1, 2]
+    assert interleave(groups, 3) == [(0, "a", 3.0), (1, "x", 9.0), (2, "y", 1.0)]
+    assert interleave([[], []], 5) == []
+
+
+def test_hybrid_pipeline_keeps_source_weights_and_ranks(env: Env) -> None:
+    pid = env.make({"mode": "multi_query", "n": 2}, fusion={"method": "rrf", "k": 60, "weights": {"dense": 2.0}})
+    response = env.ask(pid, "fast car")
+    assert env.names(response)[0] == "engine"
+    for result in response["results"]:
+        for source in result["sources"].values():
+            assert 1 <= source["rank"] <= 30
+
+
+def test_opting_out_skips_the_llm_and_matches_the_plain_pipeline(env: Env, fakes: FakeServices) -> None:
+    pid = env.make({"mode": "multi_query", "n": 3})
+    before = fakes.count("llm")
+    skipped = env.ask(pid, "tax rules", transform=False)
+    assert fakes.count("llm") == before
+    assert skipped["transform"] is None and "transform" not in skipped["timings_ms"]
+    plain = env.ask(env.base, "tax rules")
+    key = lambda r: [(x["chunk_id"], x["score"], x["rank"], x["sources"]) for x in r["results"]]  # noqa: E731
+    assert key(skipped) == key(plain)
+    assert env.ask(pid, "tax rules", transform=True)["transform"] is not None
+
+
+def test_debug_marks_which_probes_found_each_result(env: Env) -> None:
+    pid = env.make({"mode": "multi_query", "n": 2}, **SPARSE)
+    response = env.ask(pid, "fast car", debug=True)
+    assert response["results"][0]["probes"] == [1]  # only the paraphrase "quick automobile" matches
+    assert "probes" not in env.ask(pid, "fast car")["results"][0]
+
+
+def test_many_sources_and_probes_do_not_deadlock_the_pool(env: Env) -> None:
+    sources = [
+        {"id": "a", "index": "vec", "top_k": 20},
+        {"id": "b", "index": "vec", "top_k": 20},
+        {"id": "c", "index": "fts", "top_k": 20},
+        {"id": "d", "index": "fts", "top_k": 20},
+    ]
+    pid = env.make({"mode": "multi_query", "n": 8}, sources=sources, fusion={"method": "rrf", "k": 60})
+    with ThreadPoolExecutor(1) as pool:
+        response = pool.submit(env.ask, pid, "fast car").result(timeout=30)
+    assert len(response["transform"]["probes"]) == 9
+    assert env.names(response)[0] == "engine"
+
+
+def test_failures_return_no_partial_results(env: Env, fakes: FakeServices) -> None:
+    pid = env.make({"mode": "multi_query", "n": 2})
+    fakes.script("llm", CHAT, [500])
+    with pytest.raises(ProviderFailed) as info:
+        env.ask(pid, "fast car")
+    assert info.value.details["provider"] == "chat"
+    assert fakes.count("llm", CHAT) == 1
+    assert env.ask(pid, "fast car")["results"]  # the next query works; the failure was not cached

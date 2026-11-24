@@ -51,3 +51,32 @@ def weighted(
         for chunk_id, value in per_source.items():
             totals[chunk_id] = totals.get(chunk_id, 0.0) + value
     return sorted(totals.items(), key=lambda x: (-x[1], x[0]))
+
+
+def interleave(groups: Sequence[Sequence[tuple[str, float]]], limit: int) -> list[tuple[int, str, float]]:
+    """Round-robin merge of ranked lists: one chunk from each group in turn.
+
+    Chunks already taken are skipped, and a group that runs out drops out of the rotation. Returns
+    ``(group index, chunk id, score)`` for up to ``limit`` chunks. No group can take more than its
+    share of the slots while the others still have results.
+    """
+    positions = [0] * len(groups)
+    taken: set[str] = set()
+    out: list[tuple[int, str, float]] = []
+    while len(out) < limit:
+        progressed = False
+        for g, ranked in enumerate(groups):
+            while positions[g] < len(ranked) and ranked[positions[g]][0] in taken:
+                positions[g] += 1
+            if positions[g] == len(ranked):
+                continue
+            chunk_id, score = ranked[positions[g]]
+            positions[g] += 1
+            taken.add(chunk_id)
+            out.append((g, chunk_id, score))
+            progressed = True
+            if len(out) == limit:
+                break
+        if not progressed:
+            break
+    return out
