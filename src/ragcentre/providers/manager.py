@@ -95,7 +95,16 @@ def fingerprint_for(spec: ProviderTypeSpec, provider_id: str, config: Mapping[st
 
 def destination_hash(spec: ProviderTypeSpec, config: Mapping[str, Any]) -> str:
     # Unknown configuration fields are destination-sensitive by default.
-    tuning = {"timeout", "timeout_seconds", "max_concurrency", "batch_size", "max_batch", "on_version_drift"}
+    tuning = {
+        "timeout",
+        "timeout_seconds",
+        "max_concurrency",
+        "batch_size",
+        "max_batch",
+        "on_version_drift",
+        "max_tokens_per_run",
+        "daily_token_budget",
+    }
     excluded = tuning | set(spec.captured_fields)
     return fp({key: value for key, value in config.items() if key not in excluded})
 
@@ -534,6 +543,8 @@ class ProviderManager:
                     result["dimensions"] = len(vectors[0]) if vectors else None
                 elif row.kind == "reranker":
                     inst.rerank("connectivity test", ["first document", "second document"], 2)
+                elif row.kind == "llm":
+                    inst.complete(None, "Reply with the single word OK.", 8, 0.0)
                 elif row.kind == "vector_store":
                     inst.healthcheck()
                 result["ok"] = result["version_drift"] is None

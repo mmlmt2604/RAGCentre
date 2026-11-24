@@ -14,9 +14,13 @@ DROPPED_TYPES = frozenset({"page_header", "page_footer"})
 BLOCK_SEPARATOR = "\n\n"
 
 
-def embedded_text(text: str, context: str | None) -> str:
-    """The string that is embedded and keyword-indexed for a chunk. Used everywhere."""
-    return f"{context}\n\n{text}" if context else text
+def embedded_text(text: str, context: str | None, enrichment: str | None = None) -> str:
+    """The string that is embedded, keyword-indexed and reranked for a chunk. Used everywhere.
+
+    ``enrichment`` is what enrich nodes wrote for the chunk (section 19); it comes first, then the
+    chunk's own ``context``, then its ``text``, separated by blank lines.
+    """
+    return BLOCK_SEPARATOR.join(part for part in (enrichment, context, text) if part)
 
 
 @dataclass

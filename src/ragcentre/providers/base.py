@@ -27,8 +27,8 @@ from ragcentre.logs import redact
 if TYPE_CHECKING:
     from ragcentre.stores.base import Capabilities
 
-ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store"]
-KINDS: tuple[ProviderKind, ...] = ("parser", "chunker", "embedder", "reranker", "vector_store")
+ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store", "llm"]
+KINDS: tuple[ProviderKind, ...] = ("parser", "chunker", "embedder", "reranker", "vector_store", "llm")
 Role = Literal["document", "query"]
 
 RETRYABLE_STATUS = frozenset({408, 429})
@@ -84,6 +84,20 @@ class Embedder(Protocol):
 @runtime_checkable
 class Reranker(Protocol):
     def rerank(self, query: str, documents: Sequence[str], top_n: int) -> list[tuple[int, float]]: ...
+
+
+@dataclass(frozen=True)
+class Completion:
+    """One LLM answer. Token counts are what the service reported, or ``None``."""
+
+    text: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
+@runtime_checkable
+class Llm(Protocol):
+    def complete(self, system: str | None, prompt: str, max_tokens: int, temperature: float) -> Completion: ...
 
 
 @runtime_checkable

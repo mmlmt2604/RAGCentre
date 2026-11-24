@@ -22,6 +22,15 @@ CREATE TABLE IF NOT EXISTS embeddings (
   dim INTEGER NOT NULL, vector BLOB NOT NULL,
   PRIMARY KEY (embedder_fp, role, text_sha256)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS llm_responses (
+  llm_fp TEXT NOT NULL, request_sha256 TEXT NOT NULL,
+  text TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER,
+  PRIMARY KEY (llm_fp, request_sha256)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS llm_usage (
+  provider_id TEXT NOT NULL, day TEXT NOT NULL, tokens INTEGER NOT NULL,
+  PRIMARY KEY (provider_id, day)
+) WITHOUT ROWID;
 """
 
 

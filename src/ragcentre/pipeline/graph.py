@@ -15,11 +15,14 @@ from typing import Any
 from pydantic import ValidationError
 
 from ragcentre.chunking import get_strategy, options_with_defaults
+from ragcentre.enrichment import IMPL_VERSION as ENRICH_IMPL_VERSION
+from ragcentre.enrichment import effective_prompt, prompt_problems
 from ragcentre.hashing import CanonicalJsonError, canonical, node_fp, pipeline_fp
 from ragcentre.models.pipeline import (
     INDEX_TYPES,
     ChunkNode,
     EmbedNode,
+    EnrichNode,
     IndexFtsNode,
     IndexVectorNode,
     ParseNode,
@@ -35,16 +38,25 @@ SOURCE_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 
 # Implementation versions of the node types. Bump one whenever a code change alters what that
 # node type writes for the same inputs and configuration; chunk nodes use their strategy's own.
-NODE_IMPL_VERSIONS: dict[str, int] = {"parse": 1, "embed": 1, "index_vector": 1, "index_fts": 1}
-
-# Which node type each node type reads from (rule 3).
-EXPECTED_INPUT: dict[str, str | None] = {
-    "parse": None,
-    "chunk": "parse",
-    "embed": "chunk",
-    "index_vector": "embed",
-    "index_fts": "chunk",
+NODE_IMPL_VERSIONS: dict[str, int] = {
+    "parse": 1,
+    "enrich": ENRICH_IMPL_VERSION,
+    "embed": 1,
+    "index_vector": 1,
+    "index_fts": 1,
 }
+
+# Which node types each node type reads from (rule 3). Enrich nodes return chunks, so anything
+# that reads chunks also reads an enrich node, and enrich nodes may follow each other.
+EXPECTED_INPUT: dict[str, tuple[str, ...] | None] = {
+    "parse": None,
+    "chunk": ("parse",),
+    "enrich": ("chunk", "enrich"),
+    "embed": ("chunk", "enrich"),
+    "index_vector": ("embed",),
+    "index_fts": ("chunk", "enrich"),
+}
+TEXT_NODE_TYPES = frozenset({"chunk", "enrich"})
 PROVIDER_KINDS = {"embed": "embedder", "index_vector": "vector_store"}
 
 ProviderLookup = Callable[[str], ProviderRow | None]
@@ -127,7 +139,7 @@ def _path(loc: tuple[Any, ...]) -> str:
     for part in loc:
         if isinstance(part, int):
             out += f"[{part}]"
-        elif part in ("parse", "chunk", "embed", "index_vector", "index_fts") and out.endswith("]"):
+        elif part in ("parse", "chunk", "enrich", "embed", "index_vector", "index_fts") and out.endswith("]"):
             continue  # discriminated-union tag in the location
         else:
             out += f".{part}" if out else str(part)
@@ -152,7 +164,7 @@ def _structural_problems(raw: Any, exc: ValidationError) -> list[Problem]:
             node_id = candidate if isinstance(candidate, str) else None
         message = str(err.get("msg", "invalid value"))
         if err.get("type") == "union_tag_invalid":
-            message = "Unknown node type; use parse, chunk, embed, index_vector or index_fts."
+            message = "Unknown node type; use parse, chunk, enrich, embed, index_vector or index_fts."
         elif err.get("type") == "union_tag_not_found":
             message = "Every node needs a type."
         problems.append(Problem(node_id, _path(loc), message))
@@ -216,15 +228,16 @@ class _Resolver:
                 if node.inputs:
                     self.problem(node.id, f"nodes[{i}].inputs", "A parse node takes no inputs.")
                 continue
+            wanted = " or ".join(expected)
             if len(node.inputs) != 1:
                 self.problem(
-                    node.id, f"nodes[{i}].inputs", f"A {node.type} node takes exactly one input, a {expected} node."
+                    node.id, f"nodes[{i}].inputs", f"A {node.type} node takes exactly one input, {_a(wanted)} node."
                 )
                 continue
             up = self.by_id.get(node.inputs[0])
-            if up is not None and up.type != expected:
+            if up is not None and up.type not in expected:
                 self.problem(
-                    node.id, f"nodes[{i}].inputs", f"A {node.type} node reads from a {expected} node, not {up.type}."
+                    node.id, f"nodes[{i}].inputs", f"A {node.type} node reads from {_a(wanted)} node, not {up.type}."
                 )
         order = self.topological() if graph_ok else None
         return order
@@ -288,6 +301,10 @@ class _Resolver:
                 if not _json_ok(node.options):
                     self.problem(node.id, f"nodes[{i}].options", "Options must be plain JSON.")
                 entry["impl_version"] = strategy.impl_version
+            elif isinstance(node, EnrichNode):
+                entry["provider"] = self.provider(node.id, node.provider, "llm", f"nodes[{i}].provider")
+                for message in prompt_problems(node.options.prompt):
+                    self.problem(node.id, f"nodes[{i}].options.prompt", message)
             elif isinstance(node, EmbedNode):
                 entry["provider"] = self.provider(node.id, node.provider, "embedder", f"nodes[{i}].provider")
             elif isinstance(node, IndexVectorNode):
@@ -334,6 +351,15 @@ class _Resolver:
             if n.type not in INDEX_TYPES and not leads(n.id):
                 self.problem(n.id, f"nodes[{i}]", "This node does not lead to any index node; connect it or remove it.")
 
+    def text_node(self, index_id: str) -> str | None:
+        """The chunk or enrich node whose text an index holds (through the embed node for vectors)."""
+        current = self.by_id.get(index_id)
+        steps = 0
+        while current is not None and current.type not in TEXT_NODE_TYPES and steps <= len(self.config.nodes):
+            current = self.by_id.get(current.inputs[0]) if current.inputs else None
+            steps += 1
+        return current.id if current is not None and current.type in TEXT_NODE_TYPES else None
+
     def chunk_ancestor(self, node_id: str) -> str | None:
         current = self.by_id.get(node_id)
         steps = 0
@@ -368,6 +394,21 @@ class _Resolver:
                 None,
                 "retrieval.sources",
                 "All sources must index the same chunk node, so their results can be fused by chunk id.",
+            )
+        enrich_nodes = {
+            text
+            for s in r.sources
+            if s.index in self.by_id
+            and (text := self.text_node(s.index)) is not None
+            and self.by_id[text].type == "enrich"
+        }
+        if len(enrich_nodes) > 1:
+            names = ", ".join(sorted(enrich_nodes))
+            self.problem(
+                None,
+                "retrieval.sources",
+                f"Sources read from different enrich nodes ({names}). At most one enrich node may feed the "
+                "retrieval sources, so results and the reranker see one enriched text.",
             )
         if len(r.sources) > 1 and r.fusion is None:
             self.problem(None, "retrieval.fusion", "Choose a fusion method to merge two or more sources.")
@@ -465,6 +506,31 @@ def resolve_pipeline(raw: Any, providers: ProviderLookup, existing_names: set[st
                 runtime["provider_id"] = entry["provider"].id
                 ids = [entry["provider"].id]
             impl = int(entry["impl_version"])
+        elif isinstance(node, EnrichNode):
+            row = entry["provider"]
+            opts = node.options
+            config_fp = {
+                "provider_fp": row.fingerprint,
+                "mode": opts.mode,
+                # The prompt actually sent, so editing a mode's default prompt in code is visible
+                # here only through the impl version, and a custom prompt always is.
+                "prompt": effective_prompt(opts.mode, opts.prompt),
+                "max_doc_chars": opts.max_doc_chars,
+                "max_tokens": opts.max_tokens,
+                "temperature": opts.temperature,
+            }
+            ancestor = res.chunk_ancestor(node_id)
+            runtime = {
+                "provider_id": row.id,
+                "mode": opts.mode,
+                "prompt": opts.prompt,
+                "max_doc_chars": opts.max_doc_chars,
+                "max_tokens": opts.max_tokens,
+                "temperature": opts.temperature,
+                "chunk_fp": fps[ancestor] if ancestor is not None else None,
+            }
+            ids = [row.id]
+            impl = NODE_IMPL_VERSIONS["enrich"]
         elif isinstance(node, EmbedNode):
             row = entry["provider"]
             config_fp = {"provider_fp": row.fingerprint}
@@ -512,11 +578,22 @@ def resolve_pipeline(raw: Any, providers: ProviderLookup, existing_names: set[st
         "expand": {"neighbors": neighbors} if neighbors else None,
         "top_k": r.top_k,
     }
+    text_nodes = {s.id: res.text_node(s.index) for s in r.sources}
+    enrich_id = next((t for t in text_nodes.values() if t is not None and res.by_id[t].type == "enrich"), None)
     resolution.retrieval_runtime = {
         "sources": [
-            {"id": s.id, "index": s.index, "index_fp": fps[s.index], "kind": res.by_id[s.index].type, "top_k": s.top_k}
+            {
+                "id": s.id,
+                "index": s.index,
+                "index_fp": fps[s.index],
+                "kind": res.by_id[s.index].type,
+                "top_k": s.top_k,
+                "enriched": enrich_id is not None and text_nodes[s.id] == enrich_id,
+            }
             for s in r.sources
         ],
+        # The enrich node whose text results show and the reranker reads (at most one, rule 9b).
+        "enrich": {"node_id": enrich_id, "node_fp": fps[enrich_id]} if enrich_id is not None else None,
         "fusion": fusion,
         "rerank": {"provider_id": reranker.id, "top_n": r.rerank.top_n} if reranker and r.rerank else None,
         "expand": {"neighbors": neighbors},

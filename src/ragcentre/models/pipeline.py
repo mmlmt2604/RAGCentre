@@ -10,8 +10,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-NodeType = Literal["parse", "chunk", "embed", "index_vector", "index_fts"]
-NODE_TYPES: tuple[str, ...] = ("parse", "chunk", "embed", "index_vector", "index_fts")
+NodeType = Literal["parse", "chunk", "enrich", "embed", "index_vector", "index_fts"]
+NODE_TYPES: tuple[str, ...] = ("parse", "chunk", "enrich", "embed", "index_vector", "index_fts")
+ENRICH_MODES: tuple[str, ...] = ("situate", "summary", "keywords", "questions")
 INDEX_TYPES = frozenset({"index_vector", "index_fts"})
 
 
@@ -39,6 +40,26 @@ class ChunkNode(_Strict):
     strategy: str
     options: dict[str, Any] = Field(default_factory=dict)
     provider: str | None = None
+
+
+class EnrichOptions(_Strict):
+    """Output-affecting settings of an enrich node; all of them enter its fingerprint."""
+
+    mode: Literal["situate", "summary", "keywords", "questions"] = "situate"
+    # Replaces the mode's instruction. Placeholders: {chunk}, {context}, {heading_path}, {title}.
+    prompt: str | None = Field(default=None, min_length=1, max_length=8000)
+    # How much of the document goes into the prompt; 0 sends the chunk alone.
+    max_doc_chars: int = Field(default=24000, ge=0, le=400000)
+    max_tokens: int = Field(default=200, ge=1, le=4096)
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+
+
+class EnrichNode(_Strict):
+    id: str
+    type: Literal["enrich"]
+    inputs: list[str] = Field(default_factory=list)
+    provider: str
+    options: EnrichOptions = Field(default_factory=EnrichOptions)
 
 
 class EmbedNode(_Strict):
@@ -71,7 +92,9 @@ class IndexFtsNode(_Strict):
     options: IndexFtsOptions = Field(default_factory=IndexFtsOptions)
 
 
-Node = Annotated[ParseNode | ChunkNode | EmbedNode | IndexVectorNode | IndexFtsNode, Field(discriminator="type")]
+Node = Annotated[
+    ParseNode | ChunkNode | EnrichNode | EmbedNode | IndexVectorNode | IndexFtsNode, Field(discriminator="type")
+]
 
 
 class Source(_Strict):

@@ -1,4 +1,4 @@
-"""The five node executors (section 12.4). Every executor is idempotent and returns a stats dict.
+"""The node executors (section 12.4). Every executor is idempotent and returns a stats dict.
 
 Reads happen outside write transactions; writes happen in short transactions guarded by the
 conditional completion check in the queue. HTTP calls are never made inside a write transaction.
@@ -13,6 +13,8 @@ from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
 from ragcentre.chunking import run_strategy
+from ragcentre.chunking.base import content_blocks
+from ragcentre.enrichment import build_requests, document_text, stack
 from ragcentre.errors import ErrorCode, ExecutionError
 from ragcentre.hashing import chunk_id, parse_cache_key
 from ragcentre.locks import document_lock
@@ -172,6 +174,90 @@ def _load_chunks(ctx: AppContext, chunk_fp: str, document_id: str) -> list[dict[
     return [dict(r) for r in rows]
 
 
+def _text_chunks(ctx: AppContext, text_fp: str, document_id: str) -> list[dict[str, Any]]:
+    """The chunks a chunk or enrich node holds for a document, in order, each with its
+    ``enrichment`` (``None`` for a chunk node). Enrich nodes keep the chunk node's chunk ids."""
+    node = _node(ctx, text_fp)
+    if node["type"] != "enrich":
+        return [{**c, "enrichment": None} for c in _load_chunks(ctx, text_fp, document_id)]
+    chunks = _load_chunks(ctx, node["resolved"]["runtime"]["chunk_fp"], document_id)
+    rows = ctx.db.all(
+        "SELECT chunk_id, doc_revision, enrichment FROM chunk_enrichments WHERE enrich_node_fp = ? AND document_id = ?",
+        (text_fp, document_id),
+    )
+    found = {r["chunk_id"]: r for r in rows}
+    out: list[dict[str, Any]] = []
+    for chunk in chunks:
+        row = found.get(chunk["id"])
+        if row is None or row["doc_revision"] != chunk["doc_revision"]:
+            raise ExecutionError("upstream_missing", f"enrich node {text_fp} has not enriched this document's chunks")
+        out.append({**chunk, "enrichment": row["enrichment"] or None})
+    return out
+
+
+def execute_enrich(ctx: AppContext, claim: Any) -> dict[str, Any]:
+    started = time.perf_counter()
+    node = _node(ctx, claim.node_fp)
+    runtime = node["resolved"]["runtime"]
+    chunks = _text_chunks(ctx, node["resolved"]["upstream"][0], claim.document_id)
+    doc = _doc(ctx, claim.document_id)
+    document = ""
+    if chunks and int(runtime["max_doc_chars"]) > 0:
+        chunk_node = _node(ctx, runtime["chunk_fp"])
+        ir = normalise_ir(_parse_blob(ctx, chunk_node["resolved"]["upstream"][0], claim.document_id))
+        document = document_text(content_blocks(ir), int(runtime["max_doc_chars"]))
+    requests = build_requests(
+        runtime,
+        str(doc["filename"]),
+        document,
+        [
+            {
+                "text": c["text"],
+                # The prompt's {context} is everything before the text: earlier enrichment and the
+                # chunk's own context.
+                "context": "\n\n".join(part for part in (c["enrichment"], c["context"]) if part),
+                "heading_path": json.loads(c["heading_path"]),
+            }
+            for c in chunks
+        ],
+    )
+    res = ctx.llm.complete_all(runtime["provider_id"], requests)
+    with ctx.db.write() as conn:
+        if not is_current(ctx, claim):
+            return {"duration_ms": 0.0}
+        conn.execute(
+            "DELETE FROM chunk_enrichments WHERE enrich_node_fp = ? AND document_id = ?",
+            (claim.node_fp, claim.document_id),
+        )
+        conn.executemany(
+            "INSERT INTO chunk_enrichments (enrich_node_fp, chunk_id, document_id, doc_revision, generated, enrichment) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    claim.node_fp,
+                    c["id"],
+                    claim.document_id,
+                    c["doc_revision"],
+                    text.strip(),
+                    stack(c["enrichment"], text) or "",
+                )
+                for c, text in zip(chunks, res.texts, strict=True)
+            ],
+        )
+    stats: dict[str, Any] = {
+        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+        "n_chunks": len(chunks),
+        "n_cache_hits": res.n_cache_hits,
+        "n_llm_calls": res.n_calls,
+        "tokens": res.tokens,
+    }
+    empty = sum(1 for text in res.texts if not text.strip())
+    if empty:
+        stats["n_empty"] = empty
+        stats["warning"] = "empty_enrichments"
+    return stats
+
+
 def execute_chunk(ctx: AppContext, claim: Any) -> dict[str, Any]:
     started = time.perf_counter()
     node = _node(ctx, claim.node_fp)
@@ -242,9 +328,9 @@ def _vector_records(ctx: AppContext, chunks: Sequence[dict[str, Any]], vectors: 
 def execute_embed(ctx: AppContext, claim: Any) -> dict[str, Any]:
     started = time.perf_counter()
     node = _node(ctx, claim.node_fp)
-    chunk_fp = node["resolved"]["upstream"][0]
+    text_fp = node["resolved"]["upstream"][0]
     provider_id = node["resolved"]["runtime"]["provider_id"]
-    chunks = _load_chunks(ctx, chunk_fp, claim.document_id)
+    chunks = _text_chunks(ctx, text_fp, claim.document_id)
     res = ctx.embeddings.embed(provider_id, "document", [_embedded(c) for c in chunks])
     return {
         "duration_ms": round((time.perf_counter() - started) * 1000, 2),
@@ -261,8 +347,8 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
     metric = node["resolved"]["runtime"]["metric"]
     embed_node = _node(ctx, embed_fp)
     embedder_provider_id = embed_node["resolved"]["runtime"]["provider_id"]
-    chunk_fp = embed_node["resolved"]["upstream"][0]
-    chunks = _load_chunks(ctx, chunk_fp, claim.document_id)
+    text_fp = embed_node["resolved"]["upstream"][0]
+    chunks = _text_chunks(ctx, text_fp, claim.document_id)
     res = ctx.embeddings.embed(embedder_provider_id, "document", [_embedded(c) for c in chunks])
     vectors = res.vectors
     doc_meta = json.loads(ctx.db.scalar("SELECT metadata FROM documents WHERE id = ?", (claim.document_id,)))
@@ -331,8 +417,8 @@ def execute_index_vector(ctx: AppContext, claim: Any) -> dict[str, Any]:
 def execute_index_fts(ctx: AppContext, claim: Any) -> dict[str, Any]:
     started = time.perf_counter()
     node = _node(ctx, claim.node_fp)
-    chunk_fp = node["resolved"]["upstream"][0]
-    chunks = _load_chunks(ctx, chunk_fp, claim.document_id)
+    text_fp = node["resolved"]["upstream"][0]
+    chunks = _text_chunks(ctx, text_fp, claim.document_id)
     index_row = ctx.db.one(
         "SELECT * FROM indexes WHERE corpus_id = ? AND node_fp = ?", (claim.corpus_id, claim.node_fp)
     )
@@ -347,7 +433,7 @@ def execute_index_fts(ctx: AppContext, claim: Any) -> dict[str, Any]:
         conn.execute(f'DELETE FROM "{table}" WHERE document_id = ?', (claim.document_id,))
         conn.executemany(
             f'INSERT INTO "{table}" (chunk_id, document_id, body) VALUES (?, ?, ?)',
-            [(c["id"], claim.document_id, c["embedded"] if "embedded" in c else _embedded(c)) for c in chunks],
+            [(c["id"], claim.document_id, _embedded(c)) for c in chunks],
         )
         conn.execute(
             "DELETE FROM index_records WHERE index_id = ? AND document_id = ?", (index_row["id"], claim.document_id)
@@ -362,7 +448,7 @@ def execute_index_fts(ctx: AppContext, claim: Any) -> dict[str, Any]:
 def _embedded(chunk: Mapping[str, Any]) -> str:
     from ragcentre.chunking.base import embedded_text
 
-    return embedded_text(str(chunk["text"]), chunk["context"])
+    return embedded_text(str(chunk["text"]), chunk["context"], chunk.get("enrichment"))
 
 
 def execute(ctx: AppContext, claim: Any) -> dict[str, Any]:
@@ -373,6 +459,8 @@ def execute(ctx: AppContext, claim: Any) -> dict[str, Any]:
         return execute_parse(ctx, claim)
     if node_type == "chunk":
         return execute_chunk(ctx, claim)
+    if node_type == "enrich":
+        return execute_enrich(ctx, claim)
     if node_type == "embed":
         return execute_embed(ctx, claim)
     if node_type == "index_vector":
