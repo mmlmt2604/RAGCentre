@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from ragcentre.api.authz import principal_of, require_corpus, require_pipeline
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
 from ragcentre.context import AppContext
@@ -66,8 +67,13 @@ def _diff(ctx: AppContext, a: dict[str, Any], b: dict[str, Any]) -> api.Pipeline
     },
 )
 def create(
-    corpus_id: str, body: dict[str, Any], dry_run: bool = False, ctx: AppContext = Depends(get_ctx)
+    corpus_id: str,
+    body: dict[str, Any],
+    request: Request,
+    dry_run: bool = False,
+    ctx: AppContext = Depends(get_ctx),
 ) -> JSONResponse:
+    require_corpus(ctx, principal_of(request), corpus_id)
     if dry_run:
         data = api.PipelinePlan.model_validate(plan(ctx, corpus_id, body)).model_dump(mode="json")
         return JSONResponse(data, status_code=200)
@@ -78,10 +84,12 @@ def create(
 @router.get("/corpora/{corpus_id}/pipelines", response_model=api.Page[api.Pipeline])
 def list_pipelines(
     corpus_id: str,
+    request: Request,
     archived: bool = False,
     params: PageParams = Depends(page_params),
     ctx: AppContext = Depends(get_ctx),
 ) -> api.Page[api.Pipeline]:
+    require_corpus(ctx, principal_of(request), corpus_id)
     rows = ctx.db.all(
         "SELECT id FROM pipelines WHERE corpus_id = ? AND archived = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
         (corpus_id, int(archived), params.limit + 1, params.offset),
@@ -93,17 +101,20 @@ def list_pipelines(
 
 
 @router.get("/pipelines/{pipeline_id}", response_model=api.Pipeline)
-def get(pipeline_id: str, ctx: AppContext = Depends(get_ctx)) -> api.Pipeline:
+def get(pipeline_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.Pipeline:
+    require_pipeline(ctx, principal_of(request), pipeline_id)
     return pipeline_out(ctx, pipeline_id)
 
 
 @router.get("/pipelines/{pipeline_id}/status", response_model=api.PipelineStatus)
-def get_status(pipeline_id: str, ctx: AppContext = Depends(get_ctx)) -> api.PipelineStatus:
+def get_status(pipeline_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.PipelineStatus:
+    require_pipeline(ctx, principal_of(request), pipeline_id)
     return status(ctx, pipeline_id)
 
 
 @router.get("/pipelines/{pipeline_id}/diff", response_model=api.PipelineDiff)
-def diff(pipeline_id: str, against: str, ctx: AppContext = Depends(get_ctx)) -> api.PipelineDiff:
+def diff(pipeline_id: str, against: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.PipelineDiff:
+    require_pipeline(ctx, principal_of(request), pipeline_id)
     a = get_pipeline(ctx, pipeline_id)
     b = get_pipeline(ctx, against)
     if a["corpus_id"] != b["corpus_id"]:
@@ -112,7 +123,8 @@ def diff(pipeline_id: str, against: str, ctx: AppContext = Depends(get_ctx)) -> 
 
 
 @router.post("/pipelines/{pipeline_id}/retry-failed", response_model=api.RetryResult)
-def retry_failed(pipeline_id: str, ctx: AppContext = Depends(get_ctx)) -> api.RetryResult:
+def retry_failed(pipeline_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.RetryResult:
+    require_pipeline(ctx, principal_of(request), pipeline_id)
     pipeline = get_pipeline(ctx, pipeline_id)
     from ragcentre.timeutil import now_iso
 
@@ -125,6 +137,7 @@ def retry_failed(pipeline_id: str, ctx: AppContext = Depends(get_ctx)) -> api.Re
 
 
 @router.post("/pipelines/{pipeline_id}/archive", response_model=api.Pipeline)
-def archive(pipeline_id: str, ctx: AppContext = Depends(get_ctx)) -> api.Pipeline:
+def archive(pipeline_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.Pipeline:
+    require_pipeline(ctx, principal_of(request), pipeline_id)
     archive_pipeline(ctx, pipeline_id)
     return pipeline_out(ctx, pipeline_id)

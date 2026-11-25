@@ -92,7 +92,13 @@ def existing_pipeline_names(conn: sqlite3.Connection, corpus_id: str) -> set[str
 def resolve_for_corpus(ctx: AppContext, corpus_id: str, raw: Any) -> Resolution:
     with ctx.db.connection() as conn:
         names = existing_pipeline_names(conn, corpus_id)
-    return resolve_pipeline(raw, ctx.providers.by_name, names)
+        team_row = conn.execute("SELECT team_id FROM corpora WHERE id = ?", (corpus_id,)).fetchone()
+        if team_row is None:
+            raise NotFound(f"Corpus {corpus_id} was not found.")
+        team_id = str(team_row[0])
+    # Provider usage is bounded by the corpus's team (not the caller): a pipeline in corpus C may
+    # only reference providers visible to C's team, never another team's provider.
+    return resolve_pipeline(raw, lambda name: ctx.providers.by_name_in_team(name, team_id), names)
 
 
 # ---- dry run --------------------------------------------------------------------------------------

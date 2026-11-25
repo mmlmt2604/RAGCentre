@@ -28,6 +28,7 @@ def test_corpus_create_shape_and_conflicts(client: TestClient) -> None:
         "active_pipeline_id",
         "document_count",
         "pipelines",
+        "team_id",
         "created_at",
     }
     assert client.post("/v1/corpora", json={"name": "docs"}).status_code == 409

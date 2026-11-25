@@ -45,6 +45,9 @@ eval_app = typer.Typer(help="Evaluation datasets and runs.", no_args_is_help=Tru
 parser_app = typer.Typer(help="Check parser and OCR services.", no_args_is_help=True)
 store_app = typer.Typer(help="Check vector stores against live data.", no_args_is_help=True)
 cache_app = typer.Typer(help="Caches kept next to the database.", no_args_is_help=True)
+team_app = typer.Typer(help="Teams and team service tokens.", no_args_is_help=True)
+team_token_app = typer.Typer(help="Service tokens for a team.", no_args_is_help=True)
+team_app.add_typer(team_token_app, name="token")
 app.add_typer(provider_app, name="provider")
 app.add_typer(corpus_app, name="corpus")
 app.add_typer(docs_app, name="docs")
@@ -53,6 +56,7 @@ app.add_typer(eval_app, name="eval")
 app.add_typer(parser_app, name="parser")
 app.add_typer(store_app, name="store")
 app.add_typer(cache_app, name="cache")
+app.add_typer(team_app, name="team")
 
 log = logging.getLogger("ragcentre")
 
@@ -76,6 +80,19 @@ def _main(
 ) -> None:
     state.json = json_output
     state.url = url
+
+
+@app.command("whoami")
+def whoami() -> None:
+    """Show which principal the current RAGCENTRE_API_TOKEN resolves to."""
+    with _api() as api:
+        data = api.get("/auth/whoami")
+
+    def human() -> None:
+        team = data.get("team_name") or data.get("team_id") or "-"
+        typer.echo(f"scope={data['scope']}  team={team}")
+
+    _emit(data, human)
 
 
 # ---- helpers -----------------------------------------------------------------------------------
@@ -237,6 +254,7 @@ def _provider_rows(items: Sequence[dict[str, Any]]) -> None:
 @provider_app.command("add")
 def provider_add(
     file: Annotated[Path, typer.Option("-f", "--file", help="Provider YAML or JSON: name, kind, type, config.")],
+    team: Annotated[str | None, typer.Option("--team", help="Owning team id, slug or name (admin token).")] = None,
 ) -> None:
     """Create a provider from a file.
 
@@ -252,6 +270,8 @@ def provider_add(
         if not isinstance(ref, dict) or set(ref) != {"env"}:
             _fail(f"secret {key!r} in {file}: only environment references ({{env: VAR}}) are allowed in files")
     with _api() as api:
+        if team is not None:
+            spec["team_id"] = api.team(team)["id"]
         created = api.post("/providers", json=spec)
         for key, ref in secrets.items():
             created = api.put(f"/providers/{created['id']}/secrets/{key}", json={"env": ref["env"]})
@@ -541,6 +561,7 @@ def corpus_create(
         Path | None,
         typer.Option("--schema", help="Metadata schema YAML/JSON: {fields: {lang: {type: str, default: en}}}."),
     ] = None,
+    team: Annotated[str | None, typer.Option("--team", help="Owning team id, slug or name (admin token).")] = None,
 ) -> None:
     """Create a corpus."""
     body: dict[str, Any] = {"name": name}
@@ -548,6 +569,8 @@ def corpus_create(
         raw = _load_file(schema) or {}
         body["metadata_schema"] = raw if isinstance(raw, dict) and "fields" in raw else {"fields": raw}
     with _api() as api:
+        if team is not None:
+            body["team_id"] = api.team(team)["id"]
         corpus = api.post("/corpora", json=body)
     _emit(corpus, lambda: typer.echo(f"Created corpus {corpus['name']} ({corpus['id']})."))
 
@@ -1029,6 +1052,80 @@ def eval_show(run_id: Annotated[str, typer.Argument(help="Evaluation run id.")])
     with _api() as api:
         run = api.get(f"/eval/runs/{run_id}")
     _emit(run, lambda: _print_run(run))
+
+
+# ---- teams ------------------------------------------------------------------------------------
+
+
+@team_app.command("list")
+def team_list() -> None:
+    """List teams (admin token)."""
+    with _api() as api:
+        items = list(api.paginate("/teams"))
+
+    def human() -> None:
+        _table(["NAME", "SLUG", "ID"], [[t["name"], t["slug"], t["id"]] for t in items])
+
+    _emit(items, human)
+
+
+@team_app.command("create")
+def team_create(
+    name: Annotated[str, typer.Argument(help="Team name.")],
+    slug: Annotated[str | None, typer.Option("--slug", help="URL-safe slug; derived from the name if omitted.")] = None,
+) -> None:
+    """Create a team (admin token)."""
+    body: dict[str, Any] = {"name": name}
+    if slug is not None:
+        body["slug"] = slug
+    with _api() as api:
+        team = api.post("/teams", json=body)
+    _emit(team, lambda: typer.echo(f"Created team {team['name']} ({team['id']})."))
+
+
+@team_token_app.command("create")
+def team_token_create(
+    team: Annotated[str, typer.Argument(help="Team id, slug or name.")],
+    kind: Annotated[str, typer.Option("--kind", help="full or read.")] = "full",
+    name: Annotated[str, typer.Option("--name", help="A label for the token.")] = "token",
+) -> None:
+    """Mint a service token. The raw token is printed once and cannot be read again."""
+    with _api() as api:
+        t = api.team(team)
+        created = api.post(f"/teams/{t['id']}/tokens", json={"kind": kind, "name": name})
+
+    def human() -> None:
+        typer.echo(
+            f"Created {created['kind']} token {created['name']!r} for {t['name']}. "
+            f"Store it now; it is shown only once:\n  {created['token']}"
+        )
+
+    _emit(created, human)
+
+
+@team_token_app.command("list")
+def team_token_list(team: Annotated[str, typer.Argument(help="Team id, slug or name.")]) -> None:
+    """List a team's tokens (ids and labels; values are never shown)."""
+    with _api() as api:
+        t = api.team(team)
+        items = list(api.paginate(f"/teams/{t['id']}/tokens"))
+
+    def human() -> None:
+        _table(["NAME", "KIND", "ID"], [[i["name"], i["kind"], i["id"]] for i in items])
+
+    _emit(items, human)
+
+
+@team_token_app.command("delete")
+def team_token_delete(
+    team: Annotated[str, typer.Argument(help="Team id, slug or name.")],
+    token_id: Annotated[str, typer.Argument(help="Token id.")],
+) -> None:
+    """Revoke a token."""
+    with _api() as api:
+        t = api.team(team)
+        api.delete(f"/teams/{t['id']}/tokens/{token_id}")
+    _emit({"deleted": token_id}, lambda: typer.echo(f"Deleted token {token_id}."))
 
 
 def main() -> None:  # pragma: no cover

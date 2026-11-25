@@ -112,6 +112,17 @@ class Client:
     def provider(self, ref: str) -> dict[str, Any]:
         return _pick("provider", ref, list(self.paginate("/providers")))
 
+    def team(self, ref: str) -> dict[str, Any]:
+        """A team by id, slug or name. Direct lookup first (works for a team token's own team),
+        then an admin-only listing."""
+        try:
+            found: dict[str, Any] = self.get(f"/teams/{ref}")
+            return found
+        except ApiError as exc:
+            if exc.status != 404:
+                raise
+        return _pick("team", ref, list(self.paginate("/teams")))
+
     def corpus(self, ref: str) -> dict[str, Any]:
         return _pick("corpus", ref, list(self.paginate("/corpora")))
 

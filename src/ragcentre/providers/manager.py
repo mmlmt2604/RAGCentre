@@ -65,6 +65,7 @@ class ProviderRow:
     fingerprint: str
     created_at: str
     updated_at: str
+    team_id: str | None = None
     secrets_reset: bool = False
 
     @classmethod
@@ -78,6 +79,7 @@ class ProviderRow:
             fingerprint=row["fingerprint"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            team_id=None if row["team_id"] is None else str(row["team_id"]),
         )
 
     @property
@@ -146,6 +148,19 @@ class ProviderManager:
         row = self.db.one("SELECT * FROM providers WHERE name = ?", (name,))
         return None if row is None else ProviderRow.from_row(row)
 
+    def by_name_in_team(self, name: str, team_id: str) -> ProviderRow | None:
+        """A provider visible to ``team_id``: its own providers plus system/built-ins."""
+        row = self.db.one(
+            "SELECT * FROM providers WHERE name = ? AND (team_id IS NULL OR team_id = ?)", (name, team_id)
+        )
+        return None if row is None else ProviderRow.from_row(row)
+
+    def list_visible(self, team_id: str) -> list[ProviderRow]:
+        rows = self.db.all(
+            "SELECT * FROM providers WHERE team_id IS NULL OR team_id = ? ORDER BY kind, name", (team_id,)
+        )
+        return [ProviderRow.from_row(r) for r in rows]
+
     def list(self) -> list[ProviderRow]:
         rows = self.db.all("SELECT * FROM providers ORDER BY kind, name")
         return [ProviderRow.from_row(r) for r in rows]
@@ -203,7 +218,9 @@ class ProviderManager:
             endpoint_config.pop("uri", None)
         validate_destination(endpoint_config, self.ctx.settings.egress_allow)
 
-    def create(self, name: str, kind: str, type_: str, config: Mapping[str, Any]) -> ProviderRow:
+    def create(
+        self, name: str, kind: str, type_: str, config: Mapping[str, Any], *, team_id: str | None = None
+    ) -> ProviderRow:
         if not NAME_RE.match(name):
             raise ValidationFailed(
                 "Provider names use lowercase letters, digits and hyphens, start with a letter, "
@@ -238,9 +255,9 @@ class ProviderManager:
         try:
             with self.db.write() as conn:
                 conn.execute(
-                    "INSERT INTO providers (id, name, kind, type, config, fingerprint, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (provider_id, name, kind, type_, json.dumps(stored), fingerprint, now, now),
+                    "INSERT INTO providers (id, name, kind, type, config, fingerprint, team_id, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (provider_id, name, kind, type_, json.dumps(stored), fingerprint, team_id, now, now),
                 )
         except sqlite3.IntegrityError:
             raise Conflict(f"A provider named {name!r} already exists.") from None

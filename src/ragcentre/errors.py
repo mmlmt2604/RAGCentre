@@ -29,6 +29,8 @@ class ErrorCode(StrEnum):
     PIPELINE_IS_ACTIVE = "pipeline_is_active"
     SECRET_STORAGE_DISABLED = "secret_storage_disabled"
     UNAUTHORIZED = "unauthorized"
+    FORBIDDEN = "forbidden"
+    READ_ONLY_TOKEN = "read_only_token"
     PAYLOAD_TOO_LARGE = "payload_too_large"
     CONFLICT = "conflict"
     INTERNAL_ERROR = "internal_error"
@@ -106,6 +108,18 @@ class Conflict(RagError):
 class Unauthorized(RagError):
     code = ErrorCode.UNAUTHORIZED
     status = 401
+
+
+class Forbidden(RagError):
+    code = ErrorCode.FORBIDDEN
+    status = 403
+
+
+class ReadOnlyToken(RagError):
+    """The token may read but this action writes. 403, distinct code from a plain refusal."""
+
+    code = ErrorCode.READ_ONLY_TOKEN
+    status = 403
 
 
 class PayloadTooLarge(RagError):
