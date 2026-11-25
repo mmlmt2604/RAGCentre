@@ -107,6 +107,28 @@ class PagingErrorConnector:
         return None
 
 
+class FeedConnector:
+    """A change-feed connector: one page per sync whose resume token is persisted for next time."""
+
+    def __init__(self, items: list[RemoteItem], fetches: dict[str, FetchedFile] | None = None) -> None:
+        self.items = items
+        self.fetches = fetches or {}
+        self.scanned: list[str | None] = []
+
+    def check(self) -> None:
+        return None
+
+    def scan(self, scope: dict, cursor: str | None) -> ScanResult:
+        self.scanned.append(cursor)
+        return ScanResult(items=iter(self.items), next_cursor=None, full=False, resume_cursor="delta-tok")
+
+    def fetch(self, scope: dict, item: RemoteItem) -> FetchedFile:
+        return self.fetches[item.remote_id]
+
+    def close(self) -> None:
+        return None
+
+
 def _run(ctx: AppContext, connector: Any) -> None:
     @contextmanager
     def lease(provider_id: str):
@@ -237,3 +259,14 @@ def test_interrupted_scan_persists_cursor(ctx: AppContext) -> None:
         _run(ctx, PagingErrorConnector())
     assert ctx.db.scalar("SELECT cursor FROM sync_sources WHERE id = ?", ("source-1",)) == "tok2"
     assert ctx.db.scalar("SELECT status FROM sync_sources WHERE id = ?", ("source-1",)) == "syncing"
+
+
+def test_feed_connector_persists_resume_cursor(ctx: AppContext) -> None:
+    corpus_id = _corpus(ctx)
+    _source(ctx, corpus_id)
+    connector = FeedConnector([_item("a")], fetches={"a": _fetch(b"hello")})
+    _run(ctx, connector)
+
+    assert ctx.db.scalar("SELECT status FROM sync_sources WHERE id = ?", ("source-1",)) == "idle"
+    assert ctx.db.scalar("SELECT cursor FROM sync_sources WHERE id = ?", ("source-1",)) == "delta-tok"
+    assert ctx.db.scalar("SELECT COUNT(*) FROM documents WHERE external_id = ?", ("source-1:a",)) == 1

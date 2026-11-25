@@ -14,6 +14,11 @@ def test_connector_s3_type_registered() -> None:
     assert spec.fingerprint_fields == ("base_url", "region", "path_style")
 
 
+def test_all_connector_types_registered() -> None:
+    kinds = {spec.type for (kind, _type), spec in provider_types().items() if kind == "connector"}
+    assert kinds == {"s3", "sharepoint", "confluence", "gdrive", "notion"}
+
+
 def _connector(client: TestClient, name: str = "s3test") -> dict:
     r = client.post("/v1/providers", json={"name": name, "kind": "connector", "type": "s3", "config": {}})
     assert r.status_code == 201, r.text

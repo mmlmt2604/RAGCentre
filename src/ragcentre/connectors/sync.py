@@ -102,12 +102,14 @@ def run_sync_source(ctx: AppContext, source_id: str) -> None:
     cursor = source["cursor"]
     seen: set[str] = set()
     full = False
-    final_cursor: str | None = None
+    resume_cursor: str | None = None
 
     with ctx.providers.lease(source["provider_id"]) as conn:
         while True:
             page = conn.scan(scope, cursor)
             full = full or page.full
+            if page.resume_cursor is not None:
+                resume_cursor = page.resume_cursor
             for item in page.items:
                 if item.deleted:
                     prev = ctx.db.one(
@@ -147,14 +149,13 @@ def run_sync_source(ctx: AppContext, source_id: str) -> None:
                 )
                 with ctx.db.write() as c:
                     _set_item(c, source_id, item, document_id=result.document_id, skipped_reason=None)
-            # Persist the page cursor so a crash mid-scan resumes from here (re-scanning a page is
-            # safe because external_id upserts are idempotent).
-            final_cursor = page.next_cursor
-            with ctx.db.write() as c:
-                c.execute("UPDATE sync_sources SET cursor = ? WHERE id = ?", (final_cursor, source_id))
-            if final_cursor is None:
+            # Persist the page-continuation cursor so a crash mid-scan resumes from here
+            # (re-scanning a page is safe because external_id upserts are idempotent).
+            if page.next_cursor is None:
                 break
-            cursor = final_cursor
+            cursor = page.next_cursor
+            with ctx.db.write() as c:
+                c.execute("UPDATE sync_sources SET cursor = ? WHERE id = ?", (cursor, source_id))
 
         if full:
             # A complete listing is the truth: delete items that vanished from the source.
@@ -171,5 +172,5 @@ def run_sync_source(ctx: AppContext, source_id: str) -> None:
         c.execute(
             "UPDATE sync_sources SET status = 'idle', last_run_at = ?, last_error = NULL, next_run_at = ?, "
             "cursor = ?, updated_at = ? WHERE id = ? AND status = 'syncing'",
-            (now, next_run, None if full else final_cursor, now, source_id),
+            (now, next_run, None if full else resume_cursor, now, source_id),
         )

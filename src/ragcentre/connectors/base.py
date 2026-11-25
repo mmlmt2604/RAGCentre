@@ -26,8 +26,9 @@ class RemoteItem:
 @dataclass(frozen=True)
 class ScanResult:
     items: Iterator[RemoteItem]
-    next_cursor: str | None
+    next_cursor: str | None  # page-continuation cursor for *this* sync; the engine loops while set
     full: bool  # True = this listing is the complete state (deletion diff applies)
+    resume_cursor: str | None = None  # token to persist for the *next* sync (feed connectors); None = clear
 
 
 @dataclass(frozen=True)
