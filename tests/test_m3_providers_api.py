@@ -74,7 +74,7 @@ def test_builtin_text_provider_exists(client: TestClient) -> None:
     assert p["config"] == {"impl_version": 1}
     assert p["secrets"] == {}
     assert set(p) == {"id", "name", "kind", "type", "config", "fingerprint", "secrets", "builtin", "used_by_pipelines",
-                      "created_at", "updated_at"}  # fmt: skip
+                      "team_id", "created_at", "updated_at"}  # fmt: skip
     r = client.delete(f"/v1/providers/{p['id']}")
     assert r.status_code == 409
 

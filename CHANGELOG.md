@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+- Add multi-team support. Corpora and providers belong to a team; every document, pipeline,
+  dataset, run and query inherits its team through the corpus. Team service tokens (`full` or
+  `read`) are stored hashed and scoped to their team, while the admin token keeps system-wide
+  access. Cross-team resources answer `404` rather than leaking their existence. A read-scoped
+  token is limited to a small allowlist of read-only routes. Existing data is preserved in a
+  default team.
+
 ## 0.0.4
 
 - Add chunk enrichment. An `enrich` pipeline node asks an `llm` provider for a short text per chunk

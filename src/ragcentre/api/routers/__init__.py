@@ -2,10 +2,12 @@
 
 from fastapi import APIRouter
 
-from ragcentre.api.routers import admin, corpora, documents, eval, ocr, pipelines, providers, query, runs
+from ragcentre.api.routers import admin, auth, corpora, documents, eval, ocr, pipelines, providers, query, runs, teams
 
 ROUTERS: list[APIRouter] = [
     admin.router,
+    auth.router,
+    teams.router,
     providers.router,
     ocr.router,
     corpora.router,

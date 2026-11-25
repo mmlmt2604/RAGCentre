@@ -9,9 +9,10 @@ from contextlib import nullcontext
 from typing import Any, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 
+from ragcentre.api.authz import principal_of, require_corpus, require_document
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
 from ragcentre.context import AppContext
@@ -125,12 +126,14 @@ def _out(ctx: AppContext, document_id: str) -> api.Document:
 )
 def upload(
     corpus_id: str,
+    request: Request,
     file: UploadFile = File(...),
     metadata: str | None = Form(None),
     attributes: str | None = Form(None),
     external_id: str | None = Form(None),
     ctx: AppContext = Depends(get_ctx),
 ) -> JSONResponse:
+    require_corpus(ctx, principal_of(request), corpus_id)
     content = file.file.read(ctx.settings.max_upload_bytes + 1)
     if len(content) > ctx.settings.max_upload_bytes:
         raise RagError("File is larger than the upload limit.", code=ErrorCode.PAYLOAD_TOO_LARGE, status=413)
@@ -230,6 +233,7 @@ _STATE_SQL: dict[str, str] = {
 @router.get("/corpora/{corpus_id}/documents", response_model=api.Page[api.Document])
 def list_documents(
     corpus_id: str,
+    request: Request,
     q: str | None = None,
     state: DocState | None = None,
     pipeline_id: str | None = None,
@@ -238,6 +242,7 @@ def list_documents(
 ) -> api.Page[api.Document]:
     """Active documents, newest first. ``q`` matches the filename or external id (case-insensitive);
     ``state`` filters by ingestion state, across all non-archived pipelines or only ``pipeline_id``."""
+    require_corpus(ctx, principal_of(request), corpus_id)
     if ctx.db.one("SELECT id FROM corpora WHERE id = ?", (corpus_id,)) is None:
         raise NotFound(f"Corpus {corpus_id} was not found.")
     live_sql = (
@@ -274,12 +279,16 @@ def list_documents(
 
 
 @router.get("/documents/{document_id}", response_model=api.Document)
-def get_document(document_id: str, ctx: AppContext = Depends(get_ctx)) -> api.Document:
+def get_document(document_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.Document:
+    require_document(ctx, principal_of(request), document_id)
     return _out(ctx, document_id)
 
 
 @router.patch("/documents/{document_id}", response_model=api.Document)
-def patch_document(document_id: str, body: api.DocumentPatch, ctx: AppContext = Depends(get_ctx)) -> api.Document:
+def patch_document(
+    document_id: str, body: api.DocumentPatch, request: Request, ctx: AppContext = Depends(get_ctx)
+) -> api.Document:
+    require_document(ctx, principal_of(request), document_id)
     with document_lock(ctx.settings.data_dir, document_id), ctx.db.write() as conn:
         d = _get(ctx, document_id)
         if d["status"] != "active":
@@ -301,7 +310,8 @@ def patch_document(document_id: str, body: api.DocumentPatch, ctx: AppContext = 
 
 
 @router.delete("/documents/{document_id}", status_code=202)
-def delete_document(document_id: str, ctx: AppContext = Depends(get_ctx)) -> api.Document:
+def delete_document(document_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.Document:
+    require_document(ctx, principal_of(request), document_id)
     _get(ctx, document_id)
     with document_lock(ctx.settings.data_dir, document_id), ctx.db.write() as conn:
         on_document_deleted(conn, document_id)
@@ -310,7 +320,10 @@ def delete_document(document_id: str, ctx: AppContext = Depends(get_ctx)) -> api
 
 
 @router.put("/documents/{document_id}/content", response_model=api.Document)
-def replace_content(document_id: str, file: UploadFile = File(...), ctx: AppContext = Depends(get_ctx)) -> api.Document:
+def replace_content(
+    document_id: str, request: Request, file: UploadFile = File(...), ctx: AppContext = Depends(get_ctx)
+) -> api.Document:
+    require_document(ctx, principal_of(request), document_id)
     content = file.file.read(ctx.settings.max_upload_bytes + 1)
     if len(content) > ctx.settings.max_upload_bytes:
         raise RagError("File exceeds the upload limit.", code=ErrorCode.PAYLOAD_TOO_LARGE, status=413)
@@ -336,7 +349,8 @@ def replace_content(document_id: str, file: UploadFile = File(...), ctx: AppCont
 
 
 @router.get("/documents/{document_id}/content")
-def get_content(document_id: str, ctx: AppContext = Depends(get_ctx)) -> Response:
+def get_content(document_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> Response:
+    require_document(ctx, principal_of(request), document_id)
     with document_lock(ctx.settings.data_dir, document_id):
         d = _get(ctx, document_id)
         if d["status"] != "active":
@@ -366,7 +380,8 @@ def _document_pipeline(ctx: AppContext, document_id: str, pipeline_id: str) -> A
 
 
 @router.get("/documents/{document_id}/parsed")
-def get_parsed(document_id: str, pipeline_id: str, ctx: AppContext = Depends(get_ctx)) -> Any:
+def get_parsed(document_id: str, pipeline_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> Any:
+    require_document(ctx, principal_of(request), document_id)
     with document_lock(ctx.settings.data_dir, document_id), ctx.db.read():
         pipeline = _document_pipeline(ctx, document_id, pipeline_id)
         nodes = json.loads(pipeline["resolved"])["nodes"]
@@ -392,8 +407,13 @@ def get_parsed(document_id: str, pipeline_id: str, ctx: AppContext = Depends(get
 
 @router.get("/documents/{document_id}/chunks", response_model=list[api.Chunk])
 def get_chunks(
-    document_id: str, pipeline_id: str, node_id: str | None = None, ctx: AppContext = Depends(get_ctx)
+    document_id: str,
+    pipeline_id: str,
+    request: Request,
+    node_id: str | None = None,
+    ctx: AppContext = Depends(get_ctx),
 ) -> list[api.Chunk]:
+    require_document(ctx, principal_of(request), document_id)
     with document_lock(ctx.settings.data_dir, document_id), ctx.db.read():
         pipeline = _document_pipeline(ctx, document_id, pipeline_id)
         resolved = json.loads(pipeline["resolved"])

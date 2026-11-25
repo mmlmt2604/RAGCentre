@@ -50,6 +50,50 @@ class Health(ResponseModel):
     secret_storage_enabled: bool
 
 
+# ---------- Teams & auth ----------
+
+
+class Team(ResponseModel):
+    id: str
+    name: str
+    slug: str
+    created_at: str
+
+
+class TeamCreate(RequestModel):
+    name: str
+    slug: str | None = None  # derived from name (lowercased, slugified) if omitted
+
+
+class TeamTokenCreate(RequestModel):
+    kind: Literal["full", "read"]
+    name: str
+
+
+class TeamToken(ResponseModel):  # never carries the token value
+    id: str
+    team_id: str
+    kind: Literal["full", "read"]
+    name: str
+    created_at: str
+    last_used_at: str | None
+
+
+class TeamTokenCreated(ResponseModel):  # returned exactly once, at creation
+    id: str
+    team_id: str
+    kind: Literal["full", "read"]
+    name: str
+    token: str  # the raw opaque token; shown once, never stored
+    created_at: str
+
+
+class WhoAmI(ResponseModel):
+    scope: Literal["admin", "team", "read", "none"]
+    team_id: str | None
+    team_name: str | None
+
+
 # ---------- Providers ----------
 
 
@@ -91,6 +135,7 @@ class Provider(ResponseModel):
     secrets: dict[str, SecretState]
     builtin: bool
     used_by_pipelines: int
+    team_id: str | None  # None = built-in
     created_at: str
     updated_at: str
 
@@ -100,6 +145,7 @@ class ProviderCreate(RequestModel):
     kind: ProviderKind
     type: str
     config: dict[str, Any] = Field(default_factory=dict)
+    team_id: str | None = None
 
 
 class ProviderPatch(RequestModel):
@@ -247,6 +293,7 @@ class MetadataSchema(ResponseModel):
 class CorpusCreate(RequestModel):
     name: str
     metadata_schema: MetadataSchema = Field(default_factory=MetadataSchema)
+    team_id: str | None = None  # admin may set; team principals are pinned to their own team
 
 
 class CorpusPatch(RequestModel):
@@ -275,6 +322,7 @@ class Corpus(ResponseModel):
     active_pipeline_id: str | None
     document_count: int
     pipelines: list[PipelineSummary]
+    team_id: str
     created_at: str
 
 

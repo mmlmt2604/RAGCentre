@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -16,12 +17,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ragcentre import __version__
+from ragcentre.api.authz import Principal, read_allowed
 from ragcentre.api.routers import ROUTERS
 from ragcentre.api.ui import UiApp, is_api_path
 from ragcentre.context import AppContext
 from ragcentre.errors import ErrorCode, RagError
 from ragcentre.logs import redact
-from ragcentre.settings import Settings
+from ragcentre.timeutil import now_iso
 
 log = logging.getLogger("ragcentre.api")
 
@@ -80,12 +82,17 @@ def _unhandled(_: Request, exc: Exception) -> JSONResponse:
 
 
 class RequestGuard:
-    """Authenticate before routing and bound the body before request parsing."""
+    """Authenticate before routing and bound the body before request parsing.
 
-    def __init__(self, app: ASGIApp, settings: Settings) -> None:
+    The result is a ``Principal`` stored on ``request.state.principal``. A read-scoped team token
+    is additionally restricted to the read-only allowlist here, before any handler runs.
+    """
+
+    def __init__(self, app: ASGIApp, ctx: AppContext) -> None:
         self.app = app
-        self.token = settings.api_token.encode() if settings.api_token else None
-        self.limit = settings.max_upload_bytes
+        self.ctx = ctx
+        self.token = ctx.settings.api_token.encode() if ctx.settings.api_token else None
+        self.limit = ctx.settings.max_upload_bytes
 
     @staticmethod
     def _is_public(scope: Scope) -> bool:
@@ -97,6 +104,28 @@ class RequestGuard:
             return scope["method"] == "GET" and path == "/v1/health"
         # Every API route is under /v1. Read-only paths outside it serve the built UI.
         return bool(path.startswith("/") and scope["method"] in {"GET", "HEAD"})
+
+    def _authenticate(self, headers: Headers) -> Principal | None:
+        scheme, _, supplied = headers.get("authorization", "").partition(" ")
+        if scheme.lower() == "bearer" and supplied.strip():
+            raw = supplied.strip().encode()
+            if self.token is not None and hmac.compare_digest(raw, self.token):
+                return Principal("admin", None)
+            token_hash = hashlib.sha256(raw).hexdigest()
+            row = self.ctx.db.one("SELECT team_id, kind FROM team_tokens WHERE token_hash = ?", (token_hash,))
+            if row is not None:
+                self.ctx.db.execute(
+                    "UPDATE team_tokens SET last_used_at = ? WHERE token_hash = ?", (now_iso(), token_hash)
+                )
+                # DB stores the token's write capability ('full' | 'read'); the principal models
+                # it as a scope ('team' | 'read'). 'team' is the full team scope.
+                scope: Literal["team", "read"] = "team" if row["kind"] == "full" else "read"
+                return Principal(scope, str(row["team_id"]))
+        # No valid credential. Implicit admin only when nothing is configured at all (dev mode,
+        # ``create_app(None)`` for OpenAPI generation, ``serve --allow-no-token``).
+        if self.token is None and self.ctx.db.scalar("SELECT 1 FROM team_tokens LIMIT 1") is None:
+            return Principal("admin", None)
+        return None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -119,9 +148,9 @@ class RequestGuard:
             send = secured_send
 
         headers = Headers(scope=scope)
-        if self.token is not None and not self._is_public(scope):
-            scheme, _, supplied = headers.get("authorization", "").partition(" ")
-            if scheme.lower() != "bearer" or not hmac.compare_digest(supplied.strip().encode(), self.token):
+        if not self._is_public(scope):
+            principal = self._authenticate(headers)
+            if principal is None:
                 response = error_response(
                     401,
                     ErrorCode.UNAUTHORIZED.value,
@@ -130,6 +159,12 @@ class RequestGuard:
                 response.headers["WWW-Authenticate"] = "Bearer"
                 await response(scope, receive, send)
                 return
+            if principal.scope == "read" and not read_allowed(scope["method"], get_route_path(scope)):
+                await error_response(
+                    403, ErrorCode.READ_ONLY_TOKEN.value, "This token is read-only and cannot perform this action."
+                )(scope, receive, send)
+                return
+            scope.setdefault("state", {})["principal"] = principal
 
         too_large = "Request body exceeds the upload limit."
         lengths = headers.getlist("content-length")
@@ -171,7 +206,7 @@ def create_app(ctx: AppContext | None, ui_dir: Path | None = None) -> FastAPI:
     )
     app.state.ctx = ctx
     if ctx is not None:
-        app.add_middleware(RequestGuard, settings=ctx.settings)
+        app.add_middleware(RequestGuard, ctx=ctx)
     app.add_exception_handler(RagError, _rag_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
