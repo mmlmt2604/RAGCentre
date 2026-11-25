@@ -1,5 +1,5 @@
 // Synthetic demonstration data. Names and text are invented; nothing here is a real result.
-import type { EnrichMode, MetadataSchema, PipelineConfig, Provider, ProviderType, QueryTransformConfig } from "../api/types";
+import type { EnrichMode, MetadataSchema, PipelineConfig, Provider, ProviderType, QueryTransformConfig, Source, SourceItem } from "../api/types";
 import { fp, rng, uuidFrom } from "./hash";
 import { ago, type CorpusRec, type DocRec } from "./store";
 
@@ -82,6 +82,31 @@ export const providerTypes: ProviderType[] = [
     kind: "vector_store", type: "pinecone", label: "Pinecone", description: "Managed serverless index; eventually consistent.",
     config_schema: obj({ index_name: str("Index name"), prefix: str("Namespace prefix") }, ["index_name"]), fingerprint_fields: [], secret_keys: ["api_key"],
     capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 1000, multi_vector: false, native_hybrid: false, max_dim: 20000, consistency: "eventual", filter_exact: false, max_collections: null },
+  },
+  {
+    kind: "connector", type: "s3", label: "S3", description: "Sync objects from an S3-compatible bucket.",
+    config_schema: obj({ base_url: str("S3 endpoint", { format: "uri" }), region: str("Region", { default: "us-east-1" }), path_style: bool("Path-style addressing"), timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }),
+    fingerprint_fields: ["base_url", "region", "path_style"], secret_keys: ["access_key_id", "secret_access_key", "session_token"], capabilities: null,
+  },
+  {
+    kind: "connector", type: "sharepoint", label: "SharePoint", description: "Sync files from a SharePoint/OneDrive drive via Microsoft Graph.",
+    config_schema: obj({ tenant_id: str("Tenant ID"), client_id: str("App (client) ID"), timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }, ["tenant_id", "client_id"]),
+    fingerprint_fields: ["tenant_id", "client_id"], secret_keys: ["client_secret"], capabilities: null,
+  },
+  {
+    kind: "connector", type: "confluence", label: "Confluence Cloud", description: "Sync pages from a Confluence Cloud space, converted to Markdown.",
+    config_schema: obj({ base_url: str("Confluence Cloud URL", { format: "uri" }), timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }, ["base_url"]),
+    fingerprint_fields: ["base_url"], secret_keys: ["email", "api_token"], capabilities: null,
+  },
+  {
+    kind: "connector", type: "gdrive", label: "Google Drive", description: "Sync files from a shared drive or folder via a service account.",
+    config_schema: obj({ service_account_email: str("Service account email"), timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }, ["service_account_email"]),
+    fingerprint_fields: ["service_account_email"], secret_keys: ["service_account_key"], capabilities: null,
+  },
+  {
+    kind: "connector", type: "notion", label: "Notion", description: "Sync pages an integration can see (or a database), converted to Markdown.",
+    config_schema: obj({ timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }),
+    fingerprint_fields: [], secret_keys: ["api_token"], capabilities: null,
   },
 ];
 
@@ -209,6 +234,44 @@ export function hybrid(
       top_k: 8,
     },
   };
+}
+
+// ---------- Data connectors ----------
+
+/** A connector provider + one S3 source (with items for the corpus's first few documents). */
+export function connectorDemo(c: CorpusRec, docs: DocRec[]): { providers: Provider[]; sources: Source[]; sourceItems: SourceItem[] } {
+  const s3 = provider("s3-support", "connector", "s3", { base_url: "https://s3.amazonaws.com", region: "us-east-1", path_style: false });
+  const notion = provider("notion-wiki", "connector", "notion", {});
+  const src: Source = {
+    id: uuidFrom(`source:${c.name}:s3-support`),
+    corpus_id: c.id,
+    provider_id: s3.id,
+    name: "Support manuals",
+    scope: { bucket: "support-docs", prefix: "manuals/" },
+    schedule_seconds: 3600,
+    cursor: null,
+    status: "idle",
+    next_run_at: ago(-60), // an hour in the future
+    last_run_at: ago(60 * 24 * 2),
+    last_error: null,
+    metadata_template: { product: "core" },
+    attributes_template: {},
+    created_at: ago(60 * 24 * 10),
+    updated_at: ago(60 * 24 * 2),
+  };
+  const items: SourceItem[] = docs.slice(0, 12).map((d, i) => ({
+    source_id: src.id,
+    remote_id: `manuals/${d.filename.split("/").pop()}`,
+    remote_version: d.content_sha256.slice(0, 12),
+    document_id: d.id,
+    remote_path: `manuals/${d.filename}`,
+    remote_mime: d.mime_type,
+    remote_size: d.size_bytes,
+    remote_modified: d.updated_at,
+    skipped_reason: i === 11 ? "unsupported type" : null,
+    last_seen_at: ago(60 * 24 * 2),
+  }));
+  return { providers: [s3, notion], sources: [src], sourceItems: items };
 }
 
 // ---------- Evaluation dataset ----------

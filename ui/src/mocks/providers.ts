@@ -93,6 +93,9 @@ export function deleteProvider(state: MockState, id: string): void {
   refreshProviderUsage(state);
   if (p.used_by_pipelines)
     throw new MockError(409, "provider_in_use", `${p.name} is used by ${p.used_by_pipelines} pipeline${p.used_by_pipelines === 1 ? "" : "s"}. Archive them first.`, { pipelines: p.used_by_pipelines });
+  const sourceCount = state.sources.filter((s) => s.provider_id === id).length;
+  if (sourceCount)
+    throw new MockError(409, "provider_in_use", `${p.name} is used by ${sourceCount} source${sourceCount === 1 ? "" : "s"}. Delete them first.`, { sources: sourceCount });
   state.providers = state.providers.filter((x) => x.id !== id);
 }
 

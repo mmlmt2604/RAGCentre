@@ -16,7 +16,7 @@ export interface Health {
 }
 
 // ---------- Providers ----------
-export type ProviderKind = "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm";
+export type ProviderKind = "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm" | "connector";
 
 export interface StoreCapabilities {
   metrics: Metric[]; max_batch: number; multi_vector: boolean; native_hybrid: boolean;
@@ -119,6 +119,41 @@ export interface Chunk {
   heading_path: string[]; block_ids: string[]; char_count: number;
 }
 // GET /documents/{id}/parsed returns the Document IR of section 7 plus `heading_path` on each block.
+
+// ---------- Sources ----------
+// A sync source pulls documents from a connector provider into a corpus on a schedule.
+export type SourceStatus = "idle" | "syncing" | "error";
+
+export interface Source {
+  id: UUID; corpus_id: UUID; provider_id: UUID; name: string;
+  scope: Record<string, unknown>;            // connector-specific: drive, folder, space, database…
+  schedule_seconds: number;                  // 0 = manual only
+  cursor: string | null;                     // opaque resume token for the next sync
+  status: SourceStatus;
+  next_run_at: ISODate | null; last_run_at: ISODate | null; last_error: string | null;
+  metadata_template: Record<string, unknown>;   // applied to every ingested document
+  attributes_template: Record<string, unknown>;
+  created_at: ISODate; updated_at: ISODate;
+}
+export interface SourceCreate {
+  name: string; provider_id: UUID;
+  scope?: Record<string, unknown>;
+  schedule_seconds?: number;                 // default 3600
+  metadata_template?: Record<string, unknown>;
+  attributes_template?: Record<string, unknown>;
+}
+export interface SourcePatch {
+  scope?: Record<string, unknown> | null;
+  schedule_seconds?: number | null;
+  metadata_template?: Record<string, unknown> | null;
+  attributes_template?: Record<string, unknown> | null;
+}
+export interface SourceItem {
+  source_id: UUID; remote_id: string; remote_version: string;
+  document_id: UUID | null;                  // null when skipped (e.g. unsupported type)
+  remote_path: string | null; remote_mime: string | null; remote_size: number | null;
+  remote_modified: ISODate | null; skipped_reason: string | null; last_seen_at: ISODate;
+}
 
 // ---------- Pipelines ----------
 export type EnrichMode = "situate" | "summary" | "keywords" | "questions";

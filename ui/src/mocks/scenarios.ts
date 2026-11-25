@@ -1,7 +1,7 @@
 // Named starting states for the mock API (IMPLEMENTATION_PLAN.md §21.3).
 import { completeRuns, createPipeline, fail, refreshProviderUsage } from "./engine";
 import { SEEDED_RUN_ID, seedFinishedRun, importDataset } from "./eval";
-import { allProviders, builtinText, corpus, documents, goldenJsonl, hybrid, providerTypes } from "./fixtures";
+import { allProviders, builtinText, connectorDemo, corpus, documents, goldenJsonl, hybrid, providerTypes } from "./fixtures";
 import { emptyState, type MockState } from "./store";
 
 export const SCENARIOS = ["empty", "no-shim", "building", "degraded", "ready", "auth"] as const;
@@ -49,6 +49,10 @@ export function buildScenario(name: ScenarioName): MockState {
 
   const structure = createPipeline(state, support.id, hybrid("structure-1200", { chunk: "structure", maxChars: 1200 }), name === "ready" ? 60 * 26 : 180);
   const supportDocs = state.documents.filter((d) => d.corpus_id === support.id);
+  const conn = connectorDemo(support, supportDocs);
+  state.providers.push(...conn.providers);
+  state.sources.push(...conn.sources);
+  state.sourceItems.push(...conn.sourceItems);
   const newFps = structure.nodes.filter((n) => n.type !== "parse").map((n) => n.node_fp);
   if (name === "ready") completeRuns(state, newFps, undefined, 60 * 25);
   else completeRuns(state, newFps, new Set(supportDocs.slice(0, Math.round(supportDocs.length * 0.31)).map((d) => d.id)), 5);

@@ -125,6 +125,8 @@ class Source(ResponseModel):
     next_run_at: str | None
     last_run_at: str | None
     last_error: str | None
+    metadata_template: dict[str, Any]
+    attributes_template: dict[str, Any]
     created_at: str
     updated_at: str
 

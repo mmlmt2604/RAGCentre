@@ -11,6 +11,7 @@ import { readForm } from "./multipart";
 import * as pls from "./pipelines";
 import * as ocr from "./ocr";
 import * as ops from "./providers";
+import * as src from "./sources";
 import { query } from "./query";
 import { pipelineHealth, type MockState } from "./store";
 
@@ -191,6 +192,18 @@ export const handlers = [
     const q = new URL(ctx.request.url).searchParams;
     return HttpResponse.json(docs.chunks(ctx.state, d, q.get("pipeline_id") ?? "", q.get("node_id")));
   })),
+
+  // Sync sources
+  http.get("/v1/corpora/:id/sources", route((ctx) => HttpResponse.json(page(src.listSources(ctx.state, p(ctx, "id")), ctx.request)))),
+  http.post("/v1/corpora/:id/sources", route(async (ctx) => HttpResponse.json(src.createSource(ctx.state, p(ctx, "id"), await body(ctx)), { status: 201 }))),
+  http.get("/v1/sources/:id", route((ctx) => HttpResponse.json(src.findSource(ctx.state, p(ctx, "id"))))),
+  http.patch("/v1/sources/:id", route(async (ctx) => HttpResponse.json(src.patchSource(ctx.state, p(ctx, "id"), await body(ctx))))),
+  http.delete("/v1/sources/:id", route((ctx) => {
+    src.deleteSource(ctx.state, p(ctx, "id"));
+    return new HttpResponse(null, { status: 204 });
+  })),
+  http.post("/v1/sources/:id/sync", route((ctx) => HttpResponse.json(src.syncSource(ctx.state, p(ctx, "id"))))),
+  http.get("/v1/sources/:id/items", route((ctx) => HttpResponse.json(page(src.listItems(ctx.state, p(ctx, "id")), ctx.request)))),
 
   // Pipelines
   http.get("/v1/corpora/:id/pipelines", route((ctx) => {

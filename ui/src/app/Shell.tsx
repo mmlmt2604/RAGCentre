@@ -167,6 +167,7 @@ export function CorpusLayout() {
   const base = `/corpora/${corpusId}`;
   const items = [
     { to: `${base}/documents`, label: "Documents", count: c?.document_count },
+    { to: `${base}/sources`, label: "Sources" },
     { to: `${base}/pipelines`, label: "Pipelines", count: c?.pipelines.length, alert: degraded },
     { to: `${base}/query`, label: "Query" },
     { to: `${base}/eval`, label: "Evaluation" },

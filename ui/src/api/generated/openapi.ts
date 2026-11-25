@@ -40,6 +40,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/whoami": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whoami */
+        get: operations["whoami_v1_auth_whoami_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/corpora": {
         parameters: {
             query?: never;
@@ -199,6 +216,24 @@ export interface paths {
         put?: never;
         /** Query Corpus */
         post: operations["query_corpus_v1_corpora__corpus_id__query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/corpora/{corpus_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sources */
+        get: operations["list_sources_v1_corpora__corpus_id__sources_get"];
+        put?: never;
+        /** Create Source */
+        post: operations["create_source_v1_corpora__corpus_id__sources_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -652,6 +687,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Source */
+        get: operations["get_source_v1_sources__source_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Source */
+        delete: operations["delete_source_v1_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Source */
+        patch: operations["patch_source_v1_sources__source_id__patch"];
+        trace?: never;
+    };
+    "/v1/sources/{source_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Items */
+        get: operations["list_items_v1_sources__source_id__items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sources/{source_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync Source */
+        post: operations["sync_source_v1_sources__source_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Teams */
+        get: operations["list_teams_v1_teams_get"];
+        put?: never;
+        /** Create Team */
+        post: operations["create_team_v1_teams_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Team */
+        get: operations["get_team_v1_teams__team_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team_id}/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tokens */
+        get: operations["list_tokens_v1_teams__team_id__tokens_get"];
+        put?: never;
+        /** Create Token */
+        post: operations["create_token_v1_teams__team_id__tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team_id}/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Token */
+        delete: operations["delete_token_v1_teams__team_id__tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -776,12 +934,16 @@ export interface components {
             name: string;
             /** Pipelines */
             pipelines: components["schemas"]["PipelineSummary"][];
+            /** Team Id */
+            team_id: string;
         };
         /** CorpusCreate */
         CorpusCreate: {
             metadata_schema?: components["schemas"]["MetadataSchema-Input"];
             /** Name */
             name: string;
+            /** Team Id */
+            team_id?: string | null;
         };
         /** CorpusPatch */
         CorpusPatch: {
@@ -1488,6 +1650,34 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[SourceItem] */
+        Page_SourceItem_: {
+            /** Items */
+            items: components["schemas"]["SourceItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[Source] */
+        Page_Source_: {
+            /** Items */
+            items: components["schemas"]["Source"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[TeamToken] */
+        Page_TeamToken_: {
+            /** Items */
+            items: components["schemas"]["TeamToken"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[Team] */
+        Page_Team_: {
+            /** Items */
+            items: components["schemas"]["Team"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** ParseNodeOut */
         ParseNodeOut: {
             /** Id */
@@ -1693,13 +1883,15 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm" | "connector";
             /** Name */
             name: string;
             /** Secrets */
             secrets: {
                 [key: string]: components["schemas"]["SecretState"];
             };
+            /** Team Id */
+            team_id: string | null;
             /** Type */
             type: string;
             /** Updated At */
@@ -1717,9 +1909,11 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm" | "connector";
             /** Name */
             name: string;
+            /** Team Id */
+            team_id?: string | null;
             /** Type */
             type: string;
         };
@@ -1760,7 +1954,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm";
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm" | "connector";
             /** Label */
             label: string;
             /** Secret Keys */
@@ -1968,6 +2162,95 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** Source */
+        Source: {
+            /** Attributes Template */
+            attributes_template: {
+                [key: string]: unknown;
+            };
+            /** Corpus Id */
+            corpus_id: string;
+            /** Created At */
+            created_at: string;
+            /** Cursor */
+            cursor: string | null;
+            /** Id */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Run At */
+            last_run_at: string | null;
+            /** Metadata Template */
+            metadata_template: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Next Run At */
+            next_run_at: string | null;
+            /** Provider Id */
+            provider_id: string;
+            /** Schedule Seconds */
+            schedule_seconds: number;
+            /** Scope */
+            scope: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "idle" | "syncing" | "error";
+            /** Updated At */
+            updated_at: string;
+        };
+        /** SourceCreate */
+        SourceCreate: {
+            /** Attributes Template */
+            attributes_template?: {
+                [key: string]: unknown;
+            };
+            /** Metadata Template */
+            metadata_template?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id: string;
+            /**
+             * Schedule Seconds
+             * @default 3600
+             */
+            schedule_seconds?: number;
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            };
+        };
+        /** SourceItem */
+        SourceItem: {
+            /** Document Id */
+            document_id: string | null;
+            /** Last Seen At */
+            last_seen_at: string;
+            /** Remote Id */
+            remote_id: string;
+            /** Remote Mime */
+            remote_mime: string | null;
+            /** Remote Modified */
+            remote_modified: string | null;
+            /** Remote Path */
+            remote_path: string | null;
+            /** Remote Size */
+            remote_size: number | null;
+            /** Remote Version */
+            remote_version: string;
+            /** Skipped Reason */
+            skipped_reason: string | null;
+            /** Source Id */
+            source_id: string;
+        };
         /** SourceOut */
         SourceOut: {
             /** Id */
@@ -1976,6 +2259,23 @@ export interface components {
             index: string;
             /** Top K */
             top_k: number;
+        };
+        /** SourcePatch */
+        SourcePatch: {
+            /** Attributes Template */
+            attributes_template?: {
+                [key: string]: unknown;
+            } | null;
+            /** Metadata Template */
+            metadata_template?: {
+                [key: string]: unknown;
+            } | null;
+            /** Schedule Seconds */
+            schedule_seconds?: number | null;
+            /** Scope */
+            scope?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** StoreCapabilities */
         StoreCapabilities: {
@@ -2036,6 +2336,70 @@ export interface components {
             /** Ms */
             ms: number;
         };
+        /** Team */
+        Team: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** TeamCreate */
+        TeamCreate: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug?: string | null;
+        };
+        /** TeamToken */
+        TeamToken: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "full" | "read";
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Team Id */
+            team_id: string;
+        };
+        /** TeamTokenCreate */
+        TeamTokenCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "full" | "read";
+            /** Name */
+            name: string;
+        };
+        /** TeamTokenCreated */
+        TeamTokenCreated: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "full" | "read";
+            /** Name */
+            name: string;
+            /** Team Id */
+            team_id: string;
+            /** Token */
+            token: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -2055,6 +2419,18 @@ export interface components {
             current: string;
             /** Pinned */
             pinned: string;
+        };
+        /** WhoAmI */
+        WhoAmI: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "admin" | "team" | "read" | "none";
+            /** Team Id */
+            team_id: string | null;
+            /** Team Name */
+            team_name: string | null;
         };
     };
     responses: never;
@@ -2127,6 +2503,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whoami_v1_auth_whoami_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhoAmI"];
                 };
             };
         };
@@ -2621,6 +3017,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sources_v1_corpora__corpus_id__sources_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                corpus_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Source_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_source_v1_corpora__corpus_id__sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                corpus_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Source"];
                 };
             };
             /** @description Validation Error */
@@ -3656,6 +4121,361 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProviderTestResult"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_source_v1_sources__source_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Source"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_source_v1_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_source_v1_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourcePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Source"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_items_v1_sources__source_id__items_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SourceItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_source_v1_sources__source_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Source"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_teams_v1_teams_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_Team_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_team_v1_teams_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Team"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_team_v1_teams__team_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Team"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tokens_v1_teams__team_id__tokens_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_TeamToken_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_token_v1_teams__team_id__tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamTokenCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_token_v1_teams__team_id__tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

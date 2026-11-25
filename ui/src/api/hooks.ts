@@ -29,6 +29,10 @@ import type {
   QueryRequest,
   QueryResponse,
   SecretSet,
+  Source,
+  SourceCreate,
+  SourceItem,
+  SourcePatch,
 } from "./types";
 
 const POLL_MS = 2000;
@@ -60,6 +64,9 @@ export const keys = {
   document: (id: string) => ["documents", id] as const,
   parsed: (id: string, pipelineId: string) => ["documents", id, "parsed", pipelineId] as const,
   chunks: (id: string, pipelineId: string, nodeId: string) => ["documents", id, "chunks", pipelineId, nodeId] as const,
+  sources: (corpusId: string) => ["corpora", corpusId, "sources"] as const,
+  source: (id: string) => ["sources", id] as const,
+  sourceItems: (id: string) => ["sources", id, "items"] as const,
 };
 
 export function useHealth() {
@@ -336,6 +343,82 @@ export function useTestProvider(id: string) {
     // A deep test checks a sample document or a vector store's live behavior.
     mutationFn: (deep?: boolean) => request<ProviderTestResult>(`/providers/${id}/test`, { method: "POST", query: deep ? { deep: "true" } : undefined }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.provider(id) }),
+  });
+}
+
+// ---------- Sources ----------
+
+const sourceBusy = (s: Source) => s.status === "syncing";
+
+export function useSources(corpusId: string) {
+  return useQuery({
+    queryKey: keys.sources(corpusId),
+    queryFn: () => request<Page<Source>>(`/corpora/${corpusId}/sources`, { query: { limit: 500 } }),
+    enabled: Boolean(corpusId),
+    refetchInterval: pollWhile<Page<Source>>((d) => d.items.some(sourceBusy)),
+  });
+}
+
+export function useSource(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.source(id ?? ""),
+    queryFn: () => request<Source>(`/sources/${id}`),
+    enabled: Boolean(id),
+    refetchInterval: pollWhile<Source>(sourceBusy),
+  });
+}
+
+export function useSourceItems(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.sourceItems(id ?? ""),
+    queryFn: () => request<Page<SourceItem>>(`/sources/${id}/items`, { query: { limit: 500 } }),
+    enabled: Boolean(id),
+  });
+}
+
+function useInvalidateSources(corpusId: string) {
+  const qc = useQueryClient();
+  return (source?: Source) => {
+    if (source) qc.setQueryData(keys.source(source.id), source);
+    void qc.invalidateQueries({ queryKey: keys.sources(corpusId) });
+    void qc.invalidateQueries({ queryKey: keys.providers });
+  };
+}
+
+export function useCreateSource(corpusId: string) {
+  const invalidate = useInvalidateSources(corpusId);
+  return useMutation({
+    mutationFn: (body: SourceCreate) => request<Source>(`/corpora/${corpusId}/sources`, { method: "POST", body }),
+    onSuccess: (source) => invalidate(source),
+  });
+}
+
+export function usePatchSource(id: string, corpusId: string) {
+  const invalidate = useInvalidateSources(corpusId);
+  return useMutation({
+    mutationFn: (body: SourcePatch) => request<Source>(`/sources/${id}`, { method: "PATCH", body }),
+    onSuccess: (source) => invalidate(source),
+  });
+}
+
+export function useSyncSource(corpusId: string) {
+  const invalidate = useInvalidateSources(corpusId);
+  return useMutation({
+    mutationFn: (id: string) => request<Source>(`/sources/${id}/sync`, { method: "POST" }),
+    onSuccess: (source) => invalidate(source),
+  });
+}
+
+export function useDeleteSource(corpusId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<void>(`/sources/${id}`, { method: "DELETE" }),
+    onSuccess: (_, id) => {
+      qc.removeQueries({ queryKey: keys.source(id) });
+      qc.removeQueries({ queryKey: keys.sourceItems(id) });
+      void qc.invalidateQueries({ queryKey: keys.sources(corpusId) });
+      void qc.invalidateQueries({ queryKey: keys.providers });
+    },
   });
 }
 
