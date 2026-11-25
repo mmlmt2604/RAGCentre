@@ -37,6 +37,8 @@ def _source_out(ctx: AppContext, source_id: str) -> api.Source:
         next_run_at=row["next_run_at"],
         last_run_at=row["last_run_at"],
         last_error=row["last_error"],
+        metadata_template=json.loads(row["metadata_template"]),
+        attributes_template=json.loads(row["attributes_template"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

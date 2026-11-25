@@ -13,6 +13,7 @@ import "./styles/documents.css";
 import "./styles/builder.css";
 import "./styles/query.css";
 import "./styles/eval.css";
+import "./styles/sources.css";
 import "./styles/ops.css";
 import "./styles/ocr.css";
 import "./styles/welcome.css";

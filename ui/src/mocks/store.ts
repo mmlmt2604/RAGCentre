@@ -17,6 +17,8 @@ import type {
   Provider,
   ProviderType,
   RunState,
+  Source,
+  SourceItem,
 } from "../api/types";
 import { fp } from "./hash";
 import { TRANSFORM_IMPL } from "./transform";
@@ -88,6 +90,8 @@ export interface MockState {
   providers: Provider[];
   corpora: CorpusRec[];
   documents: DocRec[];
+  sources: Source[];
+  sourceItems: SourceItem[];
   pipelines: PipelineRec[];
   runs: RunRec[];
   datasets: EvalDataset[];
@@ -122,6 +126,8 @@ export function emptyState(): MockState {
     providers: [],
     corpora: [],
     documents: [],
+    sources: [],
+    sourceItems: [],
     pipelines: [],
     runs: [],
     datasets: [],

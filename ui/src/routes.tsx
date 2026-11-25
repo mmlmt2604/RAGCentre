@@ -19,6 +19,8 @@ import { QueryPlayground } from "./features/query/QueryPlayground";
 import { ProviderDetail } from "./features/providers/ProviderDetail";
 import { ProviderList } from "./features/providers/ProviderList";
 import { ProviderNew } from "./features/providers/ProviderNew";
+import { SourceDetail } from "./features/sources/SourceDetail";
+import { SourceList } from "./features/sources/SourceList";
 
 const wrap = (el: React.ReactNode) => <ErrorBoundary>{el}</ErrorBoundary>;
 
@@ -47,6 +49,8 @@ export const routes: RouteObject[] = [
           { index: true, element: <Navigate to="pipelines" replace /> },
           { path: "documents", element: wrap(<DocumentList />) },
           { path: "documents/:documentId", element: wrap(<DocumentDetail />) },
+          { path: "sources", element: wrap(<SourceList />) },
+          { path: "sources/:sourceId", element: wrap(<SourceDetail />) },
           { path: "pipelines", element: wrap(<PipelineList />) },
           { path: "pipelines/new", element: wrap(<PipelineBuilder />) },
           { path: "pipelines/compare", element: wrap(<PipelineDiff />) },
