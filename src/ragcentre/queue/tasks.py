@@ -7,8 +7,10 @@ from typing import Any
 
 from ragcentre.errors import ExecutionError
 from ragcentre.locks import document_lock, index_catalog_lock
+from ragcentre.logs import redact
 from ragcentre.pipeline.purge import purge_blobs, release_document
 from ragcentre.stores.base import delete_batched
+from ragcentre.timeutil import after, now_iso
 
 
 def _run_delete_document(ctx: Any, payload: dict[str, Any]) -> None:
@@ -79,10 +81,22 @@ def _run_eval(ctx: Any, payload: dict[str, Any]) -> None:
 
 def on_task_failed(ctx: Any, task: Any) -> None:
     """Called when a task has failed permanently."""
+    payload = json.loads(task["payload"])
     if task["kind"] == "eval_run":
         from ragcentre.eval.runner import mark_failed
 
-        mark_failed(ctx, json.loads(task["payload"])["run_id"])
+        mark_failed(ctx, payload["run_id"])
+    elif task["kind"] == "sync_source":
+        source_id = payload["source_id"]
+        row = ctx.db.one("SELECT schedule_seconds FROM sync_sources WHERE id = ?", (source_id,))
+        if row is not None:
+            schedule = int(row["schedule_seconds"])
+            ctx.db.execute(
+                "UPDATE sync_sources SET status = 'error', last_error = ?, last_run_at = ?, next_run_at = ? "
+                "WHERE id = ?",
+                (redact(task["error_message"])[:2000] if task["error_message"] else None,
+                 now_iso(), after(schedule) if schedule else None, source_id),
+            )
 
 
 def run_task(ctx: Any, task: Any) -> None:
@@ -97,5 +111,9 @@ def run_task(ctx: Any, task: Any) -> None:
         _run_drop_index(ctx, payload)
     elif kind == "eval_run":
         _run_eval(ctx, payload)
+    elif kind == "sync_source":
+        from ragcentre.connectors.sync import run_sync_source
+
+        run_sync_source(ctx, payload["source_id"])
     else:
         raise ExecutionError("unknown_task", f"unknown task kind {kind}", retryable=False)

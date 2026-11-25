@@ -48,6 +48,7 @@ cache_app = typer.Typer(help="Caches kept next to the database.", no_args_is_hel
 team_app = typer.Typer(help="Teams and team service tokens.", no_args_is_help=True)
 team_token_app = typer.Typer(help="Service tokens for a team.", no_args_is_help=True)
 team_app.add_typer(team_token_app, name="token")
+source_app = typer.Typer(help="Sync sources that pull documents into a corpus.", no_args_is_help=True)
 app.add_typer(provider_app, name="provider")
 app.add_typer(corpus_app, name="corpus")
 app.add_typer(docs_app, name="docs")
@@ -57,6 +58,7 @@ app.add_typer(parser_app, name="parser")
 app.add_typer(store_app, name="store")
 app.add_typer(cache_app, name="cache")
 app.add_typer(team_app, name="team")
+app.add_typer(source_app, name="source")
 
 log = logging.getLogger("ragcentre")
 
@@ -193,6 +195,7 @@ def serve(
     ctx = open_context(settings)
     try:
         ctx.start_workers(settings.workers)
+        ctx.start_scheduler()
         api = create_app(ctx)
         log.info("serving", extra={"host": settings.host, "port": settings.port, "workers": settings.workers})
         config = uvicorn.Config(api, host=settings.host, port=settings.port, log_level=settings.log_level.lower())
@@ -1126,6 +1129,96 @@ def team_token_delete(
         t = api.team(team)
         api.delete(f"/teams/{t['id']}/tokens/{token_id}")
     _emit({"deleted": token_id}, lambda: typer.echo(f"Deleted token {token_id}."))
+
+
+@source_app.command("list")
+def source_list(corpus: Annotated[str, typer.Argument(help="Corpus name or id.")]) -> None:
+    """List a corpus's sync sources."""
+    with _api() as api:
+        c = api.corpus(corpus)
+        items = list(api.paginate(f"/corpora/{c['id']}/sources"))
+
+    def human() -> None:
+        _table(
+            ["NAME", "ID", "PROVIDER", "STATUS", "SCHEDULE", "LAST RUN"],
+            [
+                [i["name"], i["id"], i["provider_id"], i["status"], i["schedule_seconds"], i["last_run_at"]]
+                for i in items
+            ],
+        )
+
+    _emit(items, human)
+
+
+@source_app.command("create")
+def source_create(
+    corpus: Annotated[str, typer.Argument(help="Corpus name or id.")],
+    name: Annotated[str, typer.Argument(help="Source name (unique within the corpus).")],
+    provider: Annotated[str, typer.Argument(help="Connector provider name or id.")],
+    scope: Annotated[str, typer.Option("--scope", help="Connector scope as JSON, e.g. {\"bucket\": \"x\"}.")] = "{}",
+    schedule_seconds: Annotated[int, typer.Option("--schedule-seconds", help="Poll interval; 0 = manual only.")] = 3600,
+) -> None:
+    """Attach a connector to a corpus as a sync source."""
+    try:
+        parsed_scope = json.loads(scope)
+    except ValueError:
+        _fail("--scope must be valid JSON.")
+    with _api() as api:
+        c = api.corpus(corpus)
+        p = api.provider(provider)
+        created = api.post(
+            f"/corpora/{c['id']}/sources",
+            json={
+                "name": name,
+                "provider_id": p["id"],
+                "scope": parsed_scope,
+                "schedule_seconds": schedule_seconds,
+            },
+        )
+
+    _emit(created, lambda: typer.echo(f"Created source {created['name']} ({created['id']})."))
+
+
+@source_app.command("get")
+def source_get(source_id: Annotated[str, typer.Argument(help="Source id.")]) -> None:
+    """Show one sync source."""
+    with _api() as api:
+        data = api.get(f"/sources/{source_id}")
+    _emit(data, lambda: typer.echo(f"{data['name']} ({data['id']}) status={data['status']}."))
+
+
+@source_app.command("sync")
+def source_sync(source_id: Annotated[str, typer.Argument(help="Source id.")]) -> None:
+    """Queue a sync now."""
+    with _api() as api:
+        data = api.post(f"/sources/{source_id}/sync")
+    _emit(data, lambda: typer.echo(f"Queued sync for {data['name']} ({data['id']})."))
+
+
+@source_app.command("delete")
+def source_delete(source_id: Annotated[str, typer.Argument(help="Source id.")]) -> None:
+    """Detach a source; its synced documents stay in the corpus."""
+    with _api() as api:
+        api.delete(f"/sources/{source_id}")
+    _emit({"deleted": source_id}, lambda: typer.echo(f"Deleted source {source_id}."))
+
+
+@source_app.command("items")
+def source_items(source_id: Annotated[str, typer.Argument(help="Source id.")]) -> None:
+    """List a source's tracked remote items."""
+    with _api() as api:
+        items = list(api.paginate(f"/sources/{source_id}/items"))
+
+    def human() -> None:
+        _table(
+            ["REMOTE ID", "VERSION", "DOCUMENT", "SKIPPED"],
+            [
+                [i["remote_id"], i["remote_version"], i["document_id"] or "-", i["skipped_reason"] or "-"]
+                for i in items
+            ],
+        )
+
+    _emit(items, human)
 
 
 def main() -> None:  # pragma: no cover

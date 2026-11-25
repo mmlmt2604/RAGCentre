@@ -28,6 +28,11 @@ BUILTIN = (
     "ragcentre.providers.embedders.openai_compatible:SPEC",
     "ragcentre.providers.rerankers.http:SPEC",
     "ragcentre.providers.llms.openai_compatible:SPEC",
+    "ragcentre.connectors.s3:SPEC",
+    "ragcentre.connectors.sharepoint:SPEC",
+    "ragcentre.connectors.confluence:SPEC",
+    "ragcentre.connectors.gdrive:SPEC",
+    "ragcentre.connectors.notion:SPEC",
 )
 
 

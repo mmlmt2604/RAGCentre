@@ -45,6 +45,7 @@ class Settings:
     shutdown_grace_seconds: float = 30.0
     secret_env_prefixes: tuple[str, ...] = ("RAGCENTRE_PROVIDER_",)
     egress_allow: tuple[str, ...] = ()
+    scheduler_tick_seconds: int = 30
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -71,6 +72,7 @@ class Settings:
             discovery_urls=e.get("RAGCENTRE_DISCOVERY_URLS") or "auto",
             ocr_recheck_seconds=_int(e, "RAGCENTRE_OCR_RECHECK_SECONDS", 600),
             log_level=(e.get("RAGCENTRE_LOG_LEVEL") or "INFO").upper(),
+            scheduler_tick_seconds=_int(e, "RAGCENTRE_SCHEDULER_TICK_SECONDS", 30),
         )
 
     def with_(self, **changes: object) -> Settings:
