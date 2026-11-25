@@ -57,6 +57,7 @@ class AppContext:
         self.retrieval_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="retrieval")
         self.migration = 0
         self.workers: Any = None
+        self._scheduler: Any = None
         self._services: dict[str, Any] = {}
         self._services_lock = threading.RLock()
 
@@ -173,6 +174,15 @@ class AppContext:
         self.workers = WorkerPool(self, count)
         self.workers.start()
 
+    def start_scheduler(self) -> None:
+        """Start the sync-source poll scheduler (serve only; the worker command has none)."""
+        if self._scheduler is not None:
+            return
+        from ragcentre.connectors.scheduler import Scheduler
+
+        self._scheduler = Scheduler(self)
+        self._scheduler.start()
+
     @property
     def worker_count(self) -> int:
         return int(self.workers.size) if self.workers is not None else 0
@@ -183,6 +193,9 @@ class AppContext:
         if self.workers is not None:
             self.workers.stop()
             self.workers = None
+        if self._scheduler is not None:
+            self._scheduler.stop(timeout=self.settings.shutdown_grace_seconds)
+            self._scheduler = None
         self.retrieval_executor.shutdown(wait=True)
         for svc in self._services.values():
             close = getattr(svc, "close", None)

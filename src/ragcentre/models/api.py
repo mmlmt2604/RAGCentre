@@ -20,7 +20,7 @@ T = TypeVar("T")
 Metric = Literal["cosine", "l2", "dot"]
 FieldType = Literal["str", "int", "float", "bool"]
 Scalar = str | int | float | bool
-ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store", "llm"]
+ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store", "llm", "connector"]
 
 
 class RequestModel(BaseModel):
@@ -92,6 +92,54 @@ class WhoAmI(ResponseModel):
     scope: Literal["admin", "team", "read", "none"]
     team_id: str | None
     team_name: str | None
+
+
+# ---------- Data connectors (sync sources) ----------
+
+
+class SourceCreate(RequestModel):
+    name: str
+    provider_id: str
+    scope: dict[str, Any] = Field(default_factory=dict)
+    schedule_seconds: int = Field(default=3600, ge=0)
+    metadata_template: dict[str, Any] = Field(default_factory=dict)
+    attributes_template: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourcePatch(RequestModel):
+    scope: dict[str, Any] | None = None
+    schedule_seconds: int | None = Field(default=None, ge=0)
+    metadata_template: dict[str, Any] | None = None
+    attributes_template: dict[str, Any] | None = None
+
+
+class Source(ResponseModel):
+    id: str
+    corpus_id: str
+    provider_id: str
+    name: str
+    scope: dict[str, Any]
+    schedule_seconds: int
+    cursor: str | None
+    status: Literal["idle", "syncing", "error"]
+    next_run_at: str | None
+    last_run_at: str | None
+    last_error: str | None
+    created_at: str
+    updated_at: str
+
+
+class SourceItem(ResponseModel):
+    source_id: str
+    remote_id: str
+    remote_version: str
+    document_id: str | None
+    remote_path: str | None
+    remote_mime: str | None
+    remote_size: int | None
+    remote_modified: str | None
+    skipped_reason: str | None
+    last_seen_at: str
 
 
 # ---------- Providers ----------

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import re
-from contextlib import nullcontext
 from typing import Any, Literal
 from urllib.parse import quote
 
@@ -17,12 +16,12 @@ from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
 from ragcentre.context import AppContext
 from ragcentre.errors import Conflict, ErrorCode, NotFound, RagError, ValidationFailed
-from ragcentre.hashing import new_id
+from ragcentre.ingest import ingest_document
 from ragcentre.locks import document_lock
 from ragcentre.models import api
 from ragcentre.models.ir import normalise_ir
 from ragcentre.models.metadata import validate_metadata
-from ragcentre.pipeline.planner import on_document_created, on_document_deleted, on_document_replaced, reset_vector_runs
+from ragcentre.pipeline.planner import on_document_deleted, on_document_replaced, reset_vector_runs
 from ragcentre.pipeline.purge import release_document
 from ragcentre.timeutil import now_iso
 
@@ -135,8 +134,6 @@ def upload(
 ) -> JSONResponse:
     require_corpus(ctx, principal_of(request), corpus_id)
     content = file.file.read(ctx.settings.max_upload_bytes + 1)
-    if len(content) > ctx.settings.max_upload_bytes:
-        raise RagError("File is larger than the upload limit.", code=ErrorCode.PAYLOAD_TOO_LARGE, status=413)
     try:
         meta = json.loads(metadata or "{}")
         attrs = json.loads(attributes or "{}")
@@ -144,76 +141,20 @@ def upload(
         raise ValidationFailed("metadata and attributes must be valid JSON objects.") from None
     if not isinstance(meta, dict) or not isinstance(attrs, dict):
         raise ValidationFailed("metadata and attributes must be JSON objects.")
-    corpus = ctx.db.one("SELECT * FROM corpora WHERE id = ?", (corpus_id,))
-    if corpus is None:
-        raise NotFound(f"Corpus {corpus_id} was not found.")
-    schema = json.loads(corpus["metadata_schema"])
-    if metadata is not None:
-        validate_metadata(meta, schema)
-    doc_id = new_id()
-    now = now_iso()
-    # Serialize external-id upserts before acquiring the existing document's lock.
-    external_lock = (
-        document_lock(ctx.settings.data_dir, f"external:{corpus_id}:{external_id}")
-        if external_id is not None
-        else nullcontext()
+    result = ingest_document(
+        ctx,
+        corpus_id,
+        content,
+        filename=file.filename or "document",
+        mime_type=_mime_type(file),
+        external_id=external_id,
+        metadata=meta if metadata is not None else None,
+        attributes=attrs if attributes is not None else None,
     )
-    with external_lock:
-        existing_id = ctx.db.scalar(
-            "SELECT id FROM documents WHERE corpus_id = ? AND external_id = ?", (corpus_id, external_id)
-        )
-        with document_lock(ctx.settings.data_dir, existing_id or doc_id), ctx.db.write() as conn:
-            existing = conn.execute("SELECT * FROM documents WHERE id = ?", (existing_id,)).fetchone()
-            if existing is not None and existing["status"] != "active":
-                raise Conflict("Document is being deleted.")
-            sha = ctx.blobs.put(content)
-            if existing is not None:
-                doc_id = existing["id"]
-                changed_content = existing["content_sha256"] != sha
-                if changed_content:
-                    release_document(conn, existing)
-                if changed_content or metadata is not None or attributes is not None:
-                    conn.execute(
-                        "UPDATE documents SET content_sha256 = ?, filename = ?, mime_type = ?, size_bytes = ?, "
-                        "metadata = ?, attributes = ?, updated_at = ? WHERE id = ?",
-                        (
-                            sha,
-                            (file.filename or "document") if changed_content else existing["filename"],
-                            _mime_type(file) if changed_content else existing["mime_type"],
-                            len(content),
-                            json.dumps(meta) if metadata is not None else existing["metadata"],
-                            json.dumps(attrs) if attributes is not None else existing["attributes"],
-                            now,
-                            doc_id,
-                        ),
-                    )
-                    if changed_content:
-                        on_document_replaced(conn, corpus_id, doc_id)
-                    elif metadata is not None:
-                        reset_vector_runs(conn, corpus_id, doc_id)
-            else:
-                validate_metadata(meta, schema)
-                conn.execute(
-                    "INSERT INTO documents (id, corpus_id, external_id, filename, mime_type, size_bytes, "
-                    "content_sha256, metadata, attributes, revision, status, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', ?, ?)",
-                    (
-                        doc_id,
-                        corpus_id,
-                        external_id,
-                        file.filename or "document",
-                        _mime_type(file),
-                        len(content),
-                        sha,
-                        json.dumps(meta),
-                        json.dumps(attrs),
-                        now,
-                        now,
-                    ),
-                )
-                on_document_created(conn, corpus_id, doc_id)
-            result = _out(ctx, doc_id)
-    return JSONResponse(result.model_dump(mode="json"), status_code=200 if existing is not None else 201)
+    return JSONResponse(
+        _out(ctx, result.document_id).model_dump(mode="json"),
+        status_code=201 if result.created else 200,
+    )
 
 
 DocState = Literal["pending", "running", "succeeded", "failed"]

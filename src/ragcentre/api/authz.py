@@ -148,6 +148,15 @@ def team_of_provider(ctx: AppContext, provider_id: str) -> str | None:
     return None if row["team_id"] is None else str(row["team_id"])
 
 
+def team_of_source(ctx: AppContext, source_id: str) -> str:
+    row = ctx.db.one(
+        "SELECT c.team_id FROM corpora c JOIN sync_sources s ON s.corpus_id = c.id WHERE s.id = ?", (source_id,)
+    )
+    if row is None:
+        raise NotFound(f"Source {source_id} was not found.")
+    return str(row["team_id"])
+
+
 # ---- checks ------------------------------------------------------------------------------------
 # Admin always passes. Otherwise the resource's team must equal the principal's team.
 
@@ -211,6 +220,13 @@ def require_provider_owner(ctx: AppContext, p: Principal, provider_id: str) -> N
         raise Forbidden("Built-in providers can only be changed by the admin token.")
     if team != p.team_id:
         raise NotFound(f"Provider {provider_id} was not found.")
+
+
+def require_source(ctx: AppContext, p: Principal, source_id: str) -> None:
+    if p.is_admin:
+        return
+    if p.team_id != team_of_source(ctx, source_id):
+        raise NotFound(f"Source {source_id} was not found.")
 
 
 def require_team(p: Principal, team_id: str) -> None:

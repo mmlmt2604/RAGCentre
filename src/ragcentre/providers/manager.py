@@ -350,6 +350,12 @@ class ProviderManager:
                 f"{row.name} is used by {used} pipeline{'s' if used != 1 else ''}. Archive them first.",
                 details={"pipelines": used},
             )
+        sources = self.db.scalar("SELECT COUNT(*) FROM sync_sources WHERE provider_id = ?", (provider_id,))
+        if sources:
+            raise ProviderInUse(
+                f"{row.name} is used by {sources} sync source{'s' if sources != 1 else ''}. Delete them first.",
+                details={"sources": sources},
+            )
         with self.db.write() as conn:
             conn.execute("DELETE FROM providers WHERE id = ?", (provider_id,))
         self._retire(provider_id)
@@ -585,6 +591,8 @@ class ProviderManager:
                     inst.rerank("connectivity test", ["first document", "second document"], 2)
                 elif row.kind == "vector_store":
                     inst.healthcheck()
+                elif row.kind == "connector":
+                    inst.check()
                 result["ok"] = result["version_drift"] is None
                 if deep and row.kind == "parser" and row.type == "http":
                     # Parse a sample document and look at the IR, not just /info.

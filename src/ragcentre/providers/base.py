@@ -27,8 +27,8 @@ from ragcentre.logs import redact
 if TYPE_CHECKING:
     from ragcentre.stores.base import Capabilities
 
-ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store", "llm"]
-KINDS: tuple[ProviderKind, ...] = ("parser", "chunker", "embedder", "reranker", "vector_store", "llm")
+ProviderKind = Literal["parser", "chunker", "embedder", "reranker", "vector_store", "llm", "connector"]
+KINDS: tuple[ProviderKind, ...] = ("parser", "chunker", "embedder", "reranker", "vector_store", "llm", "connector")
 Role = Literal["document", "query"]
 
 RETRYABLE_STATUS = frozenset({408, 429})

@@ -58,7 +58,7 @@ def _corpus(client: TestClient, name: str, team_id: str | None = None) -> dict[s
 
 def test_default_team_and_builtin_scope(world: tuple[AppContext, TestClient]) -> None:
     ctx, _ = world
-    assert ctx.migration == 5
+    assert ctx.migration == 6
     assert ctx.db.scalar("SELECT id FROM teams WHERE slug = 'default'") == "00000000-0000-0000-0000-000000000001"
     assert ctx.db.scalar("SELECT team_id FROM providers WHERE name = 'builtin-text'") is None
 
@@ -89,7 +89,7 @@ def test_upgrade_backfills_providers_into_default_team(tmp_path: Path) -> None:
                 "INSERT INTO providers (id, name, kind, type, config, fingerprint, created_at, updated_at) "
                 "VALUES ('p2', 'builtin-text', 'parser', 'builtin_text', '{}', 'fp2', 'now', 'now')"
             )
-        assert migrate(db) == [5]
+        assert migrate(db) == [5, 6]
         # User providers land in the default team; the built-in stays NULL (system/built-in).
         assert db.scalar("SELECT team_id FROM providers WHERE name = 'my-embed'") == (
             "00000000-0000-0000-0000-000000000001"
