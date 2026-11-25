@@ -8,9 +8,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from ragcentre.api.authz import principal_of, require_corpus, require_provider, require_source
+from ragcentre.api.authz import principal_of, require_corpus, require_provider, require_source, team_of_corpus
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.connectors.sync import enqueue_sync
 from ragcentre.context import AppContext
 from ragcentre.errors import Conflict, NotFound, ValidationFailed
@@ -18,7 +19,7 @@ from ragcentre.hashing import new_id
 from ragcentre.models import api
 from ragcentre.timeutil import after, now_iso
 
-router = APIRouter(tags=["sources"])
+router = APIRouter(route_class=SessionRoute, tags=["sources"])
 
 
 def _source_out(ctx: AppContext, source_id: str) -> api.Source:
@@ -83,6 +84,8 @@ def create_source(
     require_corpus(ctx, principal, corpus_id)
     require_provider(ctx, principal, body.provider_id)
     provider = ctx.providers.get(body.provider_id)
+    if provider.team_id != team_of_corpus(ctx, corpus_id):
+        raise ValidationFailed("The connector provider must belong to the corpus's team.")
     if provider.kind != "connector":
         raise ValidationFailed(f"Provider {provider.name} is a {provider.kind}, not a connector.")
     name = body.name.strip()

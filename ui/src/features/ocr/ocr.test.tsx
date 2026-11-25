@@ -14,7 +14,7 @@ describe("OCR readiness", () => {
   it("adds a found shim in one click and shows it ready", async () => {
     const user = userEvent.setup();
     renderApp("/providers", "empty");
-    expect(await within(bar()).findByText("OCR shim found")).toBeInTheDocument();
+    expect(await within(await screen.findByRole("contentinfo")).findByText("OCR shim found")).toBeInTheDocument();
     const found = await screen.findByRole("region", { name: "OCR shims found" });
     expect(within(found).getByText(/http:\/\/docling:8701/)).toBeInTheDocument();
     await user.click(within(found).getByRole("button", { name: "Add and test OCR" }));
@@ -59,7 +59,7 @@ describe("OCR readiness", () => {
 
   it("announces a change, but not the state the page opened with", async () => {
     const { state, queryClient } = renderApp("/providers");
-    await within(bar()).findByText("OCR ready");
+    await within(await screen.findByRole("contentinfo")).findByText("OCR ready");
     const notices = screen.getByRole("region", { name: "Notifications" });
     expect(notices).not.toHaveTextContent("OCR ready");
 
@@ -74,7 +74,7 @@ describe("OCR readiness", () => {
 
   it("announces a shim that starts while the page is open", async () => {
     const { state, queryClient } = renderApp("/providers");
-    await within(bar()).findByText("OCR ready");
+    await within(await screen.findByRole("contentinfo")).findByText("OCR ready");
     state.runningShims = ["http://surya:8704"];
     await queryClient.invalidateQueries({ queryKey: keys.ocr });
     expect(await within(screen.getByRole("region", { name: "Notifications" })).findByText("Found surya-shim")).toBeInTheDocument();

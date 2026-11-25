@@ -30,6 +30,12 @@ class Settings:
     port: int = 8700
     workers: int = 4
     api_token: str | None = None
+    auth_mode: str | None = None
+    browser_origin: str | None = None
+    insecure_local_cookie: bool = False
+    session_idle_seconds: int = 8 * 3600
+    session_lifetime_seconds: int = 7 * 86400
+    audit_retention_days: int = 90
     secret_key: str | None = None
     max_upload_mb: int = 200
     max_attempts: int = 5
@@ -56,6 +62,12 @@ class Settings:
             port=_int(e, "RAGCENTRE_PORT", 8700),
             workers=_int(e, "RAGCENTRE_WORKERS", 4),
             api_token=_opt(e, "RAGCENTRE_API_TOKEN"),
+            auth_mode=_opt(e, "RAGCENTRE_AUTH_MODE"),
+            browser_origin=_opt(e, "RAGCENTRE_BROWSER_ORIGIN"),
+            insecure_local_cookie=e.get("RAGCENTRE_INSECURE_LOCAL_COOKIE", "").lower() in {"1", "true"},
+            session_idle_seconds=_int(e, "RAGCENTRE_SESSION_IDLE_SECONDS", 8 * 3600),
+            session_lifetime_seconds=_int(e, "RAGCENTRE_SESSION_LIFETIME_SECONDS", 7 * 86400),
+            audit_retention_days=_int(e, "RAGCENTRE_AUDIT_RETENTION_DAYS", 90),
             secret_key=_opt(e, "RAGCENTRE_SECRET_KEY"),
             secret_env_prefixes=tuple(
                 part.strip()

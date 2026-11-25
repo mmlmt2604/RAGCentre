@@ -1,3 +1,9 @@
+import { AuthGate } from "./features/auth/AuthGate";
+import { AccountPage, SetupPage } from "./features/auth/AuthForms";
+import { Require } from "./features/auth/Access";
+import { MembersPage } from "./features/members/MembersPage";
+import { UsersPage, TeamsPage } from "./features/members/UsersPage";
+import { TeamTokensPage } from "./features/members/TeamTokensPage";
 import { Navigate, type RouteObject } from "react-router";
 import { CorpusList, ErrorBoundary, NotFound, RouteError } from "./app/pages";
 import { CorpusLayout, PageLayout, Shell } from "./app/Shell";
@@ -24,7 +30,7 @@ import { SourceList } from "./features/sources/SourceList";
 
 const wrap = (el: React.ReactNode) => <ErrorBoundary>{el}</ErrorBoundary>;
 
-export const routes: RouteObject[] = [
+export const routes: RouteObject[] = [{ path: "setup", element: wrap(<SetupPage />) }, { element: <AuthGate />, children: [
   {
     element: <Shell />,
     errorElement: <RouteError />,
@@ -33,12 +39,17 @@ export const routes: RouteObject[] = [
         element: <PageLayout />,
         children: [
           { index: true, element: wrap(<CorpusList />) },
-          { path: "corpora/new", element: wrap(<CorpusNew />) },
-          { path: "providers", element: wrap(<ProviderList />) },
-          { path: "providers/new", element: wrap(<ProviderNew />) },
-          { path: "providers/:providerId", element: wrap(<ProviderDetail />) },
+          { path: "corpora/new", element: wrap(<Require capability="edit"><CorpusNew /></Require>) },
+          { path: "providers", element: wrap(<Require capability="providers"><ProviderList /></Require>) },
+          { path: "providers/new", element: wrap(<Require capability="manage"><ProviderNew /></Require>) },
+          { path: "providers/:providerId", element: wrap(<Require capability="providers"><ProviderDetail /></Require>) },
           { path: "activity", element: wrap(<ActivityPage />) },
-          { path: "admin", element: wrap(<AdminPage />) },
+          { path: "account", element: wrap(<AccountPage />) },
+          { path: "members", element: wrap(<Require capability="members"><MembersPage /></Require>) },
+          { path: "team-tokens", element: wrap(<Require capability="manage"><TeamTokensPage /></Require>) },
+          { path: "users", element: wrap(<Require capability="platform"><UsersPage /></Require>) },
+          { path: "teams", element: wrap(<Require capability="platform"><TeamsPage /></Require>) },
+          { path: "admin", element: wrap(<Require capability="platform"><AdminPage /></Require>) },
           { path: "*", element: <NotFound /> },
         ],
       },
@@ -49,10 +60,10 @@ export const routes: RouteObject[] = [
           { index: true, element: <Navigate to="pipelines" replace /> },
           { path: "documents", element: wrap(<DocumentList />) },
           { path: "documents/:documentId", element: wrap(<DocumentDetail />) },
-          { path: "sources", element: wrap(<SourceList />) },
-          { path: "sources/:sourceId", element: wrap(<SourceDetail />) },
+          { path: "sources", element: wrap(<Require capability="manage"><SourceList /></Require>) },
+          { path: "sources/:sourceId", element: wrap(<Require capability="manage"><SourceDetail /></Require>) },
           { path: "pipelines", element: wrap(<PipelineList />) },
-          { path: "pipelines/new", element: wrap(<PipelineBuilder />) },
+          { path: "pipelines/new", element: wrap(<Require capability="edit"><PipelineBuilder /></Require>) },
           { path: "pipelines/compare", element: wrap(<PipelineDiff />) },
           { path: "pipelines/:pipelineId", element: wrap(<PipelineDetail />) },
           { path: "query", element: wrap(<QueryPlayground />) },
@@ -60,10 +71,10 @@ export const routes: RouteObject[] = [
           { path: "eval/datasets/:datasetId", element: wrap(<DatasetDetail />) },
           { path: "eval/runs/:runId", element: wrap(<RunComparison />) },
           { path: "eval/runs/:runId/items", element: wrap(<ItemDiff />) },
-          { path: "settings", element: wrap(<CorpusSettings />) },
+          { path: "settings", element: wrap(<Require capability="edit"><CorpusSettings /></Require>) },
           { path: "*", element: <NotFound /> },
         ],
       },
     ],
   },
-];
+] }];

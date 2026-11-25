@@ -1,8 +1,9 @@
+import { useCan, useTransport } from "../auth/context";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, CircleCheck, CircleX, FileUp, RotateCw, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useMatch, useNavigate, useSearchParams } from "react-router";
-import { ApiError, request, upload } from "../../api/client";
+import { ApiError } from "../../api/client";
 import { useCorpora, useOcr, useProviders } from "../../api/hooks";
 import type { Corpus, Document, OcrService, OcrStatus, Pipeline, Provider } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -95,6 +96,7 @@ interface Made {
 const providerName = (m: Made, p: Pick | null) => (p ? ("reuse" in p ? p.reuse : (m.providers[JSON.stringify(p.create)] ?? p.create.name)) : null);
 
 function SetupDialog({ onClose }: { onClose: (how: "done" | "skipped") => void }) {
+  const discover = useCan("platform");
   const ref = useRef<HTMLDialogElement>(null);
   const providers = useProviders();
   const ocr = useOcr();
@@ -119,7 +121,7 @@ function SetupDialog({ onClose }: { onClose: (how: "done" | "skipped") => void }
     if (running) return;
     onClose(step >= DONE ? "done" : "skipped");
   };
-  const ready = providers.data && (ocr.data || ocr.isError) && corpora.data;
+  const ready = providers.data && (!discover || ocr.data || ocr.isError) && corpora.data;
 
   return (
     <dialog
@@ -179,6 +181,7 @@ function Flow({
   onSkip: () => void;
   onFinish: () => void;
 }) {
+  const { request, isCurrent } = useTransport();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [c, setC] = useState<Choices>(() => defaultChoices(providers, ocrStatus?.services ?? [], ocrStatus));
@@ -306,8 +309,10 @@ function Flow({
       patch(t.id, { state: "busy" });
       try {
         const ms = await timed(steps[t.id]);
+        if (!isCurrent()) return;
         patch(t.id, { state: "done", ms });
       } catch (error) {
+        if (!isCurrent()) return;
         patch(t.id, { state: "failed", error });
         setRunning(false);
         void qc.invalidateQueries();
@@ -316,7 +321,7 @@ function Flow({
     }
     void qc.invalidateQueries();
     setRunning(false);
-    window.setTimeout(() => go(DONE), 520);
+    window.setTimeout(() => { if (isCurrent()) go(DONE); }, 520);
   };
 
   const submit = (e: FormEvent) => {
@@ -893,6 +898,7 @@ interface UploadItem {
 }
 
 function DoneStep({ corpus, pipeline, accept }: { corpus: Corpus; pipeline: Pipeline; accept?: string }) {
+  const { upload, isCurrent } = useTransport();
   const qc = useQueryClient();
   const [items, setItems] = useState<UploadItem[]>([]);
   const [over, setOver] = useState(false);
@@ -906,7 +912,7 @@ function DoneStep({ corpus, pipeline, accept }: { corpus: Corpus; pipeline: Pipe
     const patch = (key: string, p: Partial<UploadItem>) => setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...p } : x)));
     const queue = [...fresh];
     const worker = async () => {
-      for (let it = queue.shift(); it; it = queue.shift()) {
+      for (let it = queue.shift(); it && isCurrent(); it = queue.shift()) {
         const form = new FormData();
         form.set("file", it.file, it.file.name);
         form.set("external_id", it.file.name);
@@ -915,6 +921,7 @@ function DoneStep({ corpus, pipeline, accept }: { corpus: Corpus; pipeline: Pipe
           const res = await upload<Document>(`/corpora/${corpus.id}/documents`, form, { onProgress: (f) => patch(key, { progress: f }) });
           patch(key, { state: res.status === 201 ? "added" : "exists", progress: 1 });
         } catch (e) {
+          if (!isCurrent()) return;
           patch(key, { state: "failed", message: e instanceof Error ? e.message : "Upload failed." });
         }
       }

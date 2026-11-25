@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Request
 from ragcentre.api.authz import DEFAULT_TEAM_ID, principal_of, require_corpus
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.errors import Conflict, ErrorCode, Forbidden, GuardError, ImmutableField, NotFound, ValidationFailed
 from ragcentre.hashing import new_id
@@ -19,7 +20,7 @@ from ragcentre.pipeline.planner import reset_vector_runs
 from ragcentre.pipeline.status import pipeline_out
 from ragcentre.timeutil import now_iso
 
-router = APIRouter(tags=["corpora"])
+router = APIRouter(route_class=SessionRoute, tags=["corpora"])
 
 
 def _get(ctx: AppContext, corpus_id: str) -> dict[str, object]:
@@ -56,7 +57,7 @@ def _out(ctx: AppContext, corpus_id: str) -> api.Corpus:
 @router.post("/corpora", response_model=api.Corpus, status_code=201)
 def create_corpus(body: api.CorpusCreate, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.Corpus:
     principal = principal_of(request)
-    if principal.is_admin:
+    if principal.unrestricted:
         team_id = body.team_id or DEFAULT_TEAM_ID
         if ctx.db.one("SELECT id FROM teams WHERE id = ?", (team_id,)) is None:
             raise NotFound(f"Team {team_id} was not found.")
@@ -87,7 +88,7 @@ def list_corpora(
     principal = principal_of(request)
     sql = "SELECT id FROM corpora"
     args: list[object] = []
-    if not principal.is_admin:
+    if not principal.unrestricted:
         sql += " WHERE team_id = ?"
         args.append(principal.team_id)
     sql += " ORDER BY created_at LIMIT ? OFFSET ?"

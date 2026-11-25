@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
-import { ApiError, request, upload } from "./client";
+import { ApiError } from "./client";
+import { useCan, useTransport } from "../features/auth/context";
+import type { ProviderSummary } from "../features/auth/types";
 import type {
   Chunk,
   GcReport,
@@ -70,10 +72,12 @@ export const keys = {
 };
 
 export function useHealth() {
+  const { request } = useTransport();
   return useQuery({ queryKey: keys.health, queryFn: () => request<Health>("/health"), refetchInterval: 15_000, retry: false });
 }
 
 export function useCorpora() {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.corpora,
     queryFn: () => request<Page<Corpus>>("/corpora", { query: { limit: 500 } }),
@@ -82,6 +86,7 @@ export function useCorpora() {
 }
 
 export function useCorpus(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.corpus(id ?? ""),
     queryFn: () => request<Corpus>(`/corpora/${id}`),
@@ -91,6 +96,7 @@ export function useCorpus(id: string | undefined) {
 }
 
 export function usePipelines(corpusId: string | undefined, archived = false) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.pipelines(corpusId ?? "", archived),
     queryFn: () => request<Page<Pipeline>>(`/corpora/${corpusId}/pipelines`, { query: { archived, limit: 500 } }),
@@ -100,6 +106,7 @@ export function usePipelines(corpusId: string | undefined, archived = false) {
 }
 
 export function usePipeline(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.pipeline(id ?? ""),
     queryFn: () => request<Pipeline>(`/pipelines/${id}`),
@@ -109,6 +116,7 @@ export function usePipeline(id: string | undefined) {
 }
 
 export function usePipelineStatus(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.pipelineStatus(id ?? ""),
     queryFn: () => request<PipelineStatus>(`/pipelines/${id}/status`),
@@ -118,13 +126,24 @@ export function usePipelineStatus(id: string | undefined) {
 }
 
 export function useProviders() {
-  return useQuery({ queryKey: keys.providers, queryFn: () => request<Page<Provider>>("/providers", { query: { limit: 500 } }) });
+  const enabled = useCan("providers");
+  const { request } = useTransport();
+  return useQuery({ queryKey: keys.providers, enabled, queryFn: () => request<Page<Provider>>("/providers", { query: { limit: 500 } }) });
+}
+
+/** Minimal provider labels, available to every selected-team member without config permissions. */
+export function useProviderSummaries() {
+  const { request } = useTransport();
+  return useQuery({ queryKey: ["provider-summaries"], queryFn: () => request<Page<ProviderSummary>>("/provider-summaries", { query: { limit: 500 } }) });
 }
 
 /** OCR shims and their readiness. Polls while the tab is visible, faster while a test runs. */
 export function useOcr() {
+  const enabled = useCan("platform");
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.ocr,
+    enabled,
     queryFn: () => request<OcrStatus>("/ocr-services"),
     retry: false,
     refetchInterval: ({ state }) => {
@@ -136,6 +155,7 @@ export function useOcr() {
 }
 
 export function useOcrScan() {
+  const { request } = useTransport();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => request<OcrStatus>("/ocr-services/scan", { method: "POST" }),
@@ -144,6 +164,7 @@ export function useOcrScan() {
 }
 
 export function useOcrCheck(id: string) {
+  const { request } = useTransport();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => request<OcrStatus>(`/providers/${id}/ocr-check`, { method: "POST" }),
@@ -152,14 +173,18 @@ export function useOcrCheck(id: string) {
 }
 
 export function useProvider(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({ queryKey: keys.provider(id ?? ""), queryFn: () => request<Provider>(`/providers/${id}`), enabled: Boolean(id) });
 }
 
 export function useProviderTypes() {
-  return useQuery({ queryKey: keys.providerTypes, queryFn: () => request<Page<ProviderType>>("/provider-types"), staleTime: Infinity });
+  const enabled = useCan("providers");
+  const { request } = useTransport();
+  return useQuery({ queryKey: keys.providerTypes, enabled, queryFn: () => request<Page<ProviderType>>("/provider-types"), staleTime: Infinity });
 }
 
 export function useNodeRuns(params: Record<string, string | undefined>, opts: { enabled?: boolean } = {}) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.nodeRuns(params),
     queryFn: () => request<Page<NodeRun>>("/node-runs", { query: { limit: 500, ...params } }),
@@ -173,6 +198,7 @@ export function useNodeRuns(params: Record<string, string | undefined>, opts: { 
 const docBusy = (d: Document) => d.status === "deleting" || d.ingestion.some((i) => i.state === "pending" || i.state === "running");
 
 export function useDocuments(corpusId: string, params: Record<string, string | undefined>) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.documents(corpusId, params),
     queryFn: () => request<Page<Document>>(`/corpora/${corpusId}/documents`, { query: { limit: 50, ...params } }),
@@ -183,6 +209,7 @@ export function useDocuments(corpusId: string, params: Record<string, string | u
 }
 
 export function useDocument(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.document(id ?? ""),
     queryFn: () => request<Document>(`/documents/${id}`),
@@ -192,6 +219,7 @@ export function useDocument(id: string | undefined) {
 }
 
 export function useParsed(id: string, pipelineId: string | null) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.parsed(id, pipelineId ?? ""),
     queryFn: () => request<Record<string, unknown>>(`/documents/${id}/parsed`, { query: { pipeline_id: pipelineId } }),
@@ -201,6 +229,7 @@ export function useParsed(id: string, pipelineId: string | null) {
 }
 
 export function useChunks(id: string, pipelineId: string | null, nodeId: string | null) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.chunks(id, pipelineId ?? "", nodeId ?? ""),
     queryFn: () => request<Chunk[]>(`/documents/${id}/chunks`, { query: { pipeline_id: pipelineId, node_id: nodeId } }),
@@ -221,6 +250,7 @@ export function useInvalidateDocuments() {
 }
 
 export function usePatchDocument(id: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateDocuments();
   return useMutation({
     mutationFn: (body: { metadata?: Record<string, unknown>; attributes?: Record<string, unknown> }) =>
@@ -230,6 +260,7 @@ export function usePatchDocument(id: string) {
 }
 
 export function useDeleteDocument() {
+  const { request } = useTransport();
   const invalidate = useInvalidateDocuments();
   return useMutation({
     mutationFn: (id: string) => request<Document>(`/documents/${id}`, { method: "DELETE" }),
@@ -238,6 +269,7 @@ export function useDeleteDocument() {
 }
 
 export function useRetryRun() {
+  const { request } = useTransport();
   const invalidate = useInvalidateDocuments();
   return useMutation({
     mutationFn: (runId: number) => request<NodeRun>(`/node-runs/${runId}/retry`, { method: "POST" }),
@@ -257,6 +289,7 @@ function useInvalidateCorpus() {
 }
 
 export function useRetryFailed() {
+  const { request } = useTransport();
   const invalidate = useInvalidateCorpus();
   return useMutation({
     mutationFn: (pipelineId: string) => request<{ retried: number }>(`/pipelines/${pipelineId}/retry-failed`, { method: "POST" }),
@@ -265,6 +298,7 @@ export function useRetryFailed() {
 }
 
 export function useArchivePipeline() {
+  const { request } = useTransport();
   const invalidate = useInvalidateCorpus();
   return useMutation({
     mutationFn: (pipelineId: string) => request<Pipeline>(`/pipelines/${pipelineId}/archive`, { method: "POST" }),
@@ -273,6 +307,7 @@ export function useArchivePipeline() {
 }
 
 export function useSetActivePipeline() {
+  const { request } = useTransport();
   const invalidate = useInvalidateCorpus();
   return useMutation({
     mutationFn: ({ corpusId, pipelineId, force }: { corpusId: string; pipelineId: string; force?: boolean }) =>
@@ -293,6 +328,7 @@ function useInvalidateProviders() {
 }
 
 export function useCreateProvider() {
+  const { request } = useTransport();
   const invalidate = useInvalidateProviders();
   return useMutation({
     mutationFn: (body: ProviderCreate) => request<Provider>("/providers", { method: "POST", body }),
@@ -301,6 +337,7 @@ export function useCreateProvider() {
 }
 
 export function usePatchProvider(id: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateProviders();
   return useMutation({
     mutationFn: (config: Record<string, unknown>) => request<Provider>(`/providers/${id}`, { method: "PATCH", body: { config } }),
@@ -309,6 +346,7 @@ export function usePatchProvider(id: string) {
 }
 
 export function useDeleteProvider() {
+  const { request } = useTransport();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => request<void>(`/providers/${id}`, { method: "DELETE" }),
@@ -321,6 +359,7 @@ export function useDeleteProvider() {
 }
 
 export function useSetSecret(id: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateProviders();
   return useMutation({
     mutationFn: ({ key, body }: { key: string; body: SecretSet }) =>
@@ -330,6 +369,7 @@ export function useSetSecret(id: string) {
 }
 
 export function useDeleteSecret(id: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateProviders();
   return useMutation({
     mutationFn: (key: string) => request<Provider>(`/providers/${id}/secrets/${encodeURIComponent(key)}`, { method: "DELETE" }),
@@ -338,6 +378,7 @@ export function useDeleteSecret(id: string) {
 }
 
 export function useTestProvider(id: string) {
+  const { request } = useTransport();
   const qc = useQueryClient();
   return useMutation({
     // A deep test checks a sample document or a vector store's live behavior.
@@ -351,6 +392,7 @@ export function useTestProvider(id: string) {
 const sourceBusy = (s: Source) => s.status === "syncing";
 
 export function useSources(corpusId: string) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.sources(corpusId),
     queryFn: () => request<Page<Source>>(`/corpora/${corpusId}/sources`, { query: { limit: 500 } }),
@@ -360,6 +402,7 @@ export function useSources(corpusId: string) {
 }
 
 export function useSource(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.source(id ?? ""),
     queryFn: () => request<Source>(`/sources/${id}`),
@@ -369,6 +412,7 @@ export function useSource(id: string | undefined) {
 }
 
 export function useSourceItems(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.sourceItems(id ?? ""),
     queryFn: () => request<Page<SourceItem>>(`/sources/${id}/items`, { query: { limit: 500 } }),
@@ -386,6 +430,7 @@ function useInvalidateSources(corpusId: string) {
 }
 
 export function useCreateSource(corpusId: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateSources(corpusId);
   return useMutation({
     mutationFn: (body: SourceCreate) => request<Source>(`/corpora/${corpusId}/sources`, { method: "POST", body }),
@@ -394,6 +439,7 @@ export function useCreateSource(corpusId: string) {
 }
 
 export function usePatchSource(id: string, corpusId: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateSources(corpusId);
   return useMutation({
     mutationFn: (body: SourcePatch) => request<Source>(`/sources/${id}`, { method: "PATCH", body }),
@@ -402,6 +448,7 @@ export function usePatchSource(id: string, corpusId: string) {
 }
 
 export function useSyncSource(corpusId: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateSources(corpusId);
   return useMutation({
     mutationFn: (id: string) => request<Source>(`/sources/${id}/sync`, { method: "POST" }),
@@ -410,6 +457,7 @@ export function useSyncSource(corpusId: string) {
 }
 
 export function useDeleteSource(corpusId: string) {
+  const { request } = useTransport();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => request<void>(`/sources/${id}`, { method: "DELETE" }),
@@ -433,6 +481,7 @@ function useInvalidateCorpora() {
 }
 
 export function useCreateCorpus() {
+  const { request } = useTransport();
   const invalidate = useInvalidateCorpora();
   return useMutation({
     mutationFn: (body: CorpusCreate) => request<Corpus>("/corpora", { method: "POST", body }),
@@ -441,6 +490,7 @@ export function useCreateCorpus() {
 }
 
 export function useRenameCorpus(id: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateCorpora();
   return useMutation({
     mutationFn: (name: string) => request<Corpus>(`/corpora/${id}`, { method: "PATCH", body: { name } }),
@@ -449,6 +499,7 @@ export function useRenameCorpus(id: string) {
 }
 
 export function useUpdateSchema(id: string) {
+  const { request } = useTransport();
   const invalidate = useInvalidateCorpora();
   return useMutation({
     mutationFn: (schema: MetadataSchema) => request<Corpus>(`/corpora/${id}/metadata-schema`, { method: "PATCH", body: schema }),
@@ -460,6 +511,7 @@ export function useUpdateSchema(id: string) {
 
 /** The dry-run plan for a configuration (always 200, problems included). Keyed by its JSON. */
 export function usePlan(corpusId: string, config: PipelineConfig | null) {
+  const { request } = useTransport();
   const text = config ? JSON.stringify(config) : "";
   return useQuery({
     queryKey: keys.plan(corpusId, text),
@@ -471,6 +523,7 @@ export function usePlan(corpusId: string, config: PipelineConfig | null) {
 }
 
 export function useCreatePipeline(corpusId: string) {
+  const { request } = useTransport();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (config: PipelineConfig) => request<Pipeline>(`/corpora/${corpusId}/pipelines`, { method: "POST", body: config }),
@@ -484,6 +537,7 @@ export function useCreatePipeline(corpusId: string) {
 }
 
 export function usePipelineDiff(a: string | null, b: string | null) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: keys.pipelineDiff(a ?? "", b ?? ""),
     queryFn: () => request<PipelineDiff>(`/pipelines/${a}/diff`, { query: { against: b } }),
@@ -498,6 +552,7 @@ export function usePipelineDiff(a: string | null, b: string | null) {
  * request and re-runs on reload; it never refetches on its own (a query may call paid providers).
  */
 export function useQueryResults(corpusId: string, body: QueryRequest | null) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: ["query", corpusId, body],
     queryFn: ({ signal }) => request<QueryResponse>(`/corpora/${corpusId}/query`, { method: "POST", body: body!, signal }),
@@ -514,18 +569,22 @@ export function useQueryResults(corpusId: string, body: QueryRequest | null) {
 const runBusy = (r: EvalRun) => r.status === "pending" || r.status === "running";
 
 export function useDatasets(corpusId: string) {
+  const { request } = useTransport();
   return useQuery({ queryKey: ["corpora", corpusId, "eval", "datasets"], queryFn: () => request<Page<EvalDataset>>(`/corpora/${corpusId}/eval/datasets`, { query: { limit: 500 } }), enabled: Boolean(corpusId) });
 }
 
 export function useDataset(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({ queryKey: ["eval", "datasets", id], queryFn: () => request<EvalDataset>(`/eval/datasets/${id}`), enabled: Boolean(id) });
 }
 
 export function useDatasetItems(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({ queryKey: ["eval", "datasets", id, "items"], queryFn: () => request<Page<EvalItem>>(`/eval/datasets/${id}/items`, { query: { limit: 500 } }), enabled: Boolean(id) });
 }
 
 export function useEvalRuns(corpusId: string) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: ["corpora", corpusId, "eval", "runs"],
     queryFn: () => request<Page<EvalRun>>(`/corpora/${corpusId}/eval/runs`, { query: { limit: 500 } }),
@@ -535,6 +594,7 @@ export function useEvalRuns(corpusId: string) {
 }
 
 export function useEvalRun(id: string | undefined) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: ["eval", "runs", id],
     queryFn: () => request<EvalRunDetail>(`/eval/runs/${id}`),
@@ -544,6 +604,7 @@ export function useEvalRun(id: string | undefined) {
 }
 
 export function useRunItems(runId: string | undefined, a: string | null, b: string | null, metric: string, only: string | null) {
+  const { request } = useTransport();
   return useQuery({
     queryKey: ["eval", "runs", runId, "items", a, b, metric, only],
     queryFn: () => request<Page<EvalItemComparison>>(`/eval/runs/${runId}/items`, { query: { a, b, metric, only, limit: 500 } }),
@@ -560,6 +621,7 @@ function useInvalidateEval() {
 }
 
 export function useImportDataset(corpusId: string) {
+  const { upload } = useTransport();
   const invalidate = useInvalidateEval();
   return useMutation({
     mutationFn: ({ name, file }: { name: string; file: File }) => {
@@ -573,11 +635,13 @@ export function useImportDataset(corpusId: string) {
 }
 
 export function useDeleteDataset() {
+  const { request } = useTransport();
   const invalidate = useInvalidateEval();
   return useMutation({ mutationFn: (id: string) => request<void>(`/eval/datasets/${id}`, { method: "DELETE" }), onSuccess: invalidate });
 }
 
 export function useCreateRun() {
+  const { request } = useTransport();
   const invalidate = useInvalidateEval();
   return useMutation({ mutationFn: (body: EvalRunCreate) => request<EvalRun>("/eval/runs", { method: "POST", body }), onSuccess: invalidate });
 }
@@ -596,6 +660,7 @@ function useInvalidateAdmin() {
 
 /** Preview what garbage collection would remove (changes nothing). */
 export function useGcPreview() {
+  const { request } = useTransport();
   const invalidate = useInvalidateAdmin();
   return useMutation({
     mutationFn: () => request<GcReport>("/admin/gc", { method: "POST", body: { dry_run: true } }),
@@ -605,6 +670,7 @@ export function useGcPreview() {
 
 /** Run garbage collection for real. */
 export function useGcRun() {
+  const { request } = useTransport();
   const invalidate = useInvalidateAdmin();
   return useMutation({
     mutationFn: () => request<GcReport>("/admin/gc", { method: "POST", body: { dry_run: false } }),

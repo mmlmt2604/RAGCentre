@@ -1,3 +1,4 @@
+import { Can } from "../auth/Access";
 import { ArrowLeft, ArrowRight, FlaskConical, GitCompareArrows, Search } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { usePipeline, usePipelineDiff, usePipelines } from "../../api/hooks";
@@ -102,9 +103,9 @@ export function PipelineDiff() {
             <ButtonLink to={`${base}/query?a=${a}&b=${b}`} icon={Search}>
               Query both
             </ButtonLink>
-            <ButtonLink to={`${base}/eval?compare=${a},${b}`} icon={FlaskConical}>
+            <Can capability="edit"><ButtonLink to={`${base}/eval?compare=${a},${b}`} icon={FlaskConical}>
               Evaluate both
-            </ButtonLink>
+            </ButtonLink></Can>
           </span>
         ) : null}
       </div>

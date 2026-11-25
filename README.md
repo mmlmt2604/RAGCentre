@@ -28,8 +28,13 @@ Or with Docker (builds the web UI; data lives in the `ragcentre-data` volume):
 docker compose up --build       # http://localhost:8700
 ```
 
-Export `RAGCENTRE_API_TOKEN` before starting Compose. For a non-loopback bind, `ragcentre serve`
-requires a token unless you explicitly pass `--allow-no-token`.
+Export `RAGCENTRE_API_TOKEN` before starting the default Compose configuration. In legacy mode, a
+non-loopback `ragcentre serve` requires a token unless you explicitly pass `--allow-no-token`.
+
+For individual logins and team memberships, run `uv run ragcentre user init-admin`, then configure
+HTTPS for remote use (or `RAGCENTRE_INSECURE_LOCAL_COOKIE=true` for loopback development).
+[Local accounts and team membership](docs/user-accounts.md) covers setup, roles, upgrades and recovery.
+Accounts use the existing SQLite database; CLI/MCP bearer tokens continue to work.
 
 When a token is configured, `/v1/docs` and `/v1/openapi.json` require an Authorization header.
 To read the schema, run `curl -H "Authorization: Bearer $RAGCENTRE_API_TOKEN" http://127.0.0.1:8700/v1/openapi.json`.
@@ -130,8 +135,8 @@ your documents' vocabulary).
 
 ## Command line
 
-`ragcentre serve` and `ragcentre worker` run the server and workers. Every other command is a
-client of the HTTP API (`RAGCENTRE_URL`, default `http://127.0.0.1:8700`; `RAGCENTRE_API_TOKEN`
+`ragcentre serve` and `ragcentre worker` run the server and workers. Account bootstrap/password
+recovery and `team set-owner` are local operator commands. Resource commands are clients of the HTTP API (`RAGCENTRE_URL`, default `http://127.0.0.1:8700`; `RAGCENTRE_API_TOKEN`
 when the server requires a token). Names or ids are accepted wherever a provider, corpus,
 pipeline or dataset is expected, and `ragcentre --json …` prints the API's JSON.
 
@@ -157,7 +162,12 @@ Run `ragcentre COMMAND --help` for details.
 | `RAGCENTRE_DATA_DIR` | `./data` | Database, blobs, embedding cache and the default vector store |
 | `RAGCENTRE_HOST` / `RAGCENTRE_PORT` | `127.0.0.1` / `8700` | Where `serve` listens |
 | `RAGCENTRE_WORKERS` | `4` | Ingestion worker threads |
-| `RAGCENTRE_API_TOKEN` | unset | When set, API requests need `Authorization: Bearer <token>` except `GET /v1/health` |
+| `RAGCENTRE_API_TOKEN` | unset | Global administrator bearer token; remains supported alongside local sessions |
+| `RAGCENTRE_AUTH_MODE` | unset | `legacy` or `local`; unset honors the database's local-account activation marker |
+| `RAGCENTRE_BROWSER_ORIGIN` | unset | Exact browser origin for local login; required for non-loopback serving |
+| `RAGCENTRE_INSECURE_LOCAL_COOKIE` | `false` | Explicit loopback-only HTTP development cookies |
+| `RAGCENTRE_SESSION_IDLE_SECONDS` / `RAGCENTRE_SESSION_LIFETIME_SECONDS` | `28800` / `604800` | Session inactivity / absolute lifetimes |
+| `RAGCENTRE_AUDIT_RETENTION_DAYS` | `90` | Local account audit retention |
 | `RAGCENTRE_SECRET_KEY` | unset | Fernet key for storing provider secrets; without it only environment-variable references are allowed |
 | `RAGCENTRE_SECRET_ENV_PREFIXES` | `RAGCENTRE_PROVIDER_` | Comma-separated prefixes allowed for provider secret references |
 | `RAGCENTRE_EGRESS_ALLOW` | unset | Optional comma-separated provider hostnames, IP addresses or CIDRs |
@@ -263,8 +273,8 @@ To add a store, follow the [adapter guide](docs/protocols/vector-store-adapter-g
 
 `ragcentre serve` also serves the web UI at `/` when it has been built into
 `src/ragcentre/ui_dist/` (released wheels include it; a source checkout needs one build). Without
-a build, `/` explains how to make one. The UI asks for `RAGCENTRE_API_TOKEN` itself when the
-server requires one.
+a build, `/` explains how to make one. With local accounts enabled, the UI provides login, team
+selection and role-aware controls. Legacy mode retains the access-token prompt.
 
 ```sh
 cd ui

@@ -15,11 +15,13 @@ from ragcentre.api.routers import (
     runs,
     sources,
     teams,
+    users,
 )
 
 ROUTERS: list[APIRouter] = [
     admin.router,
     auth.router,
+    users.router,
     teams.router,
     providers.router,
     ocr.router,

@@ -3,10 +3,14 @@ import type { OcrService, OcrStatus, PipelineConfig, Provider, ProviderCreate } 
 import { PROVIDER_NAME_RE } from "../../lib/configSchema";
 import { ENGINES, shimCommand, urlPort, type EngineId, type RunWith } from "./engines";
 
+import { hasLocalContext, transportGeneration } from "../../api/client";
+
 const KEY = "ragcentre.setup";
+let seenGeneration = -1;
 
 /** "done" or "skipped" once the visitor has finished or dismissed the welcome flow. */
 export function setupSeen(): boolean {
+  if (hasLocalContext()) return seenGeneration === transportGeneration();
   try {
     return Boolean(localStorage.getItem(KEY));
   } catch {
@@ -15,6 +19,7 @@ export function setupSeen(): boolean {
 }
 
 export function markSetupSeen(how: "done" | "skipped") {
+  if (hasLocalContext()) { seenGeneration = transportGeneration(); return; }
   try {
     localStorage.setItem(KEY, how);
   } catch {

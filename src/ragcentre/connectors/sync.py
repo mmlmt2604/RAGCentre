@@ -13,6 +13,7 @@ from typing import Any
 
 from ragcentre.connectors.base import FetchedFile, RemoteItem
 from ragcentre.context import AppContext
+from ragcentre.errors import ExecutionError
 from ragcentre.ingest import ingest_document
 from ragcentre.pipeline.planner import enqueue_task, on_document_deleted
 from ragcentre.timeutil import after, now_iso
@@ -96,6 +97,12 @@ def run_sync_source(ctx: AppContext, source_id: str) -> None:
         return  # deleted mid-flight
     schedule = int(source["schedule_seconds"])
     corpus_id = source["corpus_id"]
+    ownership = ctx.db.one(
+        "SELECT p.team_id, p.kind, c.team_id AS corpus_team FROM providers p JOIN corpora c ON c.id=? WHERE p.id=?",
+        (corpus_id, source["provider_id"]),
+    )
+    if ownership is None or ownership["kind"] != "connector" or ownership["team_id"] != ownership["corpus_team"]:
+        raise ExecutionError("invalid_source", "The source connector does not belong to its corpus's team.", retryable=False)
     scope = json.loads(source["scope"])
     tmpl_meta = json.loads(source["metadata_template"])
     tmpl_attrs = json.loads(source["attributes_template"])

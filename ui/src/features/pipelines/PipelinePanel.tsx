@@ -1,3 +1,4 @@
+import { Can } from "../auth/Access";
 import { Archive, CircleCheck, Copy, ExternalLink, GitCompareArrows, RotateCw, Star } from "lucide-react";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
@@ -125,16 +126,16 @@ export function PipelinePanel({
         <ButtonLink to={`${base}/${pipeline.id}`} icon={ExternalLink}>
           Open
         </ButtonLink>
-        <ButtonLink to={`${base}/new?from=${pipeline.id}`} icon={Copy}>
+        <Can capability="edit"><ButtonLink to={`${base}/new?from=${pipeline.id}`} icon={Copy}>
           Clone
-        </ButtonLink>
+        </ButtonLink></Can>
         <ButtonLink to={`${base}/compare?a=${pipeline.id}`} icon={GitCompareArrows}>
           Compare with…
         </ButtonLink>
         {!pipeline.is_active && !pipeline.archived ? (
-          <Button icon={Star} loading={setActive.isPending && confirm === null} onClick={() => doActivate(false)}>
+          <Can capability="edit"><Button icon={Star} loading={setActive.isPending && confirm === null} onClick={() => doActivate(false)}>
             Make active
-          </Button>
+          </Button></Can>
         ) : null}
       </section>
 
@@ -191,9 +192,9 @@ export function PipelinePanel({
           </ul>
         )}
         {failed > 0 ? (
-          <Button variant="primary" icon={RotateCw} loading={retry.isPending} onClick={doRetry} className="pl-retry">
+          <Can capability="edit"><Button variant="primary" icon={RotateCw} loading={retry.isPending} onClick={doRetry} className="pl-retry">
             Retry {plural(failed, "failed run")}
-          </Button>
+          </Button></Can>
         ) : null}
       </section>
 
@@ -233,9 +234,9 @@ export function PipelinePanel({
 
       {!pipeline.archived ? (
         <section className="pl-panel__danger" aria-label="Danger zone">
-          <Button variant="danger" icon={Archive} onClick={() => setConfirm("archive")}>
+          <Can capability="edit"><Button variant="danger" icon={Archive} onClick={() => setConfirm("archive")}>
             Archive pipeline
-          </Button>
+          </Button></Can>
         </section>
       ) : null}
 

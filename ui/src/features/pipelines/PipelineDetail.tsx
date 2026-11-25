@@ -1,3 +1,4 @@
+import { Can } from "../auth/Access";
 import { ArrowLeft, Copy, GitCompareArrows, RotateCw, Search } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -136,9 +137,9 @@ function Detail({ p, status, statusError, corpusId, documentCount, back }: { p: 
           </div>
         </dl>
         <div className="prov-detail__actions">
-          <ButtonLink to={`${base}/pipelines/new?from=${p.id}`} icon={Copy} variant="primary">
+          <Can capability="edit"><ButtonLink to={`${base}/pipelines/new?from=${p.id}`} icon={Copy} variant="primary">
             Clone
-          </ButtonLink>
+          </ButtonLink></Can>
           <span className="pl-compare">
             <GitCompareArrows size={14} aria-hidden />
             <Select aria-label="Compare with" value="" onChange={(e) => e.target.value && navigate(`${base}/pipelines/compare?a=${p.id}&b=${e.target.value}`)}>
@@ -280,7 +281,7 @@ function Failures({ failures, corpusId, pipelineId, loading }: { failures: NodeR
                   </td>
                   <td className="muted nowrap">{f.finished_at ? <Time iso={f.finished_at} compact /> : "—"}</td>
                   <td className="rc-col-tight">
-                    <Button
+                    <Can capability="edit"><Button
                       size="sm"
                       icon={RotateCw}
                       loading={retry.isPending && retry.variables === f.id}
@@ -292,7 +293,7 @@ function Failures({ failures, corpusId, pipelineId, loading }: { failures: NodeR
                       }
                     >
                       Retry
-                    </Button>
+                    </Button></Can>
                   </td>
                 </tr>
               ))}

@@ -1,3 +1,4 @@
+import { Can } from "../auth/Access";
 import { RotateCw } from "lucide-react";
 import { ApiError } from "../../api/client";
 import { useNodeRuns, useRetryRun } from "../../api/hooks";
@@ -90,7 +91,7 @@ export function IngestionTab({ doc, corpus, pipelines }: { doc: Document; corpus
                           <div className="ing-error">
                             <code>{run?.error_code ?? n.error_code}</code>
                             {run?.error_message ? <p>{run.error_message}</p> : null}
-                            <Button
+                            <Can capability="edit"><Button
                               size="sm"
                               icon={RotateCw}
                               loading={retry.isPending && retry.variables === n.run_id}
@@ -102,7 +103,7 @@ export function IngestionTab({ doc, corpus, pipelines }: { doc: Document; corpus
                               }
                             >
                               Retry
-                            </Button>
+                            </Button></Can>
                           </div>
                         ) : n.status === "blocked" ? (
                           <span className="ing-blocked">

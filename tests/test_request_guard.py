@@ -35,10 +35,13 @@ def test_public_and_protected_routes(tmp_path: Path, mode: str) -> None:
             assert client.get(prefix + "/v1/health").status_code == 200
             assert client.post(prefix + "/v1/health").status_code == 401
             for path, methods in schema["paths"].items():
-                if path == "/v1/health":
-                    continue
                 for method in methods:
-                    assert client.request(method, prefix + path).status_code == 401, (method, path)
+                    if (method, path) in {("get", "/v1/health"), ("get", "/v1/auth/config")}:
+                        assert client.request(method, prefix + path).status_code == 200
+                    elif (method, path) in {("post", "/v1/auth/login"), ("post", "/v1/auth/setup")}:
+                        assert client.request(method, prefix + path).status_code == 422
+                    else:
+                        assert client.request(method, prefix + path).status_code == 401, (method, path)
             for path in ("/v1/docs", "/v1/docs/oauth2-redirect", "/v1/openapi.json"):
                 assert client.get(prefix + path).status_code == 401
                 assert client.get(prefix + path, headers=AUTH).status_code == 200

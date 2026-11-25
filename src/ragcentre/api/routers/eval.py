@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 
-from ragcentre.api.authz import principal_of, require_corpus, require_dataset, require_eval_run
+from ragcentre.api.authz import principal_of, require_corpus, require_dataset, require_eval_run, require_pipeline
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.errors import Conflict, NotFound, ValidationFailed
 from ragcentre.eval import runner
@@ -14,7 +15,7 @@ from ragcentre.eval.datasets import import_dataset
 from ragcentre.eval.datasets import items as dataset_items
 from ragcentre.models import api
 
-router = APIRouter(tags=["eval"])
+router = APIRouter(route_class=SessionRoute, tags=["eval"])
 
 MAX_DATASET_BYTES = 50 * 1024 * 1024
 
@@ -121,6 +122,8 @@ def list_runs(
 @router.post("/eval/runs", response_model=api.EvalRun, status_code=201)
 def create_run(body: api.EvalRunCreate, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.EvalRun:
     require_dataset(ctx, principal_of(request), body.dataset_id)
+    for pipeline_id in body.pipeline_ids:
+        require_pipeline(ctx, principal_of(request), pipeline_id)
     run_id = runner.create_run(ctx, body.dataset_id, body.pipeline_ids, body.k_values, body.allow_partial)
     return api.EvalRun.model_validate(runner.run_out(ctx, run_id))
 
@@ -143,6 +146,8 @@ def get_run_items(
     ctx: AppContext = Depends(get_ctx),
 ) -> api.Page[api.EvalItemComparison]:
     require_eval_run(ctx, principal_of(request), run_id)
+    require_pipeline(ctx, principal_of(request), a)
+    require_pipeline(ctx, principal_of(request), b)
     part, nxt = params.page(runner.item_comparisons(ctx, run_id, a, b, metric, only))
     return api.Page[api.EvalItemComparison](
         items=[api.EvalItemComparison.model_validate(x) for x in part], next_cursor=nxt

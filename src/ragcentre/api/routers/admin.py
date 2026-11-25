@@ -6,14 +6,16 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Body, Depends, Request
 
+from ragcentre.accounts.sessions import local_enabled
 from ragcentre.api.authz import principal_of, require_admin
 from ragcentre.api.deps import get_ctx
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.errors import ValidationFailed
 from ragcentre.models.api import CacheClearReport, CacheClearRequest, GcReport, GcRequest, Health
 from ragcentre.pipeline.gc import collect
 
-router = APIRouter(tags=["admin"])
+router = APIRouter(route_class=SessionRoute, tags=["admin"])
 
 
 @router.get("/health", response_model=Health)
@@ -23,7 +25,9 @@ def health(ctx: AppContext = Depends(get_ctx)) -> Health:
         version=ctx.version,
         migration=int(ctx.db.scalar("PRAGMA user_version")),
         workers=ctx.worker_count,
-        auth_required=bool(ctx.settings.api_token),
+        auth_required=local_enabled(ctx)
+        or bool(ctx.settings.api_token)
+        or ctx.db.scalar("SELECT 1 FROM team_tokens LIMIT 1") is not None,
         secret_storage_enabled=bool(ctx.settings.secret_key),
     )
 

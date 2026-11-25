@@ -23,6 +23,7 @@ describe("documents (UI-2)", () => {
     });
     const page = (await screen.findByRole("heading", { name: "Documents" })).closest(".docs")!;
     const files = [file("a.md", "# A\n\nAlpha text."), file("b.md", "# B\n\nBeta text."), file("big.md", "x".repeat(500))];
+    await screen.findByRole("heading", { name: "eng-wiki" });
     fireEvent.dragOver(page, { dataTransfer: { types: ["Files"], files } });
     expect(screen.getByText(/Drop files to upload to eng-wiki/)).toBeInTheDocument();
     fireEvent.drop(page, { dataTransfer: { types: ["Files"], files } });

@@ -1,3 +1,4 @@
+import { Can } from "../auth/Access";
 import { RotateCw, Search } from "lucide-react";
 import { Link, useSearchParams } from "react-router";
 import { useCorpora, useNodeRuns, usePipelines, useRetryRun } from "../../api/hooks";
@@ -173,9 +174,9 @@ function RunRow({ r, corpusName, pipelineName, retrying, onRetry }: { r: NodeRun
       <td className="muted nowrap">{r.started_at ? <Time iso={r.started_at} compact /> : "—"}</td>
       <td className="rc-col-tight">
         {r.status === "failed" ? (
-          <Button size="sm" icon={RotateCw} loading={retrying} onClick={onRetry}>
+          <Can capability="edit"><Button size="sm" icon={RotateCw} loading={retrying} onClick={onRetry}>
             Retry
-          </Button>
+          </Button></Can>
         ) : null}
       </td>
     </tr>

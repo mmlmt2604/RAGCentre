@@ -1,31 +1,36 @@
 """Command-line interface (section 17).
 
-``serve`` and ``worker`` run in-process. Every other command is a thin client over the HTTP API
-(``ragcentre.client``): it reads ``RAGCENTRE_URL`` (default ``http://127.0.0.1:8700``) and
+``serve`` and ``worker`` run in-process. Account bootstrap/recovery and ``team set-owner`` use
+local filesystem access. Resource commands are thin clients over the HTTP API
+(``ragcentre.client``): they read ``RAGCENTRE_URL`` (default ``http://127.0.0.1:8700``) and
 ``RAGCENTRE_API_TOKEN``. Corpora, providers, pipelines and datasets can be named by name or id.
 ``--json`` (before the command) prints the API's JSON instead of tables.
 """
 
 from __future__ import annotations
 
-import ipaddress
 import json
 import logging
 import mimetypes
 import signal
+import sqlite3
 import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Annotated, Any, NoReturn
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import typer
 
 from ragcentre.client import ApiError, Client, Unreachable
+from ragcentre.errors import Conflict, NotFound, RagError, ValidationFailed
 from ragcentre.logs import configure_logging, redact, register_secret
 from ragcentre.settings import Settings
+
+if TYPE_CHECKING:
+    from ragcentre.context import AppContext
 
 app = typer.Typer(
     help="RAGCentre: build, compare and evaluate retrieval pipelines.",
@@ -46,6 +51,7 @@ parser_app = typer.Typer(help="Check parser and OCR services.", no_args_is_help=
 store_app = typer.Typer(help="Check vector stores against live data.", no_args_is_help=True)
 cache_app = typer.Typer(help="Caches kept next to the database.", no_args_is_help=True)
 team_app = typer.Typer(help="Teams and team service tokens.", no_args_is_help=True)
+user_app = typer.Typer(help="Local account bootstrap and password recovery.", no_args_is_help=True)
 team_token_app = typer.Typer(help="Service tokens for a team.", no_args_is_help=True)
 team_app.add_typer(team_token_app, name="token")
 source_app = typer.Typer(help="Sync sources that pull documents into a corpus.", no_args_is_help=True)
@@ -58,6 +64,7 @@ app.add_typer(parser_app, name="parser")
 app.add_typer(store_app, name="store")
 app.add_typer(cache_app, name="cache")
 app.add_typer(team_app, name="team")
+app.add_typer(user_app, name="user")
 app.add_typer(source_app, name="source")
 
 log = logging.getLogger("ragcentre")
@@ -167,6 +174,52 @@ def _settings(**overrides: object) -> Settings:
     return settings.with_(**clean) if clean else settings
 
 
+@contextmanager
+def _local_context(settings: Settings | None = None) -> Iterator[AppContext]:
+    """Open/migrate the operator's local database without starting background services."""
+    from ragcentre.context import open_context
+
+    try:
+        ctx = open_context(settings or _settings())
+        try:
+            yield ctx
+        finally:
+            ctx.close()
+    except RagError as exc:
+        _fail(f"{exc.error_code.value}: {exc.message}")
+
+
+def _persisted_local_enabled(settings: Settings) -> bool:
+    """Read the activation latch before startup can create or migrate the data directory."""
+    if not settings.db_path.exists():
+        return False
+    try:
+        with closing(sqlite3.connect(f"{settings.db_path.resolve().as_uri()}?mode=ro", uri=True)) as conn:
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='auth_state'").fetchone() is None:
+                return False
+            row = conn.execute("SELECT local_enabled FROM auth_state WHERE id=1").fetchone()
+            return bool(row and row[0])
+    except sqlite3.Error:
+        raise ValidationFailed("Cannot read the local database authentication mode.") from None
+
+
+def _check_serve_auth(settings: Settings, allow_no_token: bool, *, local: bool) -> None:
+    from ragcentre.accounts.http import loopback, validate_browser_settings
+
+    if local:
+        if settings.auth_mode == "legacy":
+            raise ValidationFailed(
+                "Local accounts are activated for this database; legacy mode cannot disable authentication."
+            )
+        if allow_no_token:
+            raise typer.BadParameter(
+                "--allow-no-token is only available in legacy authentication mode.", param_hint="--allow-no-token"
+            )
+        validate_browser_settings(settings)
+    elif not settings.api_token and not allow_no_token and not loopback(settings.host):
+        raise typer.BadParameter("Set RAGCENTRE_API_TOKEN or pass --allow-no-token.", param_hint="--host")
+
+
 # ---- serve / worker ----------------------------------------------------------------------------
 
 
@@ -175,33 +228,33 @@ def serve(
     host: Annotated[str | None, typer.Option(help="Bind address (default RAGCENTRE_HOST or 127.0.0.1).")] = None,
     port: Annotated[int | None, typer.Option(help="Port (default RAGCENTRE_PORT or 8700).")] = None,
     workers: Annotated[int | None, typer.Option(help="Worker threads (default RAGCENTRE_WORKERS or 4).")] = None,
-    allow_no_token: Annotated[bool, typer.Option(help="Allow a non-loopback bind without an API token.")] = False,
+    allow_no_token: Annotated[
+        bool, typer.Option(help="Allow a legacy-mode non-loopback bind without an API token.")
+    ] = False,
 ) -> None:
     """Run the API server and the ingestion workers."""
     import uvicorn
 
+    from ragcentre.accounts.sessions import local_enabled
     from ragcentre.api.app import create_app
-    from ragcentre.context import open_context
 
     settings = _settings(host=host, port=port, workers=workers)
-    if not settings.api_token and not allow_no_token:
-        try:
-            is_loopback = ipaddress.ip_address(settings.host).is_loopback
-        except ValueError:
-            is_loopback = settings.host.lower() == "localhost"
-        if not is_loopback:
-            raise typer.BadParameter("Set RAGCENTRE_API_TOKEN or pass --allow-no-token.", param_hint="--host")
-    configure_logging(settings.log_level)
-    ctx = open_context(settings)
     try:
+        _check_serve_auth(
+            settings, allow_no_token, local=settings.auth_mode == "local" or _persisted_local_enabled(settings)
+        )
+    except RagError as exc:
+        _fail(f"{exc.error_code.value}: {exc.message}")
+    configure_logging(settings.log_level)
+    with _local_context(settings) as ctx:
+        # Re-check after migrations in case another process activated accounts during preflight.
+        _check_serve_auth(settings, allow_no_token, local=local_enabled(ctx))
         ctx.start_workers(settings.workers)
         ctx.start_scheduler()
         api = create_app(ctx)
         log.info("serving", extra={"host": settings.host, "port": settings.port, "workers": settings.workers})
         config = uvicorn.Config(api, host=settings.host, port=settings.port, log_level=settings.log_level.lower())
         uvicorn.Server(config).run()
-    finally:
-        ctx.close()
 
 
 @app.command("rebuild-broken-indexes")
@@ -241,6 +294,33 @@ def worker(
             pass
     finally:
         ctx.close()
+
+
+# ---- local accounts ----------------------------------------------------------------------------
+
+
+@user_app.command("init-admin")
+def user_init_admin() -> None:
+    """Initialize the first local administrator using the configured data directory."""
+    from ragcentre.accounts.users import init_admin
+
+    name = typer.prompt("Username")
+    password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+    with _local_context() as ctx:
+        user = init_admin(ctx, name, password)
+    _emit(user, lambda: typer.echo(f"Initialized local administrator {user['username']}."))
+
+
+@user_app.command("reset-password")
+def user_reset_password(username: Annotated[str, typer.Argument(help="Local account username.")]) -> None:
+    """Recover an account locally and revoke its existing sessions; no server is needed."""
+    from ragcentre.accounts.users import reset_password
+
+    password = typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+    with _local_context() as ctx:
+        reset_password(ctx, username, password)
+    data = {"username": username.strip().lower(), "password_reset": True}
+    _emit(data, lambda: typer.echo(f"Reset password for {data['username']}; existing sessions were revoked."))
 
 
 # ---- providers ---------------------------------------------------------------------------------
@@ -1086,6 +1166,31 @@ def team_create(
     _emit(team, lambda: typer.echo(f"Created team {team['name']} ({team['id']})."))
 
 
+@team_app.command("set-owner")
+def team_set_owner(
+    team: Annotated[str, typer.Argument(help="Local team id, slug or name.")],
+    username: Annotated[str, typer.Argument(help="Existing local account username.")],
+) -> None:
+    """Recover a team's owner using local filesystem access; no API token is needed."""
+    from ragcentre.accounts.users import set_membership
+
+    with _local_context() as ctx:
+        row = ctx.db.one(
+            "SELECT id, name FROM teams WHERE id=? OR slug=? ORDER BY (id=?) DESC LIMIT 1", (team, team, team)
+        )
+        if row is None:
+            matches = ctx.db.all("SELECT id, name FROM teams WHERE name=?", (team,))
+            if not matches:
+                raise NotFound(f"No team with id, slug or name {team!r}.")
+            if len(matches) > 1:
+                raise Conflict(f"Several teams are named {team!r}; use a team id or slug.")
+            row = matches[0]
+        set_membership(ctx, row["id"], username, "owner", actor=None, operator=True)
+        data = {"team_id": row["id"], "username": username.strip().lower(), "role": "owner"}
+        team_name = row["name"]
+    _emit(data, lambda: typer.echo(f"Assigned {data['username']} as an owner of {team_name}."))
+
+
 @team_token_app.command("create")
 def team_token_create(
     team: Annotated[str, typer.Argument(help="Team id, slug or name.")],
@@ -1155,7 +1260,7 @@ def source_create(
     corpus: Annotated[str, typer.Argument(help="Corpus name or id.")],
     name: Annotated[str, typer.Argument(help="Source name (unique within the corpus).")],
     provider: Annotated[str, typer.Argument(help="Connector provider name or id.")],
-    scope: Annotated[str, typer.Option("--scope", help="Connector scope as JSON, e.g. {\"bucket\": \"x\"}.")] = "{}",
+    scope: Annotated[str, typer.Option("--scope", help='Connector scope as JSON, e.g. {"bucket": "x"}.')] = "{}",
     schedule_seconds: Annotated[int, typer.Option("--schedule-seconds", help="Poll interval; 0 = manual only.")] = 3600,
 ) -> None:
     """Attach a connector to a corpus as a sync source."""
@@ -1212,10 +1317,7 @@ def source_items(source_id: Annotated[str, typer.Argument(help="Source id.")]) -
     def human() -> None:
         _table(
             ["REMOTE ID", "VERSION", "DOCUMENT", "SKIPPED"],
-            [
-                [i["remote_id"], i["remote_version"], i["document_id"] or "-", i["skipped_reason"] or "-"]
-                for i in items
-            ],
+            [[i["remote_id"], i["remote_version"], i["document_id"] or "-", i["skipped_reason"] or "-"] for i in items],
         )
 
     _emit(items, human)

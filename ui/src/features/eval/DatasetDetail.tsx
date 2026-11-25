@@ -1,3 +1,4 @@
+import { Can } from "../auth/Access";
 import { ArrowLeft, Play, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -42,13 +43,13 @@ export function DatasetDetail() {
               ) : null}
             </div>
             <div className="prov-detail__actions">
-              <ButtonLink to={`${base}?panel=run&dataset=${datasetId}`} variant="primary" icon={Play}>
+              <Can capability="edit"><ButtonLink to={`${base}?panel=run&dataset=${datasetId}`} variant="primary" icon={Play}>
                 Run on this dataset
-              </ButtonLink>
+              </ButtonLink></Can>
               <span className="page-head__spacer" />
-              <Button variant="danger" icon={Trash2} onClick={() => { del.reset(); setConfirm(true); }} disabled={!ds.data}>
+              <Can capability="edit"><Button variant="danger" icon={Trash2} onClick={() => { del.reset(); setConfirm(true); }} disabled={!ds.data}>
                 Delete dataset
-              </Button>
+              </Button></Can>
             </div>
           </>
         )}

@@ -1,7 +1,8 @@
+import { useTransport } from "../auth/context";
 import { CircleCheck, CircleX, FileUp, LoaderCircle, Upload, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
-import { ApiError, upload } from "../../api/client";
+import { ApiError } from "../../api/client";
 import { useInvalidateDocuments } from "../../api/hooks";
 import type { Corpus, Document } from "../../api/types";
 import { Button, IconButton } from "../../components/Button";
@@ -25,6 +26,7 @@ export function UploadPanel({
   setItems: (fn: (xs: Staged[]) => Staged[]) => void;
   onAddMore: () => void;
 }) {
+  const { upload, isCurrent } = useTransport();
   const invalidate = useInvalidateDocuments();
   const schema = corpus.metadata_schema;
   const [draft, setDraft] = useState<Record<string, string>>(() => metaDraft(null, schema));
@@ -45,7 +47,7 @@ export function UploadPanel({
     setRunning(true);
     const queue = [...staged];
     const worker = async () => {
-      for (let item = queue.shift(); item; item = queue.shift()) {
+      for (let item = queue.shift(); item && isCurrent(); item = queue.shift()) {
         patch(item.key, { status: "uploading", progress: 0, message: undefined });
         const form = new FormData();
         form.set("file", item.file, item.file.name);
@@ -61,12 +63,14 @@ export function UploadPanel({
             message: res.status === 201 ? "Added. Ingestion has started." : `Already in the corpus as ${ext}; ${res.body.revision > 1 ? `now revision ${res.body.revision}` : "unchanged, no work needed"}.`,
           });
         } catch (e) {
+          if (!isCurrent()) return;
           const err = e instanceof ApiError ? e : null;
           patch(item.key, { status: "failed", message: err ? `${err.message}${nextStep(err) ? ` ${nextStep(err)}` : ""}` : String(e) });
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(PARALLEL, queue.length) }, worker));
+    if (!isCurrent()) return;
     setRunning(false);
     invalidate();
   };

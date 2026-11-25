@@ -63,6 +63,7 @@ class Team(ResponseModel):
 class TeamCreate(RequestModel):
     name: str
     slug: str | None = None  # derived from name (lowercased, slugified) if omitted
+    owner_user_id: str | None = None
 
 
 class TeamTokenCreate(RequestModel):
@@ -92,6 +93,90 @@ class WhoAmI(ResponseModel):
     scope: Literal["admin", "team", "read", "none"]
     team_id: str | None
     team_name: str | None
+
+
+class AuthConfig(ResponseModel):
+    mode: Literal["legacy", "local"]
+    setup_required: bool
+
+
+class LocalLogin(RequestModel):
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=128)
+
+
+class AccountSetup(RequestModel):
+    token: str = Field(min_length=20, max_length=128)
+    password: str = Field(max_length=128)
+
+
+class PasswordChange(RequestModel):
+    current_password: str = Field(max_length=128)
+    password: str = Field(max_length=128)
+
+
+class User(ResponseModel):
+    id: str
+    username: str
+    display_name: str
+    status: Literal["pending", "active", "disabled"]
+    is_platform_admin: bool
+    created_at: str
+    updated_at: str
+
+
+class UserCreate(RequestModel):
+    username: str = Field(max_length=64)
+    display_name: str = Field(default="", max_length=200)
+
+
+class UserPatch(RequestModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    status: Literal["active", "disabled"] | None = None
+    is_platform_admin: bool | None = None
+
+
+class UserSetupCreated(ResponseModel):
+    user: User
+    setup_token: str
+
+
+class TeamMembership(ResponseModel):
+    team_id: str
+    team_name: str
+    team_slug: str
+    role: Literal["viewer", "editor", "owner"]
+
+
+class TeamMember(ResponseModel):
+    user_id: str
+    username: str
+    display_name: str
+    status: Literal["pending", "active", "disabled"]
+    role: Literal["viewer", "editor", "owner"]
+
+
+class MembershipSet(RequestModel):
+    role: Literal["viewer", "editor", "owner"]
+
+
+class CurrentUser(ResponseModel):
+    user: User
+    memberships: list[TeamMembership]
+    csrf_token: str
+
+
+class CsrfToken(ResponseModel):
+    csrf_token: str
+
+
+class ProviderSummary(ResponseModel):
+    id: str
+    name: str
+    kind: ProviderKind
+    type: str
+    builtin: bool
+    team_id: str | None
 
 
 # ---------- Data connectors (sync sources) ----------

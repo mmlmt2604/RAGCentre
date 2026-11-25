@@ -31,6 +31,8 @@ class ErrorCode(StrEnum):
     UNAUTHORIZED = "unauthorized"
     FORBIDDEN = "forbidden"
     READ_ONLY_TOKEN = "read_only_token"
+    RATE_LIMITED = "rate_limited"
+    TEAM_REQUIRED = "team_required"
     PAYLOAD_TOO_LARGE = "payload_too_large"
     CONFLICT = "conflict"
     INTERNAL_ERROR = "internal_error"

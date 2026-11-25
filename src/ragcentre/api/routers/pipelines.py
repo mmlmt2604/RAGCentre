@@ -11,13 +11,14 @@ from fastapi.responses import JSONResponse
 from ragcentre.api.authz import principal_of, require_corpus, require_pipeline
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.errors import NotFound
 from ragcentre.models import api
 from ragcentre.pipeline.planner import archive_pipeline, create_pipeline, plan
 from ragcentre.pipeline.status import get_pipeline, pipeline_out, status
 
-router = APIRouter(tags=["pipelines"])
+router = APIRouter(route_class=SessionRoute, tags=["pipelines"])
 
 
 def _diff(ctx: AppContext, a: dict[str, Any], b: dict[str, Any]) -> api.PipelineDiff:
@@ -116,6 +117,7 @@ def get_status(pipeline_id: str, request: Request, ctx: AppContext = Depends(get
 def diff(pipeline_id: str, against: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.PipelineDiff:
     require_pipeline(ctx, principal_of(request), pipeline_id)
     a = get_pipeline(ctx, pipeline_id)
+    require_pipeline(ctx, principal_of(request), against)
     b = get_pipeline(ctx, against)
     if a["corpus_id"] != b["corpus_id"]:
         raise NotFound("Pipelines belong to different corpora.")

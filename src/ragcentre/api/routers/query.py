@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from ragcentre.api.authz import principal_of, require_corpus
+from ragcentre.api.authz import principal_of, require_corpus, require_pipeline
 from ragcentre.api.deps import get_ctx
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.errors import NotFound
 from ragcentre.models import api
 from ragcentre.retrieval.engine import query as run_query
 
-router = APIRouter(tags=["query"])
+router = APIRouter(route_class=SessionRoute, tags=["query"])
 
 
 @router.post("/corpora/{corpus_id}/query", response_model=api.QueryResponse)
@@ -24,6 +25,7 @@ def query_corpus(
         pipeline_id = ctx.db.scalar("SELECT active_pipeline_id FROM corpora WHERE id = ?", (corpus_id,))
         if pipeline_id is None:
             raise NotFound("This corpus has no active pipeline; pass pipeline_id explicitly.")
+    require_pipeline(ctx, principal_of(request), pipeline_id)
     result = run_query(
         ctx,
         corpus_id,

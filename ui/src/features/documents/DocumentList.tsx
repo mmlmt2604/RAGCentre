@@ -1,7 +1,9 @@
+import { useCan, useTransport } from "../auth/context";
+import { Can } from "../auth/Access";
 import { FileText, Pencil, Replace, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { ApiError, upload } from "../../api/client";
+import { ApiError } from "../../api/client";
 import { useCorpus, useDeleteDocument, useDocuments, useInvalidateDocuments } from "../../api/hooks";
 import type { Document, RunState } from "../../api/types";
 import { Button, IconButton } from "../../components/Button";
@@ -20,6 +22,8 @@ type StateFilter = "all" | "failed" | "running" | "pending" | "succeeded";
 const PAGE = 50;
 
 export function DocumentList() {
+  const canEdit = useCan("edit");
+  const { upload, isCurrent } = useTransport();
   const { corpusId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -84,7 +88,7 @@ export function DocumentList() {
   const empty = docs.data && items.length === 0 && !filtered && cursor === 0;
 
   const addFiles = (files: FileList | File[] | null) => {
-    if (!files || !files.length) return;
+    if (!canEdit || !files || !files.length) return;
     // Copy now: a FileList is live, and the input is cleared before React runs the updater.
     const added = stage(Array.from(files));
     setStaged((xs) => [...xs.filter((x) => x.status === "staged" || x.status === "failed" || x.status === "uploading"), ...added]);
@@ -110,6 +114,7 @@ export function DocumentList() {
         body: res.body.revision > doc.revision ? `Now revision ${res.body.revision}; only this document is processed again.` : "The new file has identical content, so nothing was redone.",
       });
     } catch (e) {
+      if (!isCurrent()) return;
       toast({ tone: "danger", title: `Could not replace ${shortName(doc.filename)}`, body: e instanceof ApiError ? e.message : String(e) });
     }
   };
@@ -118,7 +123,7 @@ export function DocumentList() {
     <div
       className="docs"
       onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes("Files")) return;
+        if (!canEdit || !e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();
         setDragging(true);
       }}
@@ -149,12 +154,12 @@ export function DocumentList() {
       <header className="pl-head">
         <div className="pl-head__title">
           <h1>Documents</h1>
-          {corpus.data ? <p className="pl-head__summary">{count(corpus.data.document_count)} in {corpus.data.name}. Drop files anywhere on this page to upload.</p> : null}
+          {corpus.data ? <p className="pl-head__summary">{count(corpus.data.document_count)} in {corpus.data.name}.{canEdit ? " Drop files anywhere on this page to upload." : ""}</p> : null}
         </div>
         <span className="pl-head__spacer" />
-        <Button variant="primary" icon={Upload} onClick={() => picker.current?.click()}>
+        <Can capability="edit"><Button variant="primary" icon={Upload} onClick={() => picker.current?.click()}>
           Upload files
-        </Button>
+        </Button></Can>
       </header>
 
       {staged.length && corpus.data ? <UploadPanel corpus={corpus.data} items={staged} setItems={setStaged} onAddMore={() => picker.current?.click()} /> : null}
@@ -192,9 +197,9 @@ export function DocumentList() {
           icon={FileText}
           title="No documents yet"
           action={
-            <Button variant="primary" icon={Upload} onClick={() => picker.current?.click()}>
+            <Can capability="edit"><Button variant="primary" icon={Upload} onClick={() => picker.current?.click()}>
               Upload files
-            </Button>
+            </Button></Can>
           }
         >
           <p>Upload files here, or drag them onto this page. Each document is processed by every pipeline in the corpus.</p>
@@ -274,9 +279,9 @@ export function DocumentList() {
                     })}
                     <td className="rc-col-tight">
                       <span className="docs-actions">
-                        <IconButton icon={Pencil} label={`Edit metadata of ${d.filename}`} onClick={() => navigate(`/corpora/${corpusId}/documents/${d.id}?edit=1`)} />
-                        <IconButton icon={Replace} label={`Replace the file of ${d.filename}`} onClick={() => { replaceTarget.current = d; replacer.current?.click(); }} />
-                        <IconButton icon={Trash2} label={`Delete ${d.filename}`} onClick={() => { del.reset(); setDeleting(d); }} />
+                        <Can capability="edit"><IconButton icon={Pencil} label={`Edit metadata of ${d.filename}`} onClick={() => navigate(`/corpora/${corpusId}/documents/${d.id}?edit=1`)} /></Can>
+                        <Can capability="edit"><IconButton icon={Replace} label={`Replace the file of ${d.filename}`} onClick={() => { replaceTarget.current = d; replacer.current?.click(); }} /></Can>
+                        <Can capability="edit"><IconButton icon={Trash2} label={`Delete ${d.filename}`} onClick={() => { del.reset(); setDeleting(d); }} /></Can>
                       </span>
                     </td>
                   </tr>

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from typing import Any, Literal
 
@@ -17,11 +18,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ragcentre import __version__
+from ragcentre.accounts.http import check_csrf, cookie_name, validate_browser_settings
+from ragcentre.accounts.sessions import local_enabled
 from ragcentre.api.authz import Principal, read_allowed
 from ragcentre.api.routers import ROUTERS
 from ragcentre.api.ui import UiApp, is_api_path
 from ragcentre.context import AppContext
-from ragcentre.errors import ErrorCode, RagError
+from ragcentre.errors import ErrorCode, NotFound, RagError
 from ragcentre.logs import redact
 from ragcentre.timeutil import now_iso
 
@@ -30,6 +33,8 @@ log = logging.getLogger("ragcentre.api")
 _STATUS_CODES = {
     400: ErrorCode.VALIDATION_ERROR,
     401: ErrorCode.UNAUTHORIZED,
+    403: ErrorCode.FORBIDDEN,
+    429: ErrorCode.RATE_LIMITED,
     404: ErrorCode.NOT_FOUND,
     405: ErrorCode.NOT_FOUND,
     409: ErrorCode.CONFLICT,
@@ -52,7 +57,10 @@ def error_response(status: int, code: str, message: str, details: dict[str, Any]
 
 def _rag_error(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RagError)
-    return error_response(exc.http_status, exc.error_code.value, exc.message, exc.details)
+    response = error_response(exc.http_status, exc.error_code.value, exc.message, exc.details)
+    if exc.http_status == 429:
+        response.headers["Retry-After"] = "60"
+    return response
 
 
 def _validation_error(_: Request, exc: Exception) -> JSONResponse:
@@ -101,7 +109,12 @@ class RequestGuard:
         if "//" in path or "\\" in path or {".", ".."}.intersection(path.split("/")) or b"%2f" in raw_path:
             return False
         if is_api_path(path):
-            return scope["method"] == "GET" and path == "/v1/health"
+            return (scope["method"], path) in {
+                ("GET", "/v1/health"),
+                ("GET", "/v1/auth/config"),
+                ("POST", "/v1/auth/login"),
+                ("POST", "/v1/auth/setup"),
+            }
         # Every API route is under /v1. Read-only paths outside it serve the built UI.
         return bool(path.startswith("/") and scope["method"] in {"GET", "HEAD"})
 
@@ -110,7 +123,7 @@ class RequestGuard:
         if scheme.lower() == "bearer" and supplied.strip():
             raw = supplied.strip().encode()
             if self.token is not None and hmac.compare_digest(raw, self.token):
-                return Principal("admin", None)
+                return Principal("admin", None, actor_kind="admin_token")
             token_hash = hashlib.sha256(raw).hexdigest()
             row = self.ctx.db.one("SELECT team_id, kind FROM team_tokens WHERE token_hash = ?", (token_hash,))
             if row is not None:
@@ -120,11 +133,46 @@ class RequestGuard:
                 # DB stores the token's write capability ('full' | 'read'); the principal models
                 # it as a scope ('team' | 'read'). 'team' is the full team scope.
                 scope: Literal["team", "read"] = "team" if row["kind"] == "full" else "read"
-                return Principal(scope, str(row["team_id"]))
-        # No valid credential. Implicit admin only when nothing is configured at all (dev mode,
-        # ``create_app(None)`` for OpenAPI generation, ``serve --allow-no-token``).
+                selected = headers.get("x-ragcentre-team-id")
+                if selected is not None and selected != row["team_id"]:
+                    raise NotFound("Team was not found.")
+                return Principal(scope, str(row["team_id"]), actor_kind="team_token", actor_id=token_hash)
+        if "authorization" in headers:
+            return None
+        if local_enabled(self.ctx):
+            cookies = SimpleCookie()
+            try:
+                cookies.load(headers.get("cookie", ""))
+            except CookieError:
+                return None
+            credential = cookies.get(cookie_name(self.ctx.settings))
+            session = self.ctx.sessions.resolve(credential.value) if credential else None
+            if session is None:
+                return None
+            selected = headers.get("x-ragcentre-team-id")
+            role = None
+            if selected:
+                membership = self.ctx.db.one(
+                    "SELECT role FROM team_memberships WHERE user_id=? AND team_id=?", (session["user_id"], selected)
+                )
+                if membership:
+                    role = membership["role"]
+                elif (
+                    not session["is_platform_admin"]
+                    or self.ctx.db.scalar("SELECT 1 FROM teams WHERE id=?", (selected,)) is None
+                ):
+                    raise NotFound("Team was not found.")
+            return Principal(
+                "admin" if session["is_platform_admin"] else "team",
+                selected,
+                actor_kind="user",
+                actor_id=session["user_id"],
+                session_id=session["id"],
+                csrf_token=session["csrf_token"],
+                role=role,
+            )
         if self.token is None and self.ctx.db.scalar("SELECT 1 FROM team_tokens LIMIT 1") is None:
-            return Principal("admin", None)
+            return Principal("admin", None, actor_kind="development")
         return None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -139,6 +187,8 @@ class RequestGuard:
                 if message["type"] == "http.response.start":
                     headers = MutableHeaders(scope=message)
                     headers.setdefault("X-Content-Type-Options", "nosniff")
+                    headers.setdefault("Cache-Control", "no-store")
+                    headers.setdefault("Referrer-Policy", "no-referrer")
                     policy = "sandbox"
                     if get_route_path(scope) in {"/v1/docs", "/v1/docs/oauth2-redirect"}:
                         policy += " allow-scripts allow-same-origin"
@@ -149,7 +199,17 @@ class RequestGuard:
 
         headers = Headers(scope=scope)
         if not self._is_public(scope):
-            principal = self._authenticate(headers)
+            try:
+                principal = self._authenticate(headers)
+                if (
+                    principal is not None
+                    and principal.actor_kind == "user"
+                    and scope["method"] not in {"GET", "HEAD", "OPTIONS"}
+                ):
+                    check_csrf(self.ctx.settings, headers, scope, principal.csrf_token or "")
+            except RagError as exc:
+                await error_response(exc.http_status, exc.error_code.value, exc.message)(scope, receive, send)
+                return
             if principal is None:
                 response = error_response(
                     401,
@@ -166,6 +226,7 @@ class RequestGuard:
                 return
             scope.setdefault("state", {})["principal"] = principal
 
+        body_limit = min(self.limit, 16384) if get_route_path(scope).startswith("/v1/auth/") else self.limit
         too_large = "Request body exceeds the upload limit."
         lengths = headers.getlist("content-length")
         if lengths:
@@ -176,7 +237,7 @@ class RequestGuard:
                 )
                 return
             digits = length.lstrip("0") or "0"
-            if len(digits) > len(str(self.limit)) or int(digits) > self.limit:
+            if len(digits) > len(str(body_limit)) or int(digits) > body_limit:
                 await error_response(413, ErrorCode.PAYLOAD_TOO_LARGE.value, too_large)(scope, receive, send)
                 return
 
@@ -187,7 +248,7 @@ class RequestGuard:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > self.limit:
+                if received > body_limit:
                     raise StarletteHTTPException(413, too_large)
             return message
 
@@ -206,6 +267,8 @@ def create_app(ctx: AppContext | None, ui_dir: Path | None = None) -> FastAPI:
     )
     app.state.ctx = ctx
     if ctx is not None:
+        if local_enabled(ctx):
+            validate_browser_settings(ctx.settings)
         app.add_middleware(RequestGuard, ctx=ctx)
     app.add_exception_handler(RagError, _rag_error)
     app.add_exception_handler(RequestValidationError, _validation_error)

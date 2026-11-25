@@ -51,7 +51,9 @@ def _item(remote_id: str, version: str = "v1", *, deleted: bool = False) -> Remo
 
 
 def _fetch(content: bytes, *, version: str = "v1") -> FetchedFile:
-    return FetchedFile(content=content, filename="a.txt", mime_type="text/plain", version=version, metadata={}, attributes={})
+    return FetchedFile(
+        content=content, filename="a.txt", mime_type="text/plain", version=version, metadata={}, attributes={}
+    )
 
 
 class FakeConnector:
@@ -270,3 +272,28 @@ def test_feed_connector_persists_resume_cursor(ctx: AppContext) -> None:
     assert ctx.db.scalar("SELECT status FROM sync_sources WHERE id = ?", ("source-1",)) == "idle"
     assert ctx.db.scalar("SELECT cursor FROM sync_sources WHERE id = ?", ("source-1",)) == "delta-tok"
     assert ctx.db.scalar("SELECT COUNT(*) FROM documents WHERE external_id = ?", ("source-1:a",)) == 1
+
+
+def test_cross_team_source_refused_before_lease(ctx: AppContext) -> None:
+    """A previously cross-wired source must fail closed before any connector lease/network call."""
+    ctx.db.execute(
+        "INSERT INTO teams (id, name, slug, created_at) VALUES (?, ?, ?, ?)", ("team-b", "Beta", "beta", "now")
+    )
+    ctx.db.execute(
+        "INSERT INTO corpora (id, name, metadata_schema, team_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("corpus-a", "A", "{}", DEFAULT_TEAM, "now"),
+    )
+    ctx.db.execute(
+        "INSERT INTO providers (id, name, kind, type, config, fingerprint, team_id, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("prov-b", "b-s3", "connector", "s3", "{}", "fp-b", "team-b", "now", "now"),
+    )
+    ctx.db.execute(
+        "INSERT INTO sync_sources (id, corpus_id, provider_id, name, scope, schedule_seconds, status, "
+        "metadata_template, attributes_template, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("source-x", "corpus-a", "prov-b", "x", "{}", 0, "syncing", "{}", "{}", "now", "now"),
+    )
+    with pytest.raises(ExecutionError) as exc:
+        run_sync_source(ctx, "source-x")
+    assert exc.value.code == "invalid_source"
+    assert exc.value.retryable is False

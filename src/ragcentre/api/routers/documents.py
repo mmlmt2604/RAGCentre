@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from ragcentre.api.authz import principal_of, require_corpus, require_document
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.errors import Conflict, ErrorCode, NotFound, RagError, ValidationFailed
 from ragcentre.ingest import ingest_document
@@ -25,7 +26,7 @@ from ragcentre.pipeline.planner import on_document_deleted, on_document_replaced
 from ragcentre.pipeline.purge import release_document
 from ragcentre.timeutil import now_iso
 
-router = APIRouter(tags=["documents"])
+router = APIRouter(route_class=SessionRoute, tags=["documents"])
 
 
 def _mime_type(file: UploadFile) -> str:

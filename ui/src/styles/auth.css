@@ -1,0 +1,31 @@
+.auth-root { display: contents; }
+.auth-page { min-height: 100dvh; padding: var(--space-8) var(--space-6); background: var(--ground); display: grid; align-content: start; }
+.auth-form { width: min(100%, 480px); margin: max(24px, 8dvh) auto 0; padding: var(--space-7); border: 1px solid var(--seam); border-radius: var(--radius-lg); background: var(--panel); }
+.auth-form h1 { margin: 0 0 var(--space-6); }
+.auth-form p { margin: var(--space-5) 0; }
+.auth-form pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.auth-fields { display: grid; gap: var(--space-6); margin: var(--space-7) 0; }
+.auth-fields > .rc-btn { justify-self: start; }
+.account-password { max-width: 480px; }
+.shell-account { display: flex; align-items: center; gap: var(--space-5); min-width: 0; }
+.shell-account .rc-select { max-width: 260px; }
+.shell-account .rc-select select { text-overflow: ellipsis; }
+.shell-account > a { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.membership-page { overflow: auto; }
+.membership-page > p { max-width: 80ch; }
+.member-add { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-6); margin: var(--space-7) 0; }
+.member-add > .rc-field { flex: 1 1 220px; max-width: 400px; }
+.member-add > .rc-btn { margin-top: 22px; }
+.membership-page .panel { overflow-x: auto; }
+.membership-page .rc-table { min-width: 640px; }
+.membership-page .rc-input[readonly] { width: 100%; }
+@media (max-width: 760px) {
+  .auth-form { margin-top: var(--space-6); padding: var(--space-6); }
+  .shell-top { flex-wrap: wrap; height: auto; min-height: 40px; }
+  .shell-account { flex-wrap: wrap; gap: var(--space-3); }
+  .shell-account .rc-select { max-width: 180px; }
+  .shell-account > a { max-width: 100px; }
+  .member-add { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .member-add > .rc-field { max-width: none; }
+  .member-add > .rc-btn { margin-top: 0; justify-self: start; }
+}

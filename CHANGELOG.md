@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Add local accounts and team membership. A platform administrator is bootstrapped with
+  `ragcentre user init-admin` and creates accounts with one-time, shareable setup links. Accounts
+  join teams as viewer, editor or owner; a person can hold different roles in different teams.
+  Browser sessions use opaque server-side cookies with CSRF and exact-origin checks, while the
+  CLI and MCP keep their existing bearer-token contracts. Database migration 0007 adds identity
+  tables without re-ingesting documents or changing corpus/provider/pipeline ownership. See
+  `docs/user-accounts.md`.
+
 ## 0.1.1
 
 - Add multi-team support. Corpora and providers belong to a team; every document, pipeline,

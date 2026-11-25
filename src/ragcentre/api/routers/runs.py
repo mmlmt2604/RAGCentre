@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends, Request
 from ragcentre.api.authz import principal_of, require_corpus, require_document, require_node_run, require_pipeline
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.models import api
 from ragcentre.pipeline.status import get_pipeline, run_out, run_state
 
-router = APIRouter(tags=["runs"])
+router = APIRouter(route_class=SessionRoute, tags=["runs"])
 
 
 @router.get("/node-runs", response_model=api.Page[api.NodeRun])
@@ -42,7 +43,7 @@ def list_runs(
         pipeline = get_pipeline(ctx, pipeline_id)
         sql += " AND r.corpus_id = ? AND r.node_fp IN (SELECT node_fp FROM pipeline_nodes WHERE pipeline_id = ?)"
         args.extend([pipeline["corpus_id"], pipeline_id])
-    if not principal.is_admin and not corpus_id and not document_id and not pipeline_id:
+    if not principal.unrestricted and not corpus_id and not document_id and not pipeline_id:
         sql += " AND r.corpus_id IN (SELECT id FROM corpora WHERE team_id = ?)"
         args.append(principal.team_id)
     sql += " ORDER BY r.id DESC"

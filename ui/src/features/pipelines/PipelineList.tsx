@@ -1,3 +1,4 @@
+import { Can } from "../auth/Access";
 import { CircleX, GitCompareArrows, Plus, Workflow } from "lucide-react";
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
@@ -96,9 +97,9 @@ export function PipelineList() {
           >
             Compare{checked.length ? ` ${checked.length}/2` : ""}
           </Button>
-          <ButtonLink to={`/corpora/${corpusId}/pipelines/new`} variant="primary" icon={Plus}>
+          <Can capability="edit"><ButtonLink to={`/corpora/${corpusId}/pipelines/new`} variant="primary" icon={Plus}>
             New pipeline
-          </ButtonLink>
+          </ButtonLink></Can>
         </header>
 
         <div className="pl-toolbar">
@@ -145,9 +146,9 @@ export function PipelineList() {
               icon={Workflow}
               title="No pipelines yet"
               action={
-                <ButtonLink to={`/corpora/${corpusId}/pipelines/new`} variant="primary" icon={Plus}>
+                <Can capability="edit"><ButtonLink to={`/corpora/${corpusId}/pipelines/new`} variant="primary" icon={Plus}>
                   New pipeline
-                </ButtonLink>
+                </ButtonLink></Can>
               }
             >
               <p>A pipeline turns this corpus's documents into searchable indexes: parse, chunk, embed and index, then a retrieval recipe on top.</p>

@@ -1,3 +1,4 @@
+import { useCan } from "../auth/context";
 import { Archive, RotateCw, Star } from "lucide-react";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
@@ -15,6 +16,7 @@ function message(e: unknown): string {
 
 /** Set active (confirming when not ready), retry failed runs, archive (confirming; 409 explained). */
 export function PipelineActions({ corpusId, pipeline, failedRuns, activeName }: { corpusId: string; pipeline: Pipeline; failedRuns: number; activeName: string | null }) {
+  const canEdit = useCan("edit");
   const retry = useRetryFailed();
   const archive = useArchivePipeline();
   const setActive = useSetActivePipeline();
@@ -33,6 +35,7 @@ export function PipelineActions({ corpusId, pipeline, failedRuns, activeName }: 
       },
     );
 
+  if (!canEdit) return null;
   const archiveErr = archive.error instanceof ApiError ? archive.error : null;
   return (
     <>

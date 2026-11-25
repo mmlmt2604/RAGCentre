@@ -11,13 +11,14 @@ from fastapi import APIRouter, Depends, Request, Response
 from ragcentre.api.authz import principal_of, require_admin, require_team
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.errors import Conflict, NotFound, ValidationFailed
 from ragcentre.hashing import new_id, sha256_text
 from ragcentre.models import api
 from ragcentre.timeutil import now_iso
 
-router = APIRouter(tags=["teams"])
+router = APIRouter(route_class=SessionRoute, tags=["teams"])
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 
@@ -71,9 +72,26 @@ def create_team(request: Request, body: api.TeamCreate, ctx: AppContext = Depend
         )
     team_id = new_id()
     try:
-        ctx.db.execute(
-            "INSERT INTO teams (id, name, slug, created_at) VALUES (?, ?, ?, ?)", (team_id, name, slug, now_iso())
-        )
+        with ctx.db.write() as conn:
+            p = principal_of(request)
+            if p.actor_kind == "user" and body.owner_user_id is None:
+                raise ValidationFailed("Choose an active initial owner for the new team.")
+            if body.owner_user_id is not None and p.actor_kind != "user":
+                raise ValidationFailed("Assign account ownership through a local administrator session.")
+            if body.owner_user_id is not None:
+                owner = conn.execute(
+                    "SELECT id FROM users WHERE id=? AND status='active'", (body.owner_user_id,)
+                ).fetchone()
+                if owner is None:
+                    raise ValidationFailed("The initial owner must be an active user.")
+            now = now_iso()
+            conn.execute(
+                "INSERT INTO teams (id, name, slug, created_at) VALUES (?, ?, ?, ?)", (team_id, name, slug, now)
+            )
+            if body.owner_user_id is not None:
+                conn.execute(
+                    "INSERT INTO team_memberships VALUES (?, ?, 'owner', ?, ?)", (team_id, body.owner_user_id, now, now)
+                )
     except sqlite3.IntegrityError:
         raise Conflict(f"A team with slug {slug!r} already exists.") from None
     return _team_out(ctx, team_id)

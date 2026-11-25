@@ -1,3 +1,4 @@
+import { Can } from "../features/auth/Access";
 import { Database, FolderSearch, Hammer, Plus, Sparkles } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Link, useRouteError } from "react-router";
@@ -61,9 +62,9 @@ export function CorpusList() {
       <header className="page-head">
         <h1>Corpora</h1>
         <span className="page-head__spacer" />
-        <ButtonLink to="/corpora/new" variant="primary" icon={Plus}>
+        <Can capability="edit"><ButtonLink to="/corpora/new" variant="primary" icon={Plus}>
           New corpus
-        </ButtonLink>
+        </ButtonLink></Can>
       </header>
       {corpora.isError && !corpora.data ? (
         <ErrorState error={corpora.error} onRetry={() => void corpora.refetch()} />
@@ -73,12 +74,12 @@ export function CorpusList() {
           title="No corpora yet"
           action={
             <span className="inline-gap">
-              <ButtonLink to="/?setup" variant="primary" icon={Sparkles}>
+              <Can capability="manage"><ButtonLink to="/?setup" variant="primary" icon={Sparkles}>
                 Guided setup
-              </ButtonLink>
-              <ButtonLink to="/corpora/new" icon={Plus}>
+              </ButtonLink></Can>
+              <Can capability="edit"><ButtonLink to="/corpora/new" icon={Plus}>
                 New corpus
-              </ButtonLink>
+              </ButtonLink></Can>
             </span>
           }
         >

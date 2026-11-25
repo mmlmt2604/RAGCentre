@@ -78,6 +78,7 @@ function route(handler: Handler, opts: { public?: boolean } = {}): HttpResponseR
 const p = (ctx: Ctx, name: string) => String(ctx.params[name] ?? "");
 
 export const handlers = [
+  http.get("/v1/auth/config", () => HttpResponse.json({ mode: "legacy", setup_required: false })),
   http.get("/v1/health", route(({ state }) => HttpResponse.json(out.health(state)), { public: true })),
 
   // Providers

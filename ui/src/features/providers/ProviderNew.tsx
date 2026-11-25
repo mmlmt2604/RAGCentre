@@ -1,8 +1,10 @@
+import { useTransport } from "../auth/context";
+import { Can } from "../auth/Access";
 import { ArrowLeft, Lock } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { ApiError, request } from "../../api/client";
+import { ApiError } from "../../api/client";
 import { keys, useCreateProvider, useHealth, useProvider, useProviders, useProviderTypes } from "../../api/hooks";
 import type { Provider, ProviderKind, ProviderType } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -25,6 +27,7 @@ function copyName(name: string, taken: Set<string>): string {
 }
 
 export function ProviderNew() {
+  const { request, isCurrent } = useTransport();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -79,7 +82,7 @@ export function ProviderNew() {
             </div>
           </section>
 
-          {kind === "parser" ? <FoundShims onAdded={(p) => navigate(`/providers/${p.id}`)} /> : null}
+          {kind === "parser" ? <Can capability="platform"><FoundShims onAdded={(p) => navigate(`/providers/${p.id}`)} /></Can> : null}
           {kind ? (
             <section className="prov-step" aria-labelledby="step-type">
               <h2 id="step-type" className="prov-step__title">Which type?</h2>
@@ -122,6 +125,7 @@ export function ProviderNew() {
                 failed.push(key);
               }
             }
+            if (!isCurrent()) return;
             void qc.invalidateQueries({ queryKey: keys.providers });
             toast({
               tone: failed.length ? "danger" : "ok",

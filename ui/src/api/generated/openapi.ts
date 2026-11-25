@@ -40,6 +40,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Config */
+        get: operations["config_v1_auth_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Csrf */
+        get: operations["csrf_v1_auth_csrf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Me */
+        get: operations["me_v1_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Password */
+        post: operations["change_password_v1_auth_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Setup */
+        post: operations["setup_v1_auth_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/whoami": {
         parameters: {
             query?: never;
@@ -414,6 +533,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Teams */
+        get: operations["my_teams_v1_me_teams_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/node-runs": {
         parameters: {
             query?: never;
@@ -566,6 +702,23 @@ export interface paths {
         };
         /** Get Status */
         get: operations["get_status_v1_pipelines__pipeline_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Provider Summaries */
+        get: operations["provider_summaries_v1_provider_summaries_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -775,6 +928,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/teams/{team_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Members */
+        get: operations["members_v1_teams__team_id__members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{team_id}/members/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Member */
+        put: operations["set_member_v1_teams__team_id__members__username__put"];
+        post?: never;
+        /** Remove Member */
+        delete: operations["remove_member_v1_teams__team_id__members__username__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/teams/{team_id}/tokens": {
         parameters: {
             query?: never;
@@ -810,10 +998,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_v1_users_get"];
+        put?: never;
+        /** Create User */
+        post: operations["create_user_v1_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update User */
+        patch: operations["update_user_v1_users__user_id__patch"];
+        trace?: never;
+    };
+    "/v1/users/{user_id}/setup-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Setup Token */
+        post: operations["setup_token_v1_users__user_id__setup_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountSetup */
+        AccountSetup: {
+            /** Password */
+            password: string;
+            /** Token */
+            token: string;
+        };
         /** ActivePipelineSet */
         ActivePipelineSet: {
             /**
@@ -823,6 +1070,16 @@ export interface components {
             force?: boolean;
             /** Pipeline Id */
             pipeline_id: string;
+        };
+        /** AuthConfig */
+        AuthConfig: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "legacy" | "local";
+            /** Setup Required */
+            setup_required: boolean;
         };
         /** Body_replace_content_v1_documents__document_id__content_put */
         Body_replace_content_v1_documents__document_id__content_put: {
@@ -949,6 +1206,19 @@ export interface components {
         CorpusPatch: {
             /** Name */
             name: string;
+        };
+        /** CsrfToken */
+        CsrfToken: {
+            /** Csrf Token */
+            csrf_token: string;
+        };
+        /** CurrentUser */
+        CurrentUser: {
+            /** Csrf Token */
+            csrf_token: string;
+            /** Memberships */
+            memberships: components["schemas"]["TeamMembership"][];
+            user: components["schemas"]["User"];
         };
         /** DiffNode */
         DiffNode: {
@@ -1448,6 +1718,21 @@ export interface components {
             /** P95 */
             p95: number;
         };
+        /** LocalLogin */
+        LocalLogin: {
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
+        /** MembershipSet */
+        MembershipSet: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "viewer" | "editor" | "owner";
+        };
         /** MetadataSchema */
         "MetadataSchema-Input": {
             /** Fields */
@@ -1636,6 +1921,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[ProviderSummary] */
+        Page_ProviderSummary_: {
+            /** Items */
+            items: components["schemas"]["ProviderSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[ProviderType] */
         Page_ProviderType_: {
             /** Items */
@@ -1664,6 +1956,20 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[TeamMember] */
+        Page_TeamMember_: {
+            /** Items */
+            items: components["schemas"]["TeamMember"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[TeamMembership] */
+        Page_TeamMembership_: {
+            /** Items */
+            items: components["schemas"]["TeamMembership"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[TeamToken] */
         Page_TeamToken_: {
             /** Items */
@@ -1675,6 +1981,13 @@ export interface components {
         Page_Team_: {
             /** Items */
             items: components["schemas"]["Team"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[User] */
+        Page_User_: {
+            /** Items */
+            items: components["schemas"]["User"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -1720,6 +2033,13 @@ export interface components {
             lost: string | null;
             /** Message */
             message: string;
+        };
+        /** PasswordChange */
+        PasswordChange: {
+            /** Current Password */
+            current_password: string;
+            /** Password */
+            password: string;
         };
         /** Pipeline */
         Pipeline: {
@@ -1923,6 +2243,24 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+        };
+        /** ProviderSummary */
+        ProviderSummary: {
+            /** Builtin */
+            builtin: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "parser" | "chunker" | "embedder" | "reranker" | "vector_store" | "llm" | "connector";
+            /** Name */
+            name: string;
+            /** Team Id */
+            team_id: string | null;
+            /** Type */
+            type: string;
         };
         /** ProviderTestResult */
         ProviderTestResult: {
@@ -2351,8 +2689,43 @@ export interface components {
         TeamCreate: {
             /** Name */
             name: string;
+            /** Owner User Id */
+            owner_user_id?: string | null;
             /** Slug */
             slug?: string | null;
+        };
+        /** TeamMember */
+        TeamMember: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "viewer" | "editor" | "owner";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "active" | "disabled";
+            /** User Id */
+            user_id: string;
+            /** Username */
+            username: string;
+        };
+        /** TeamMembership */
+        TeamMembership: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "viewer" | "editor" | "owner";
+            /** Team Id */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /** Team Slug */
+            team_slug: string;
         };
         /** TeamToken */
         TeamToken: {
@@ -2399,6 +2772,51 @@ export interface components {
             team_id: string;
             /** Token */
             token: string;
+        };
+        /** User */
+        User: {
+            /** Created At */
+            created_at: string;
+            /** Display Name */
+            display_name: string;
+            /** Id */
+            id: string;
+            /** Is Platform Admin */
+            is_platform_admin: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "active" | "disabled";
+            /** Updated At */
+            updated_at: string;
+            /** Username */
+            username: string;
+        };
+        /** UserCreate */
+        UserCreate: {
+            /**
+             * Display Name
+             * @default
+             */
+            display_name?: string;
+            /** Username */
+            username: string;
+        };
+        /** UserPatch */
+        UserPatch: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Is Platform Admin */
+            is_platform_admin?: boolean | null;
+            /** Status */
+            status?: ("active" | "disabled") | null;
+        };
+        /** UserSetupCreated */
+        UserSetupCreated: {
+            /** Setup Token */
+            setup_token: string;
+            user: components["schemas"]["User"];
         };
         /** ValidationError */
         ValidationError: {
@@ -2495,6 +2913,179 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GcReport"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    config_v1_auth_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthConfig"];
+                };
+            };
+        };
+    };
+    csrf_v1_auth_csrf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsrfToken"];
+                };
+            };
+        };
+    };
+    login_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalLogin"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUser"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    me_v1_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUser"];
+                };
+            };
+        };
+    };
+    change_password_v1_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_v1_auth_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountSetup"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -3545,6 +4136,26 @@ export interface operations {
             };
         };
     };
+    my_teams_v1_me_teams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_TeamMembership_"];
+                };
+            };
+        };
+    };
     list_runs_v1_node_runs_get: {
         parameters: {
             query?: {
@@ -3796,6 +4407,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PipelineStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_summaries_v1_provider_summaries_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ProviderSummary_"];
                 };
             };
             /** @description Validation Error */
@@ -4389,6 +5032,106 @@ export interface operations {
             };
         };
     };
+    members_v1_teams__team_id__members_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_TeamMember_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_member_v1_teams__team_id__members__username__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMember"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_member_v1_teams__team_id__members__username__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tokens_v1_teams__team_id__tokens_get: {
         parameters: {
             query?: {
@@ -4476,6 +5219,137 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_v1_users_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_User_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_v1_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSetupCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_v1_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_token_v1_users__user_id__setup_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSetupCreated"];
+                };
             };
             /** @description Validation Error */
             422: {

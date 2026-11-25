@@ -1,3 +1,5 @@
+import { useCan } from "../auth/context";
+import { Can } from "../auth/Access";
 import { FlaskConical, Play, Upload } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useDatasets, useEvalRuns, usePipelines } from "../../api/hooks";
@@ -14,6 +16,7 @@ const RUN_STATE = { pending: "pending", running: "running", finished: "succeeded
 
 /** Datasets and runs. Uploading and starting a run happen in inline panels. */
 export function EvalHome() {
+  const canEdit = useCan("edit");
   const { corpusId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -21,7 +24,7 @@ export function EvalHome() {
   const datasets = useDatasets(corpusId);
   const runs = useEvalRuns(corpusId);
   const pipelines = usePipelines(corpusId);
-  const panel = params.get("panel") ?? (params.get("compare") ? "run" : null);
+  const panel = canEdit ? params.get("panel") ?? (params.get("compare") ? "run" : null) : null;
   const base = `/corpora/${corpusId}/eval`;
   const setPanel = (p: string | null) =>
     setParams(
@@ -47,12 +50,12 @@ export function EvalHome() {
           <p className="page-head__sub">Ask the same questions of several pipelines and see, with confidence intervals, which one finds the answers.</p>
         </div>
         <span className="page-head__spacer" />
-        <Button icon={Upload} onClick={() => setPanel(panel === "upload" ? null : "upload")} aria-expanded={panel === "upload"}>
+        <Can capability="edit"><Button icon={Upload} onClick={() => setPanel(panel === "upload" ? null : "upload")} aria-expanded={panel === "upload"}>
           Upload dataset
-        </Button>
-        <Button variant="primary" icon={Play} disabled={!ds.length} title={ds.length ? undefined : "Upload a dataset first"} onClick={() => setPanel(panel === "run" ? null : "run")} aria-expanded={panel === "run"}>
+        </Button></Can>
+        <Can capability="edit"><Button variant="primary" icon={Play} disabled={!ds.length} title={ds.length ? undefined : "Upload a dataset first"} onClick={() => setPanel(panel === "run" ? null : "run")} aria-expanded={panel === "run"}>
           New run
-        </Button>
+        </Button></Can>
       </header>
 
       {panel === "upload" ? (
@@ -136,9 +139,9 @@ export function EvalHome() {
             icon={Upload}
             title="No datasets yet"
             action={
-              <Button variant="primary" icon={Upload} onClick={() => setPanel("upload")}>
+              <Can capability="edit"><Button variant="primary" icon={Upload} onClick={() => setPanel("upload")}>
                 Upload dataset
-              </Button>
+              </Button></Can>
             }
           >
             <p>A dataset is a list of questions, each naming the documents (and optionally pages or text) that answer it.</p>

@@ -1,3 +1,5 @@
+import { useCan } from "../auth/context";
+import { Can } from "../auth/Access";
 import { KeyRound, Plus } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
@@ -15,6 +17,7 @@ import { isProblem } from "../ocr/model";
 import { KIND_LABEL, KINDS, secretSummary } from "./model";
 
 export function ProviderList() {
+  const platform = useCan("platform");
   const providers = useProviders();
   const types = useProviderTypes();
   const typeLabel = (p: Provider) => types.data?.items.find((t) => t.kind === p.kind && t.type === p.type)?.label ?? p.type;
@@ -38,9 +41,9 @@ export function ProviderList() {
           <p className="page-head__sub">The services your pipelines call. Pipelines refer to them by name.</p>
         </div>
         <span className="page-head__spacer" />
-        <ButtonLink to="/providers/new" variant="primary" icon={Plus}>
+        <Can capability="manage"><ButtonLink to="/providers/new" variant="primary" icon={Plus}>
           New provider
-        </ButtonLink>
+        </ButtonLink></Can>
       </header>
 
       {providers.isError && !providers.data ? (
@@ -49,7 +52,7 @@ export function ProviderList() {
         KINDS.map((kind) => {
           const rows = items.filter((p) => p.kind === kind).sort((a, b) => Number(b.builtin) - Number(a.builtin) || a.name.localeCompare(b.name));
           const label = KIND_LABEL[kind];
-          const parsers = kind === "parser";
+          const parsers = kind === "parser" && platform;
           return (
             <section key={kind} className="prov-group" aria-labelledby={`prov-${kind}`}>
               <header className="prov-group__head">
@@ -59,9 +62,9 @@ export function ProviderList() {
                 </h2>
                 <p className="prov-group__blurb">{label.blurb}</p>
                 <span className="page-head__spacer" />
-                <ButtonLink to={`/providers/new?kind=${kind}`} size="sm" variant="ghost" icon={Plus}>
+                <Can capability="manage"><ButtonLink to={`/providers/new?kind=${kind}`} size="sm" variant="ghost" icon={Plus}>
                   Add {label.one.toLowerCase()}
-                </ButtonLink>
+                </ButtonLink></Can>
               </header>
               {parsers && providers.data ? <FoundShims showEmpty onAdded={(p) => setAdded(p.id)} /> : null}
               {providers.data && rows.length === 0 ? null : (

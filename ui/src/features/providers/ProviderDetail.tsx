@@ -1,3 +1,5 @@
+import { useCan } from "../auth/context";
+import { Can } from "../auth/Access";
 import { ArrowLeft, CopyPlus, FileSearch, KeyRound, Lock, PlugZap, Trash2, TriangleAlert } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -66,6 +68,9 @@ function BackLink() {
 }
 
 function Detail({ p, type }: { p: Provider; type: ProviderType }) {
+  const manage = useCan("manage");
+  const platform = useCan("platform");
+  const canManage = manage && (!p.builtin || platform);
   const test = useTestProvider(p.id);
   const capabilities = (p.config.capabilities as StoreCapabilities | undefined) ?? type.capabilities;
   const fields = useMemo(() => configFields(type.config_schema), [type]);
@@ -104,7 +109,7 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
             </dd>
           </div>
         </dl>
-        <div className="prov-detail__actions">
+        <div className="prov-detail__actions">{canManage ? <>
           <Button variant="primary" icon={PlugZap} loading={test.isPending} onClick={() => test.mutate()}>
             Test connection
           </Button>
@@ -123,16 +128,16 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
           </ButtonLink>
           <span className="page-head__spacer" />
           <DeleteAction p={p} />
-        </div>
+        </> : null}</div>
       </header>
 
-      {p.kind === "parser" && p.type === "http" ? <OcrPanel provider={p} /> : null}
+      {p.kind === "parser" && p.type === "http" ? <Can capability="platform"><OcrPanel provider={p} /></Can> : null}
 
       <TestResultView result={test.data} error={test.error} />
 
       {capabilities ? <StoreCapabilitiesPanel caps={capabilities} immutable={[]} /> : null}
 
-      {operational.length ? <SettingsForm p={p} fields={operational} /> : null}
+      {operational.length ? canManage ? <SettingsForm p={p} fields={operational} /> : <section className="prov-section"><h2>Settings</h2><LockedSettings items={operational.map((f) => ({ key: f.key, label: f.label, value: p.config[f.key] }))} /></section> : null}
 
       {locked.length || serverSet.length ? (
         <section className="prov-section" aria-labelledby="perm-title">
@@ -144,18 +149,18 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
               {p.kind === "vector_store"
                 ? `These settings shape the index ${p.name} builds, so they are set once and cannot change. Changing one would leave existing indexes inconsistent with the store.`
                 : `These settings decide what ${p.name} produces, so they are part of its fingerprint and cannot change. Pipelines that used it would otherwise mix results from two different services.`}{" "}
-              {p.builtin ? null : (
+              {p.builtin || !canManage ? null : (
                 <Link to={`/providers/new?from=${p.id}`} className="inline-link">
                   Create a new provider from this one
                 </Link>
               )}
-              {p.builtin ? null : " to use different values."}
+              {p.builtin || !canManage ? null : " to use different values."}
             </p>
           </LockedSettings>
         </section>
       ) : null}
 
-      {type.secret_keys.length ? <Secrets p={p} keys={type.secret_keys} /> : null}
+      {canManage && type.secret_keys.length ? <Secrets p={p} keys={type.secret_keys} /> : null}
     </div>
   );
 }

@@ -17,13 +17,13 @@ import "./styles/sources.css";
 import "./styles/ops.css";
 import "./styles/ocr.css";
 import "./styles/welcome.css";
+import "./styles/auth.css";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { ApiError } from "./api/client";
-import { ToastProvider } from "./components/Toast";
 import { initTheme } from "./lib/theme";
 import { routes } from "./routes";
 
@@ -48,9 +48,7 @@ async function start() {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <ToastProvider>
-          <RouterProvider router={createBrowserRouter(routes)} />
-        </ToastProvider>
+        <RouterProvider router={createBrowserRouter(routes)} />
       </QueryClientProvider>
     </StrictMode>,
   );

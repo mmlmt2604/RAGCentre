@@ -9,13 +9,14 @@ from fastapi import APIRouter, Depends, Request, Response
 from ragcentre.api.authz import DEFAULT_TEAM_ID, principal_of, require_provider, require_provider_owner
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
+from ragcentre.api.permissions import SessionRoute
 from ragcentre.context import AppContext
 from ragcentre.errors import Forbidden, NotFound
 from ragcentre.models import api
 from ragcentre.providers.manager import ProviderRow
 from ragcentre.providers.registry import get_type, provider_types
 
-router = APIRouter(tags=["providers"])
+router = APIRouter(route_class=SessionRoute, tags=["providers"])
 
 
 def _schema(spec: Any) -> dict[str, Any]:
@@ -80,16 +81,34 @@ def list_providers(
     request: Request, params: PageParams = Depends(page_params), ctx: AppContext = Depends(get_ctx)
 ) -> api.Page[api.Provider]:
     principal = principal_of(request)
-    usage = ctx.providers.usage_counts()
-    rows = ctx.providers.list() if principal.is_admin else ctx.providers.list_visible(principal.team_id or "")
+    usage = ctx.providers.usage_counts(None if principal.unrestricted else principal.team_id)
+    rows = ctx.providers.list() if principal.unrestricted else ctx.providers.list_visible(principal.team_id or "")
     part, nxt = params.page(rows)
     return api.Page[api.Provider](items=[provider_out(ctx, r, usage) for r in part], next_cursor=nxt)
+
+
+@router.get("/provider-summaries", response_model=api.Page[api.ProviderSummary])
+def provider_summaries(
+    request: Request, params: PageParams = Depends(page_params), ctx: AppContext = Depends(get_ctx)
+) -> api.Page[api.ProviderSummary]:
+    principal = principal_of(request)
+    rows = ctx.providers.list() if principal.unrestricted else ctx.providers.list_visible(principal.team_id or "")
+    part, nxt = params.page(rows)
+    return api.Page[api.ProviderSummary](
+        items=[
+            api.ProviderSummary.model_validate(
+                dict(id=r.id, name=r.name, kind=r.kind, type=r.type, builtin=r.builtin, team_id=r.team_id)
+            )
+            for r in part
+        ],
+        next_cursor=nxt,
+    )
 
 
 @router.post("/providers", response_model=api.Provider, status_code=201)
 def create_provider(body: api.ProviderCreate, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.Provider:
     principal = principal_of(request)
-    if principal.is_admin:
+    if principal.unrestricted:
         team_id = body.team_id or DEFAULT_TEAM_ID
         if ctx.db.one("SELECT id FROM teams WHERE id = ?", (team_id,)) is None:
             raise NotFound(f"Team {team_id} was not found.")
@@ -99,13 +118,21 @@ def create_provider(body: api.ProviderCreate, request: Request, ctx: AppContext 
         if body.team_id is not None and body.team_id != team_id:
             raise Forbidden("A team token can only create providers in its own team.")
     row = ctx.providers.create(body.name, body.kind, body.type, body.config, team_id=team_id)
-    return provider_out(ctx, row)
+    return provider_out(
+        ctx,
+        row,
+        ctx.providers.usage_counts(None if principal_of(request).unrestricted else principal_of(request).team_id),
+    )
 
 
 @router.get("/providers/{provider_id}", response_model=api.Provider)
 def get_provider(provider_id: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.Provider:
     require_provider(ctx, principal_of(request), provider_id)
-    return provider_out(ctx, ctx.providers.get(provider_id))
+    return provider_out(
+        ctx,
+        ctx.providers.get(provider_id),
+        ctx.providers.usage_counts(None if principal_of(request).unrestricted else principal_of(request).team_id),
+    )
 
 
 @router.patch("/providers/{provider_id}", response_model=api.Provider)
@@ -116,7 +143,11 @@ def patch_provider(
     row = ctx.providers.update(provider_id, body.config)
     if row.secrets_reset:
         response.headers["X-RAGCentre-Secrets-Reset"] = "true"
-    return provider_out(ctx, row)
+    return provider_out(
+        ctx,
+        row,
+        ctx.providers.usage_counts(None if principal_of(request).unrestricted else principal_of(request).team_id),
+    )
 
 
 @router.delete("/providers/{provider_id}", status_code=204)
@@ -142,11 +173,19 @@ def set_secret(
 ) -> api.Provider:
     require_provider_owner(ctx, principal_of(request), provider_id)
     ctx.providers.set_secret(provider_id, key, env=body.env, value=body.value)
-    return provider_out(ctx, ctx.providers.get(provider_id))
+    return provider_out(
+        ctx,
+        ctx.providers.get(provider_id),
+        ctx.providers.usage_counts(None if principal_of(request).unrestricted else principal_of(request).team_id),
+    )
 
 
 @router.delete("/providers/{provider_id}/secrets/{key}", response_model=api.Provider)
 def delete_secret(provider_id: str, key: str, request: Request, ctx: AppContext = Depends(get_ctx)) -> api.Provider:
     require_provider_owner(ctx, principal_of(request), provider_id)
     ctx.providers.delete_secret(provider_id, key)
-    return provider_out(ctx, ctx.providers.get(provider_id))
+    return provider_out(
+        ctx,
+        ctx.providers.get(provider_id),
+        ctx.providers.usage_counts(None if principal_of(request).unrestricted else principal_of(request).team_id),
+    )

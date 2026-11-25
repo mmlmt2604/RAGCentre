@@ -195,12 +195,17 @@ class ProviderManager:
             states[row["key"]] = {"source": row["source"], "set": usable, "env_var": env_var if usable else None}
         return states
 
-    def usage_counts(self) -> dict[str, int]:
-        rows = self.db.all(
+    def usage_counts(self, team_id: str | None = None) -> dict[str, int]:
+        sql = (
             "SELECT j.value AS provider_id, COUNT(DISTINCT p.id) AS n "
-            "FROM pipelines p, json_each(p.resolved, '$.provider_ids') j "
-            "WHERE p.archived = 0 GROUP BY j.value"
+            "FROM pipelines p JOIN corpora c ON c.id=p.corpus_id, json_each(p.resolved, '$.provider_ids') j "
+            "WHERE p.archived = 0"
         )
+        args: tuple[str, ...] = ()
+        if team_id is not None:
+            sql += " AND c.team_id=?"
+            args = (team_id,)
+        rows = self.db.all(sql + " GROUP BY j.value", args)
         return {r["provider_id"]: int(r["n"]) for r in rows}
 
     # ---- writing ------------------------------------------------------------------------------

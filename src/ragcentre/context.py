@@ -23,6 +23,7 @@ from ragcentre.providers.egress import checked_http_client
 from ragcentre.settings import Settings
 
 if TYPE_CHECKING:
+    from ragcentre.accounts.sessions import Sessions
     from ragcentre.blobs import BlobStore
     from ragcentre.embedding_service import EmbeddingService
     from ragcentre.llm_service import LlmService
@@ -70,6 +71,9 @@ class AppContext:
         self.migration = verify(self.db)
         migrate_cache(self.cache)
         self._bootstrap()
+        from ragcentre.accounts.sessions import validate_mode
+
+        validate_mode(self)
         self._check_security_settings()
 
     def _check_security_settings(self) -> None:
@@ -110,6 +114,13 @@ class AppContext:
                     svc = build()
                     self._services[name] = svc
         return svc
+
+    @property
+    def sessions(self) -> Sessions:
+        from ragcentre.accounts.sessions import Sessions
+
+        result: Sessions = self._service("sessions", lambda: Sessions(self))
+        return result
 
     @property
     def blobs(self) -> BlobStore:

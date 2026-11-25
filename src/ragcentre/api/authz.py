@@ -30,11 +30,20 @@ Scope = Literal["admin", "team", "read"]
 @dataclass(frozen=True)
 class Principal:
     scope: Scope
-    team_id: str | None  # None for admin
+    team_id: str | None  # None for unscoped administration
+    actor_kind: str = "token"
+    actor_id: str | None = None
+    session_id: str | None = None
+    csrf_token: str | None = None
+    role: str | None = None
 
     @property
     def is_admin(self) -> bool:
         return self.scope == "admin"
+
+    @property
+    def unrestricted(self) -> bool:
+        return self.is_admin and self.actor_kind != "user"
 
 
 def principal_of(request: Request) -> Principal:
@@ -162,49 +171,49 @@ def team_of_source(ctx: AppContext, source_id: str) -> str:
 
 
 def require_corpus(ctx: AppContext, p: Principal, corpus_id: str) -> None:
-    if p.is_admin:
+    if p.unrestricted:
         return
     if p.team_id != team_of_corpus(ctx, corpus_id):
         raise NotFound(f"Corpus {corpus_id} was not found.")
 
 
 def require_document(ctx: AppContext, p: Principal, document_id: str) -> None:
-    if p.is_admin:
+    if p.unrestricted:
         return
     if p.team_id != team_of_document(ctx, document_id):
         raise NotFound(f"Document {document_id} was not found.")
 
 
 def require_pipeline(ctx: AppContext, p: Principal, pipeline_id: str) -> None:
-    if p.is_admin:
+    if p.unrestricted:
         return
     if p.team_id != team_of_pipeline(ctx, pipeline_id):
         raise NotFound(f"Pipeline {pipeline_id} was not found.")
 
 
 def require_dataset(ctx: AppContext, p: Principal, dataset_id: str) -> None:
-    if p.is_admin:
+    if p.unrestricted:
         return
     if p.team_id != team_of_dataset(ctx, dataset_id):
         raise NotFound(f"Dataset {dataset_id} was not found.")
 
 
 def require_eval_run(ctx: AppContext, p: Principal, run_id: str) -> None:
-    if p.is_admin:
+    if p.unrestricted:
         return
     if p.team_id != team_of_eval_run(ctx, run_id):
         raise NotFound(f"Evaluation run {run_id} was not found.")
 
 
 def require_node_run(ctx: AppContext, p: Principal, run_id: int) -> None:
-    if p.is_admin:
+    if p.unrestricted:
         return
     if p.team_id != team_of_node_run(ctx, run_id):
         raise NotFound(f"Node run {run_id} was not found.")
 
 
 def require_provider(ctx: AppContext, p: Principal, provider_id: str) -> None:
-    if p.is_admin:
+    if p.unrestricted:
         return
     team = team_of_provider(ctx, provider_id)
     if team is not None and team != p.team_id:
@@ -213,24 +222,31 @@ def require_provider(ctx: AppContext, p: Principal, provider_id: str) -> None:
 
 def require_provider_owner(ctx: AppContext, p: Principal, provider_id: str) -> None:
     """Mutate a provider. Built-ins are admin-only; other providers are owner/admin only."""
-    if p.is_admin:
+    if p.unrestricted:
         return
     team = team_of_provider(ctx, provider_id)
     if team is None:
-        raise Forbidden("Built-in providers can only be changed by the admin token.")
+        if p.is_admin:
+            return
+        raise Forbidden("Built-in providers can only be changed by a platform administrator.")
     if team != p.team_id:
         raise NotFound(f"Provider {provider_id} was not found.")
 
 
 def require_source(ctx: AppContext, p: Principal, source_id: str) -> None:
-    if p.is_admin:
+    if p.unrestricted:
         return
     if p.team_id != team_of_source(ctx, source_id):
+        raise NotFound(f"Source {source_id} was not found.")
+    provider = ctx.db.one(
+        "SELECT p.team_id FROM sync_sources s JOIN providers p ON p.id=s.provider_id WHERE s.id=?", (source_id,)
+    )
+    if provider is None or provider["team_id"] != p.team_id:
         raise NotFound(f"Source {source_id} was not found.")
 
 
 def require_team(p: Principal, team_id: str) -> None:
     """Admin or the team itself; a different team sees the id as not found."""
-    if p.is_admin or p.team_id == team_id:
+    if p.unrestricted or p.team_id == team_id:
         return
     raise NotFound(f"Team {team_id} was not found.")

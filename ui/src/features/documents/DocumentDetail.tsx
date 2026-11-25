@@ -1,7 +1,9 @@
+import { useCan, useTransport } from "../auth/context";
+import { Can } from "../auth/Access";
 import { ArrowLeft, Download, Pencil, Replace, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { ApiError, download, upload } from "../../api/client";
+import { ApiError } from "../../api/client";
 import { useCorpus, useDeleteDocument, useDocument, useInvalidateDocuments, usePatchDocument, usePipelines } from "../../api/hooks";
 import type { Corpus, Document } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -52,6 +54,8 @@ export function DocumentDetail() {
 }
 
 function Detail({ doc, corpus, back }: { doc: Document; corpus: Corpus; back: React.ReactNode }) {
+  const { download, upload, isCurrent } = useTransport();
+  const canEdit = useCan("edit");
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -63,7 +67,7 @@ function Detail({ doc, corpus, back }: { doc: Document; corpus: Corpus; back: Re
   const pipelinesQ = usePipelines(corpus.id);
   const pipelines = [...(pipelinesQ.data?.items ?? [])].sort((a, b) => Number(b.is_active) - Number(a.is_active) || a.name.localeCompare(b.name));
   const tab = (params.get("tab") as Tab | null) ?? "ingestion";
-  const editing = params.get("edit") === "1";
+  const editing = canEdit && params.get("edit") === "1";
   const pipelineId = params.get("pipeline") ?? pipelines[0]?.id ?? null;
 
   const set = (updates: Record<string, string | null>) =>
@@ -92,6 +96,7 @@ function Detail({ doc, corpus, back }: { doc: Document; corpus: Corpus; back: Re
         body: res.body.revision > doc.revision ? `Revision ${res.body.revision}. Every pipeline processes the new content.` : undefined,
       });
     } catch (e) {
+      if (!isCurrent()) return;
       toast({ tone: "danger", title: "Could not replace the file", body: e instanceof ApiError ? e.message : String(e) });
     } finally {
       setReplacing(false);
@@ -151,13 +156,13 @@ function Detail({ doc, corpus, back }: { doc: Document; corpus: Corpus; back: Re
           >
             Download
           </Button>
-          <Button icon={Replace} loading={replacing} disabled={doc.status !== "active"} onClick={() => replacer.current?.click()}>
+          <Can capability="edit"><Button icon={Replace} loading={replacing} disabled={doc.status !== "active"} onClick={() => replacer.current?.click()}>
             Replace file
-          </Button>
+          </Button></Can>
           <span className="page-head__spacer" />
-          <Button variant="danger" icon={Trash2} disabled={doc.status !== "active"} onClick={() => { del.reset(); setConfirmDelete(true); }}>
+          <Can capability="edit"><Button variant="danger" icon={Trash2} disabled={doc.status !== "active"} onClick={() => { del.reset(); setConfirmDelete(true); }}>
             Delete
-          </Button>
+          </Button></Can>
         </div>
       </header>
 
@@ -263,9 +268,9 @@ function MetadataSection({ doc, corpus, editing, setEditing }: { doc: Document; 
         <h2 id="meta-title">Metadata</h2>
         <span className="page-head__spacer" />
         {!editing ? (
-          <Button size="sm" icon={Pencil} onClick={start} disabled={doc.status !== "active"}>
+          <Can capability="edit"><Button size="sm" icon={Pencil} onClick={start} disabled={doc.status !== "active"}>
             Edit metadata
-          </Button>
+          </Button></Can>
         ) : null}
       </div>
       {editing ? (
