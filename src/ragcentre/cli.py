@@ -166,6 +166,25 @@ def _accounts_exist(settings: Settings) -> bool:
         ctx.close()
 
 
+def _require_credential_for_bind(settings: Settings, allow_no_token: bool) -> None:
+    """Refuse a non-loopback bind that has no credential, unless the operator opted in.
+
+    A loopback bind, an API token, an existing account, `--allow-no-token`, or
+    `RAGCENTRE_ALLOW_REMOTE_SETUP` all allow the server to start. Remote setup is the one opt-in
+    that lets the browser create the account afterwards, so it must let `serve` start too.
+    """
+    if settings.api_token or allow_no_token or settings.allow_remote_setup:
+        return
+    try:
+        is_loopback = ipaddress.ip_address(settings.host).is_loopback
+    except ValueError:
+        is_loopback = settings.host.lower() == "localhost"
+    if not is_loopback and not _accounts_exist(settings):
+        raise typer.BadParameter(
+            "Set RAGCENTRE_API_TOKEN, create an account, or pass --allow-no-token.", param_hint="--host"
+        )
+
+
 # ---- serve / worker ----------------------------------------------------------------------------
 
 
@@ -183,15 +202,7 @@ def serve(
     from ragcentre.context import open_context
 
     settings = _settings(host=host, port=port, workers=workers)
-    if not settings.api_token and not allow_no_token:
-        try:
-            is_loopback = ipaddress.ip_address(settings.host).is_loopback
-        except ValueError:
-            is_loopback = settings.host.lower() == "localhost"
-        if not is_loopback and not _accounts_exist(settings):
-            raise typer.BadParameter(
-                "Set RAGCENTRE_API_TOKEN, create an account, or pass --allow-no-token.", param_hint="--host"
-            )
+    _require_credential_for_bind(settings, allow_no_token)
     configure_logging(settings.log_level)
     ctx = open_context(settings)
     try:

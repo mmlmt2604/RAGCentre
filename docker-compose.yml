@@ -20,6 +20,10 @@ services:
       # Optional: a full-scope operator credential for the CLI/MCP. Leave unset to use the account
       # instead — create one first with `docker compose run --rm -it ragcentre ragcentre account init`.
       RAGCENTRE_API_TOKEN: ${RAGCENTRE_API_TOKEN:-}
+      # Set to 1 to create the account in the browser instead of `account init`. The container binds
+      # 0.0.0.0 (non-loopback), so first-run setup is refused unless this opt-in is set. The port
+      # below is still bound to 127.0.0.1, so nothing is exposed; leave this unset if you widen it.
+      RAGCENTRE_ALLOW_REMOTE_SETUP: ${RAGCENTRE_ALLOW_REMOTE_SETUP:-}
       # Where to look for parser shims: auto, off, or URLs (auto,http://gpu-box:8701 keeps both).
       RAGCENTRE_DISCOVERY_URLS: ${RAGCENTRE_DISCOVERY_URLS:-auto}
       # How often a working OCR engine is re-tested while the UI is open, in seconds (0: never).

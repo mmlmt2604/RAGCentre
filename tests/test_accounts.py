@@ -76,6 +76,26 @@ def test_setup_allowed_on_non_loopback_with_opt_in(tmp_path: Path) -> None:
         ctx.close()
 
 
+def test_serve_bind_gate(tmp_path: Path) -> None:
+    from typer import BadParameter
+
+    from ragcentre.cli import _require_credential_for_bind
+
+    # Non-loopback with no credential and no opt-in is refused.
+    with pytest.raises(BadParameter, match="Set RAGCENTRE_API_TOKEN"):
+        _require_credential_for_bind(Settings(data_dir=tmp_path, host="0.0.0.0"), allow_no_token=False)
+
+    # The remote-setup opt-in must let `serve` start, or the browser can never create the account.
+    _require_credential_for_bind(
+        Settings(data_dir=tmp_path, host="0.0.0.0", allow_remote_setup=True), allow_no_token=False
+    )
+
+    # Loopback needs no credential, and a token or --allow-no-token also satisfy the gate.
+    _require_credential_for_bind(Settings(data_dir=tmp_path, host="127.0.0.1"), allow_no_token=False)
+    _require_credential_for_bind(Settings(data_dir=tmp_path, host="0.0.0.0", api_token="tok"), allow_no_token=False)
+    _require_credential_for_bind(Settings(data_dir=tmp_path, host="0.0.0.0"), allow_no_token=True)
+
+
 def test_login_and_logout(client: TestClient) -> None:
     body = _setup(client)
     assert client.post("/v1/auth/logout", headers={"X-RAGCentre-CSRF": body["csrf"]}).status_code == 204

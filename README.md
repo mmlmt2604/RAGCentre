@@ -30,7 +30,12 @@ docker compose up --build                                              # http://
 ```
 
 The `account init` step is required before the server starts on a non-loopback bind (the container
-listens on `0.0.0.0`). Or set `RAGCENTRE_API_TOKEN` instead and skip the account.
+listens on `0.0.0.0`). Or set `RAGCENTRE_API_TOKEN` instead and skip the account. Or create the
+account in the browser instead of the CLI:
+
+```sh
+RAGCENTRE_ALLOW_REMOTE_SETUP=1 docker compose up --build   # then http://localhost:8700 → "Create your account"
+```
 
 On first run, open the web UI and create your account (username + password). The browser stays signed
 in with a cookie; **API keys** (minted under **Account**) are what the CLI, MCP and scripts use. For a
