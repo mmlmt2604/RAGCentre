@@ -9,7 +9,7 @@ services:
   ragcentre:
     build: .
     ports:
-      # Bound to localhost; widen it only together with RAGCENTRE_API_TOKEN.
+      # Bound to localhost; widen it only together with an account or RAGCENTRE_API_TOKEN.
       - "127.0.0.1:8700:8700"
     volumes:
       - ragcentre-data:/data
@@ -17,7 +17,9 @@ services:
       # Lets RAGCentre find and call a parser that runs on this machine outside Compose (Linux needs this line).
       - "host.docker.internal:host-gateway"
     environment:
-      RAGCENTRE_API_TOKEN: ${RAGCENTRE_API_TOKEN:?Set RAGCENTRE_API_TOKEN before starting Compose}
+      # Optional: a full-scope operator credential for the CLI/MCP. Leave unset to use the account
+      # instead — create one first with `docker compose run --rm -it ragcentre ragcentre account init`.
+      RAGCENTRE_API_TOKEN: ${RAGCENTRE_API_TOKEN:-}
       # Where to look for parser shims: auto, off, or URLs (auto,http://gpu-box:8701 keeps both).
       RAGCENTRE_DISCOVERY_URLS: ${RAGCENTRE_DISCOVERY_URLS:-auto}
       # How often a working OCR engine is re-tested while the UI is open, in seconds (0: never).

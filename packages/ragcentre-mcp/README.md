@@ -34,7 +34,7 @@ It reads two settings from the environment:
 | Variable | |
 |---|---|
 | `RAGCENTRE_URL` | Where RAGCentre listens. Default `http://127.0.0.1:8700`. |
-| `RAGCENTRE_API_TOKEN` | RAGCentre's **read-only** token (`RAGCENTRE_READ_TOKEN` on the server). |
+| `RAGCENTRE_API_TOKEN` | A RAGCentre **read** API key, minted under **Account → API keys** in the web UI. |
 
 At startup it asks RAGCentre what the token can do. If it is the full-access token, it refuses to start unless
 you pass `--allow-full-token`. The tools only read either way, but a full token in an agent's config is one leak

@@ -25,8 +25,12 @@ uv run ragcentre serve          # API on http://127.0.0.1:8700, data in ./data
 Or with Docker (builds the web UI; data lives in the `ragcentre-data` volume):
 
 ```sh
-docker compose up --build       # http://localhost:8700
+docker compose run --build --rm -it ragcentre ragcentre account init   # create your account once
+docker compose up --build                                              # http://localhost:8700
 ```
+
+The `account init` step is required before the server starts on a non-loopback bind (the container
+listens on `0.0.0.0`). Or set `RAGCENTRE_API_TOKEN` instead and skip the account.
 
 On first run, open the web UI and create your account (username + password). The browser stays signed
 in with a cookie; **API keys** (minted under **Account**) are what the CLI, MCP and scripts use. For a
