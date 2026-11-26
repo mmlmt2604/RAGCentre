@@ -2,7 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { db } from "../mocks/db";
-import { DEV_TOKEN } from "../mocks/scenarios";
+import { DEV_ACCOUNT } from "../mocks/scenarios";
 import { renderApp } from "../test/render";
 
 describe("application shell", () => {
@@ -19,12 +19,13 @@ describe("application shell", () => {
     expect(await screen.findByRole("heading", { name: "No corpora yet" })).toBeInTheDocument();
   });
 
-  it("asks for a token on 401 and loads data once a valid one is entered", async () => {
+  it("requires a sign-in when an account exists, then loads data once signed in", async () => {
     const user = userEvent.setup();
     renderApp("/", "auth");
-    expect(await screen.findByText("Access token required", { selector: "dialog h2" })).toBeInTheDocument();
-    await user.type(screen.getByLabelText("Token"), DEV_TOKEN);
-    await user.click(screen.getByRole("button", { name: "Use token" }));
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Username"), DEV_ACCOUNT.username);
+    await user.type(screen.getByLabelText("Password"), DEV_ACCOUNT.password);
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByRole("link", { name: "support-docs" })).toBeInTheDocument();
   });
 

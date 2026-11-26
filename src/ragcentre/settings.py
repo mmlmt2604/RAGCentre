@@ -45,6 +45,9 @@ class Settings:
     shutdown_grace_seconds: float = 30.0
     secret_env_prefixes: tuple[str, ...] = ("RAGCENTRE_PROVIDER_",)
     egress_allow: tuple[str, ...] = ()
+    # Allow first-run account setup from a non-loopback bind. Off by default so an exposed host is
+    # never claimed by whoever visits it first.
+    allow_remote_setup: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -66,6 +69,7 @@ class Settings:
                 for part in e.get("RAGCENTRE_EGRESS_ALLOW", "").split(",")
                 if part.strip()
             ),
+            allow_remote_setup=e.get("RAGCENTRE_ALLOW_REMOTE_SETUP", "").strip().lower() in ("1", "true", "yes"),
             max_upload_mb=_int(e, "RAGCENTRE_MAX_UPLOAD_MB", 200),
             max_attempts=_int(e, "RAGCENTRE_MAX_ATTEMPTS", 5),
             discovery_urls=e.get("RAGCENTRE_DISCOVERY_URLS") or "auto",

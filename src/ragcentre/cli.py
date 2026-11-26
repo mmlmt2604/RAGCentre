@@ -45,6 +45,7 @@ eval_app = typer.Typer(help="Evaluation datasets and runs.", no_args_is_help=Tru
 parser_app = typer.Typer(help="Check parser and OCR services.", no_args_is_help=True)
 store_app = typer.Typer(help="Check vector stores against live data.", no_args_is_help=True)
 cache_app = typer.Typer(help="Caches kept next to the database.", no_args_is_help=True)
+account_app = typer.Typer(help="The local account and its credentials.", no_args_is_help=True)
 app.add_typer(provider_app, name="provider")
 app.add_typer(corpus_app, name="corpus")
 app.add_typer(docs_app, name="docs")
@@ -53,6 +54,7 @@ app.add_typer(eval_app, name="eval")
 app.add_typer(parser_app, name="parser")
 app.add_typer(store_app, name="store")
 app.add_typer(cache_app, name="cache")
+app.add_typer(account_app, name="account")
 
 log = logging.getLogger("ragcentre")
 
@@ -148,6 +150,22 @@ def _settings(**overrides: object) -> Settings:
     return settings.with_(**clean) if clean else settings
 
 
+def _accounts_exist(settings: Settings) -> bool:
+    """True when the data directory already holds an account (so a non-loopback bind is safe).
+
+    Checks the database file first so a fresh, misconfigured bind refuses without creating the data
+    directory."""
+    if not settings.db_path.exists():
+        return False
+    from ragcentre.context import open_context
+
+    ctx = open_context(settings)
+    try:
+        return ctx.accounts.has_accounts()
+    finally:
+        ctx.close()
+
+
 # ---- serve / worker ----------------------------------------------------------------------------
 
 
@@ -170,8 +188,10 @@ def serve(
             is_loopback = ipaddress.ip_address(settings.host).is_loopback
         except ValueError:
             is_loopback = settings.host.lower() == "localhost"
-        if not is_loopback:
-            raise typer.BadParameter("Set RAGCENTRE_API_TOKEN or pass --allow-no-token.", param_hint="--host")
+        if not is_loopback and not _accounts_exist(settings):
+            raise typer.BadParameter(
+                "Set RAGCENTRE_API_TOKEN, create an account, or pass --allow-no-token.", param_hint="--host"
+            )
     configure_logging(settings.log_level)
     ctx = open_context(settings)
     try:
@@ -1029,6 +1049,48 @@ def eval_show(run_id: Annotated[str, typer.Argument(help="Evaluation run id.")])
     with _api() as api:
         run = api.get(f"/eval/runs/{run_id}")
     _emit(run, lambda: _print_run(run))
+
+
+# ---- account (local, direct database access) ----------------------------------------------------
+
+
+@account_app.command("init")
+def account_init() -> None:
+    """Create the single account directly in the data directory.
+
+    This is the headless/Docker path and the operator recovery path. First-run browser setup is
+    preferred on loopback; this command works without a running server."""
+    from ragcentre.context import open_context
+    from ragcentre.errors import Conflict
+
+    username = typer.prompt("Username")
+    display_name = typer.prompt("Display name (optional)", default="", show_default=False)
+    password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+    ctx = open_context(_settings())
+    try:
+        user = ctx.accounts.create_account(username, display_name, password)
+    except Conflict as exc:
+        _fail(str(exc))
+    finally:
+        ctx.close()
+    typer.echo(f"Created account {user['username']} ({user['id']}). Sign in at the web UI.")
+
+
+@account_app.command("reset-password")
+def account_reset_password() -> None:
+    """Set a new password for the account, revoking every browser session."""
+    from ragcentre.context import open_context
+
+    ctx = open_context(_settings())
+    try:
+        user = ctx.accounts.account()
+        if user is None:
+            _fail("No account exists yet; run 'ragcentre account init' first.")
+        password = typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+        ctx.accounts.reset_password(user["id"], password)
+    finally:
+        ctx.close()
+    typer.echo(f"Password reset for {user['username']}.")
 
 
 def main() -> None:  # pragma: no cover

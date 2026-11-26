@@ -4,14 +4,14 @@ import { useState } from "react";
 import { Button } from "../components/Button";
 import { Checkbox, Select } from "../components/Field";
 import { currentScenario, db, rememberScenario } from "../mocks/db";
-import { DEV_TOKEN, SCENARIO_LABELS, SCENARIOS, type ScenarioName } from "../mocks/scenarios";
+import { DEV_ACCOUNT, SCENARIO_LABELS, SCENARIOS, type ScenarioName } from "../mocks/scenarios";
 
 export default function DevMenu() {
   const qc = useQueryClient();
   const [failing, setFailing] = useState(db().failNetwork);
 
   return (
-    <span className="dev-menu" title={`Mock API. In the auth scenario the token is "${DEV_TOKEN}".`}>
+    <span className="dev-menu" title={`Mock API. In the auth scenario, sign in as "${DEV_ACCOUNT.username}".`}>
       <span className="dev-menu__tag">Mock</span>
       <Select
         aria-label="Mock scenario"

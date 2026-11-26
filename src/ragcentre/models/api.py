@@ -794,3 +794,72 @@ class GcReport(ResponseModel):
     node_count: int
     blob_count: int
     blob_bytes: int
+
+
+# ---------- Accounts and API keys ----------
+
+
+class AuthConfig(ResponseModel):
+    auth_required: bool
+    setup_required: bool
+    login_available: bool
+    # Setup is offered in the browser only on a loopback bind, or when the operator opts in.
+    setup_allowed: bool
+
+
+class WhoAmI(ResponseModel):
+    scope: Literal["full", "read", "none"]
+    kind: Literal["admin_token", "key", "session", "none"]
+
+
+class Me(ResponseModel):
+    id: str
+    username: str
+    display_name: str
+    is_platform_admin: bool
+
+
+class SetupRequest(RequestModel):
+    username: str
+    display_name: str = ""
+    password: str
+
+
+class LoginRequest(RequestModel):
+    username: str
+    password: str
+
+
+class PasswordChangeRequest(RequestModel):
+    current_password: str
+    new_password: str
+
+
+class CsrfToken(ResponseModel):
+    token: str
+
+
+class AuthSession(ResponseModel):
+    csrf: str
+    user: Me
+
+
+class ApiKeyCreate(RequestModel):
+    name: str
+    scope: Literal["read", "full"]
+
+
+class ApiKeyCreated(ResponseModel):
+    id: str
+    name: str
+    scope: Literal["read", "full"]
+    key: str
+    created_at: str
+
+
+class ApiKey(ResponseModel):
+    id: str
+    name: str
+    scope: Literal["read", "full"]
+    created_at: str
+    last_used_at: str | None

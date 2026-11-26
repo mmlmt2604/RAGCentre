@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient, type Query } from "@tanstack/react-query";
-import { ApiError, request, upload } from "./client";
+import { ApiError, request, setCsrf, upload } from "./client";
 import type {
+  ApiKey,
+  ApiKeyCreate,
+  ApiKeyCreated,
+  AuthConfig,
+  AuthSession,
   Chunk,
   GcReport,
   Corpus,
@@ -13,10 +18,13 @@ import type {
   EvalRunDetail,
   CorpusCreate,
   Health,
+  LoginRequest,
+  Me,
   MetadataSchema,
   NodeRun,
   OcrStatus,
   Page,
+  PasswordChangeRequest,
   Pipeline,
   PipelineConfig,
   PipelineDiff,
@@ -29,6 +37,7 @@ import type {
   QueryRequest,
   QueryResponse,
   SecretSet,
+  SetupRequest,
 } from "./types";
 
 const POLL_MS = 2000;
@@ -44,6 +53,9 @@ const pipelineBusy = (p: { status: string }) => p.status === "building";
 
 export const keys = {
   health: ["health"] as const,
+  authConfig: ["auth", "config"] as const,
+  me: ["auth", "me"] as const,
+  apiKeys: ["keys"] as const,
   corpora: ["corpora"] as const,
   corpus: (id: string) => ["corpora", id] as const,
   pipelines: (corpusId: string, archived: boolean) => ["corpora", corpusId, "pipelines", { archived }] as const,
@@ -64,6 +76,84 @@ export const keys = {
 
 export function useHealth() {
   return useQuery({ queryKey: keys.health, queryFn: () => request<Health>("/health"), refetchInterval: 15_000, retry: false });
+}
+
+// ---------- Authentication and API keys ----------
+
+export function useAuthConfig() {
+  return useQuery({ queryKey: keys.authConfig, queryFn: () => request<AuthConfig>("/auth/config"), retry: false });
+}
+
+export function useMe() {
+  return useQuery({ queryKey: keys.me, queryFn: () => request<Me>("/auth/me"), retry: false });
+}
+
+export function useApiKeys() {
+  return useQuery({ queryKey: keys.apiKeys, queryFn: () => request<Page<ApiKey>>("/keys") });
+}
+
+/** Invalidate auth state after a login/logout/setup so the gate and account menu catch up. */
+function useInvalidateAuth() {
+  const qc = useQueryClient();
+  return (csrf: string | null) => {
+    setCsrf(csrf);
+    void qc.invalidateQueries({ queryKey: keys.me });
+    void qc.invalidateQueries({ queryKey: keys.authConfig });
+  };
+}
+
+export function useLogin() {
+  const invalidate = useInvalidateAuth();
+  return useMutation({
+    mutationFn: (body: LoginRequest) => request<AuthSession>("/auth/login", { method: "POST", body }),
+    onSuccess: (session) => invalidate(session.csrf),
+  });
+}
+
+export function useSetup() {
+  const invalidate = useInvalidateAuth();
+  return useMutation({
+    mutationFn: (body: SetupRequest) => request<AuthSession>("/auth/setup", { method: "POST", body }),
+    onSuccess: (session) => invalidate(session.csrf),
+  });
+}
+
+export function useLogout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<void>("/auth/logout", { method: "POST" }),
+    onSuccess: () => {
+      setCsrf(null);
+      qc.clear();
+    },
+  });
+}
+
+export function useChangePassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PasswordChangeRequest) => request<void>("/auth/password", { method: "POST", body }),
+    onSuccess: () => {
+      setCsrf(null);
+      qc.clear();
+    },
+  });
+}
+
+export function useCreateKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApiKeyCreate) => request<ApiKeyCreated>("/keys", { method: "POST", body }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apiKeys }),
+  });
+}
+
+export function useRevokeKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<void>(`/keys/${id}`, { method: "DELETE" }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apiKeys }),
+  });
 }
 
 export function useCorpora() {

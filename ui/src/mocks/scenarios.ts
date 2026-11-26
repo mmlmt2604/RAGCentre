@@ -13,10 +13,10 @@ export const SCENARIO_LABELS: Record<ScenarioName, string> = {
   building: "Building — ingestion in progress",
   degraded: "Degraded — failed and blocked runs",
   ready: "Ready — everything built",
-  auth: "Auth — token required",
+  auth: "Auth — account required",
 };
 
-export const DEV_TOKEN = "dev-token";
+export const DEV_ACCOUNT = { username: "alice", display_name: "Alice", password: "correct-horse-battery-staple" };
 
 export function buildScenario(name: ScenarioName): MockState {
   const state = emptyState();
@@ -94,6 +94,6 @@ export function buildScenario(name: ScenarioName): MockState {
   }
 
   refreshProviderUsage(state);
-  if (name === "auth") state.authToken = DEV_TOKEN;
+  if (name === "auth") state.account = { ...DEV_ACCOUNT };
   return state;
 }

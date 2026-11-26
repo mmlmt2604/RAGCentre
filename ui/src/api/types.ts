@@ -287,3 +287,21 @@ export interface GcReport {
   indexes: { id: UUID; kind: "vector" | "fts"; physical_name: string; corpus_id: UUID }[];
   node_count: number; blob_count: number; blob_bytes: number;
 }
+
+// ---------- Accounts and API keys ----------
+export interface AuthConfig {
+  auth_required: boolean;
+  setup_required: boolean;   // no account exists yet
+  login_available: boolean;  // an account exists
+  setup_allowed: boolean;    // loopback bind, or RAGCENTRE_ALLOW_REMOTE_SETUP
+}
+export interface WhoAmI { scope: "full" | "read" | "none"; kind: "admin_token" | "key" | "session" | "none" }
+export interface Me { id: UUID; username: string; display_name: string; is_platform_admin: boolean }
+export interface SetupRequest { username: string; display_name?: string; password: string }
+export interface LoginRequest { username: string; password: string }
+export interface PasswordChangeRequest { current_password: string; new_password: string }
+export interface CsrfToken { token: string }
+export interface AuthSession { csrf: string; user: Me }
+export interface ApiKeyCreate { name: string; scope: "read" | "full" }
+export interface ApiKeyCreated { id: UUID; name: string; scope: "read" | "full"; key: string; created_at: ISODate }
+export interface ApiKey { id: UUID; name: string; scope: "read" | "full"; created_at: ISODate; last_used_at: ISODate | null }

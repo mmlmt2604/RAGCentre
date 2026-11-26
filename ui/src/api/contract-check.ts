@@ -50,6 +50,14 @@ export type ResponseChecks = [
   Assignable<S["EvalItemComparison"], T.EvalItemComparison>,
   Assignable<S["Page_EvalItemComparison_"], T.Page<T.EvalItemComparison>>,
   Assignable<S["GcReport"], T.GcReport>,
+  Assignable<S["AuthConfig"], T.AuthConfig>,
+  Assignable<S["WhoAmI"], T.WhoAmI>,
+  Assignable<S["Me"], T.Me>,
+  Assignable<S["AuthSession"], T.AuthSession>,
+  Assignable<S["CsrfToken"], T.CsrfToken>,
+  Assignable<S["ApiKey"], T.ApiKey>,
+  Assignable<S["Page_ApiKey_"], T.Page<T.ApiKey>>,
+  Assignable<S["ApiKeyCreated"], T.ApiKeyCreated>,
 ];
 
 // ---- request bodies: UI -> backend -----------------------------------------------------------
@@ -62,4 +70,8 @@ export type RequestChecks = [
   Assignable<T.SecretSet, S["SecretSet"]>,
   Assignable<T.QueryRequest, S["QueryRequest"]>,
   Assignable<T.EvalRunCreate, S["EvalRunCreate"]>,
+  Assignable<T.SetupRequest, S["SetupRequest"]>,
+  Assignable<T.LoginRequest, S["LoginRequest"]>,
+  Assignable<T.PasswordChangeRequest, S["PasswordChangeRequest"]>,
+  Assignable<T.ApiKeyCreate, S["ApiKeyCreate"]>,
 ];

@@ -1,15 +1,14 @@
-import { Activity, Database, Monitor, Moon, Plug, RotateCw, Settings2, Sun, WifiOff } from "lucide-react";
+import { Activity, ChevronDown, Database, Monitor, Moon, Plug, RotateCw, Settings2, Sun, UserRound, WifiOff } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, type ReactNode } from "react";
-import { Link, NavLink, Outlet, useMatch, useParams } from "react-router";
-import { useCorpus, useHealth } from "../api/hooks";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, NavLink, Outlet, useMatch, useNavigate, useParams } from "react-router";
+import { useCorpus, useHealth, useLogout, useMe } from "../api/hooks";
 import { StatusIndicator } from "../components/Status";
 import { OcrBarStatus } from "../features/ocr/OcrBarStatus";
 import { OcrWatcher } from "../features/ocr/OcrWatcher";
 import { WelcomeSetup } from "../features/welcome/WelcomeSetup";
 import { count } from "../lib/format";
 import { useTheme, type ThemePref } from "../lib/theme";
-import { TokenPrompt } from "./TokenPrompt";
 
 const DevMenu = import.meta.env.DEV && import.meta.env.VITE_MOCK !== "0" ? lazy(() => import("./DevMenu")) : null;
 
@@ -44,6 +43,60 @@ function ThemeSwitch() {
     <button type="button" className="rc-iconbtn" onClick={() => setPref(next)} aria-label={`Theme: ${pref}. Switch to ${next}.`} title={`Theme: ${pref}`}>
       <Icon size={16} strokeWidth={1.75} aria-hidden />
     </button>
+  );
+}
+
+/** The signed-in account's affordance in the header: name, account page, sign out. */
+function AccountMenu() {
+  const me = useMe();
+  const logout = useLogout();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  if (!me.data) return null;
+
+  return (
+    <div className="shell-account" ref={ref}>
+      <button
+        type="button"
+        className="shell-account__btn"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title={`Signed in as ${me.data.username}`}
+      >
+        <UserRound size={15} strokeWidth={1.75} aria-hidden />
+        <span className="shell-account__name">{me.data.username}</span>
+        <ChevronDown size={12} strokeWidth={1.75} aria-hidden />
+      </button>
+      {open ? (
+        <div className="shell-account__menu" role="menu">
+          <Link to="/account" role="menuitem" onClick={() => setOpen(false)}>
+            Account &amp; API keys
+          </Link>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              logout.mutate(undefined, { onSuccess: () => navigate("/login", { replace: true }) });
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -85,7 +138,7 @@ function StatusBar() {
         <>
           <span className="shell-status__fact">{count(health.data.workers)} workers</span>
           <span className="shell-status__fact">v{health.data.version}</span>
-          {health.data.auth_required ? <span className="shell-status__fact">Token auth</span> : null}
+          {health.data.auth_required ? <span className="shell-status__fact">Signed in</span> : null}
         </>
       ) : null}
       <span className="shell-status__spacer" />
@@ -143,6 +196,7 @@ export function Shell() {
       <header className="shell-top">
         <Crumbs />
         <span className="shell-top__spacer" />
+        <AccountMenu />
         <ThemeSwitch />
       </header>
       <div className="shell-body">
@@ -150,7 +204,6 @@ export function Shell() {
         <Outlet />
       </div>
       <StatusBar />
-      <TokenPrompt />
       <OcrWatcher />
       <WelcomeSetup />
     </div>

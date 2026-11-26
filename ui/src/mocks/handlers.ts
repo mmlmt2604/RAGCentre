@@ -1,6 +1,7 @@
 // MSW request handlers implementing the API contract (§16, §22) over the in-memory store.
 import { delay, http, HttpResponse, type HttpResponseResolver } from "msw";
 import type { Page } from "../api/types";
+import * as auth from "./auth";
 import { db } from "./db";
 import { refreshProviderUsage, retryRuns } from "./engine";
 import * as out from "./serialize";
@@ -65,11 +66,8 @@ function route(handler: Handler, opts: { public?: boolean } = {}): HttpResponseR
     if (max > 0) await delay(min + Math.random() * (max - min));
     const state = db();
     if (state.failNetwork) return HttpResponse.error();
-    if (!opts.public && state.authToken) {
-      const auth = request.headers.get("Authorization");
-      if (auth !== `Bearer ${state.authToken}`)
-        return err(401, "unauthorized", "This server requires an access token.");
-    }
+    if (!opts.public && auth.authRequired(state) && auth.resolvePrincipal(state, request).scope === "none")
+      return err(401, "unauthorized", "Authentication required. Send 'Authorization: Bearer <key>' or sign in.");
     return guarded(handler)({ state, request, params: params as Ctx["params"] });
   };
 }
@@ -78,6 +76,63 @@ const p = (ctx: Ctx, name: string) => String(ctx.params[name] ?? "");
 
 export const handlers = [
   http.get("/v1/health", route(({ state }) => HttpResponse.json(out.health(state)), { public: true })),
+
+  // Accounts and API keys
+  http.get("/v1/auth/config", route(({ state }) => HttpResponse.json(auth.authConfig(state)), { public: true })),
+  http.get("/v1/auth/whoami", route(({ state, request }) => HttpResponse.json(auth.whoami(state, request)), { public: true })),
+  http.post("/v1/auth/setup", route(async (ctx) => {
+    const b = await body<{ username: string; display_name?: string; password: string }>(ctx);
+    if (ctx.state.account) return err(403, "setup_unavailable", "An account already exists; sign in instead.");
+    if ((b.password ?? "").length < auth.MIN_PASSWORD_LENGTH)
+      return err(422, "validation_error", "Invalid request: password: must be at least 15 characters.");
+    auth.createAccount(ctx.state, b.username, b.display_name ?? "", b.password);
+    return HttpResponse.json({ csrf: auth.MOCK_CSRF, user: auth.me(ctx.state) }, { status: 201 });
+  }, { public: true })),
+  http.post("/v1/auth/login", route(async (ctx) => {
+    const b = await body<{ username: string; password: string }>(ctx);
+    if (!auth.verifyLogin(ctx.state, b.username, b.password))
+      return err(401, "invalid_credentials", "Wrong username or password.");
+    return HttpResponse.json({ csrf: auth.MOCK_CSRF, user: auth.me(ctx.state) });
+  }, { public: true })),
+  http.post("/v1/auth/logout", route(({ state }) => {
+    auth.requireSession(state);
+    state.session = false;
+    return new HttpResponse(null, { status: 204 });
+  })),
+  http.post("/v1/auth/password", route(async (ctx) => {
+    auth.requireSession(ctx.state);
+    const b = await body<{ current_password: string; new_password: string }>(ctx);
+    if (ctx.state.account!.password !== b.current_password)
+      return err(401, "invalid_credentials", "Current password is wrong.");
+    if ((b.new_password ?? "").length < auth.MIN_PASSWORD_LENGTH)
+      return err(422, "validation_error", "Invalid request: new_password: must be at least 15 characters.");
+    ctx.state.account!.password = b.new_password;
+    ctx.state.session = false; // password change revokes every session
+    return new HttpResponse(null, { status: 204 });
+  })),
+  http.get("/v1/auth/me", route(({ state }) => {
+    auth.requireSession(state);
+    return HttpResponse.json(auth.me(state));
+  })),
+  http.get("/v1/auth/csrf", route(({ state }) => {
+    auth.requireSession(state);
+    return HttpResponse.json({ token: auth.MOCK_CSRF });
+  })),
+  http.get("/v1/keys", route(({ state }) => {
+    auth.requireSession(state);
+    return HttpResponse.json({ items: state.apiKeys.map(auth.apiKeyOut), next_cursor: null });
+  })),
+  http.post("/v1/keys", route(async (ctx) => {
+    auth.requireSession(ctx.state);
+    const b = await body<{ name: string; scope: "read" | "full" }>(ctx);
+    const created = auth.createKey(ctx.state, b.name, b.scope);
+    return HttpResponse.json(created, { status: 201 });
+  })),
+  http.delete("/v1/keys/:id", route((ctx) => {
+    auth.requireSession(ctx.state);
+    auth.revokeKey(ctx.state, p(ctx, "id"));
+    return new HttpResponse(null, { status: 204 });
+  })),
 
   // Providers
   http.get("/v1/provider-types", route(({ state }) => HttpResponse.json({ items: state.providerTypes, next_cursor: null }))),

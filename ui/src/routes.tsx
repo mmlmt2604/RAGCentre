@@ -3,6 +3,11 @@ import { CorpusList, ErrorBoundary, NotFound, RouteError } from "./app/pages";
 import { CorpusLayout, PageLayout, Shell } from "./app/Shell";
 import { ActivityPage } from "./features/activity/ActivityPage";
 import { AdminPage } from "./features/admin/AdminPage";
+import { AccountPage } from "./features/auth/Account";
+import { AuthLayout } from "./features/auth/AuthLayout";
+import { Login } from "./features/auth/Login";
+import { RequireAuth } from "./features/auth/RequireAuth";
+import { Setup } from "./features/auth/Setup";
 import { CorpusNew } from "./features/corpora/CorpusNew";
 import { CorpusSettings } from "./features/corpora/CorpusSettings";
 import { DocumentDetail } from "./features/documents/DocumentDetail";
@@ -24,40 +29,53 @@ const wrap = (el: React.ReactNode) => <ErrorBoundary>{el}</ErrorBoundary>;
 
 export const routes: RouteObject[] = [
   {
-    element: <Shell />,
+    element: <AuthLayout />,
+    children: [
+      { path: "login", element: <Login /> },
+      { path: "setup", element: <Setup /> },
+    ],
+  },
+  {
+    element: <RequireAuth />,
     errorElement: <RouteError />,
     children: [
       {
-        element: <PageLayout />,
+        element: <Shell />,
         children: [
-          { index: true, element: wrap(<CorpusList />) },
-          { path: "corpora/new", element: wrap(<CorpusNew />) },
-          { path: "providers", element: wrap(<ProviderList />) },
-          { path: "providers/new", element: wrap(<ProviderNew />) },
-          { path: "providers/:providerId", element: wrap(<ProviderDetail />) },
-          { path: "activity", element: wrap(<ActivityPage />) },
-          { path: "admin", element: wrap(<AdminPage />) },
-          { path: "*", element: <NotFound /> },
-        ],
-      },
-      {
-        path: "corpora/:corpusId",
-        element: <CorpusLayout />,
-        children: [
-          { index: true, element: <Navigate to="pipelines" replace /> },
-          { path: "documents", element: wrap(<DocumentList />) },
-          { path: "documents/:documentId", element: wrap(<DocumentDetail />) },
-          { path: "pipelines", element: wrap(<PipelineList />) },
-          { path: "pipelines/new", element: wrap(<PipelineBuilder />) },
-          { path: "pipelines/compare", element: wrap(<PipelineDiff />) },
-          { path: "pipelines/:pipelineId", element: wrap(<PipelineDetail />) },
-          { path: "query", element: wrap(<QueryPlayground />) },
-          { path: "eval", element: wrap(<EvalHome />) },
-          { path: "eval/datasets/:datasetId", element: wrap(<DatasetDetail />) },
-          { path: "eval/runs/:runId", element: wrap(<RunComparison />) },
-          { path: "eval/runs/:runId/items", element: wrap(<ItemDiff />) },
-          { path: "settings", element: wrap(<CorpusSettings />) },
-          { path: "*", element: <NotFound /> },
+          {
+            element: <PageLayout />,
+            children: [
+              { index: true, element: wrap(<CorpusList />) },
+              { path: "corpora/new", element: wrap(<CorpusNew />) },
+              { path: "providers", element: wrap(<ProviderList />) },
+              { path: "providers/new", element: wrap(<ProviderNew />) },
+              { path: "providers/:providerId", element: wrap(<ProviderDetail />) },
+              { path: "activity", element: wrap(<ActivityPage />) },
+              { path: "admin", element: wrap(<AdminPage />) },
+              { path: "account", element: wrap(<AccountPage />) },
+              { path: "*", element: <NotFound /> },
+            ],
+          },
+          {
+            path: "corpora/:corpusId",
+            element: <CorpusLayout />,
+            children: [
+              { index: true, element: <Navigate to="pipelines" replace /> },
+              { path: "documents", element: wrap(<DocumentList />) },
+              { path: "documents/:documentId", element: wrap(<DocumentDetail />) },
+              { path: "pipelines", element: wrap(<PipelineList />) },
+              { path: "pipelines/new", element: wrap(<PipelineBuilder />) },
+              { path: "pipelines/compare", element: wrap(<PipelineDiff />) },
+              { path: "pipelines/:pipelineId", element: wrap(<PipelineDetail />) },
+              { path: "query", element: wrap(<QueryPlayground />) },
+              { path: "eval", element: wrap(<EvalHome />) },
+              { path: "eval/datasets/:datasetId", element: wrap(<DatasetDetail />) },
+              { path: "eval/runs/:runId", element: wrap(<RunComparison />) },
+              { path: "eval/runs/:runId/items", element: wrap(<ItemDiff />) },
+              { path: "settings", element: wrap(<CorpusSettings />) },
+              { path: "*", element: <NotFound /> },
+            ],
+          },
         ],
       },
     ],

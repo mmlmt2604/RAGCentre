@@ -86,7 +86,7 @@ def test_legacy_index_collisions_are_quarantined(tmp_path: Path) -> None:
                 "VALUES (?, ?, 'fingerprint', 'fts', ?, 'now')",
                 [("1", "a", "legacy_shared"), ("2", "b", "legacy_shared"), ("3", "c", "legacy_distinct")],
             )
-        assert migrate(db) == [3, 4]
+        assert migrate(db) == [3, 4, 5]
         assert [r["broken"] for r in db.all("SELECT broken FROM indexes ORDER BY id")] == [1, 1, 0]
     finally:
         db.close()

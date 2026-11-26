@@ -1,0 +1,177 @@
+/* Sign-in and first-run account setup: a single centred card on the console ground. */
+
+.auth-layout {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-7);
+  background: var(--ground);
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  padding: var(--space-8);
+  border: 1px solid var(--seam);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+}
+
+.auth-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.auth-mark__name {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.auth-card > h1 {
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.auth-card__lead {
+  color: var(--text-2);
+  max-width: 60ch;
+}
+.auth-card__hint {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+.auth-command {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--seam);
+  border-radius: var(--radius);
+  background: var(--elevated);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.auth-form .form-error {
+  padding: var(--space-4) var(--space-5);
+}
+.auth-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.auth-head h1 {
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.auth-head p {
+  color: var(--text-2);
+  max-width: 60ch;
+}
+.auth-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--text-2);
+  margin: 0;
+}
+
+/* ---------- account menu (header) ---------- */
+
+.shell-account {
+  position: relative;
+}
+.shell-account__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--seam);
+  border-radius: var(--radius);
+  background: var(--elevated);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.shell-account__btn:hover {
+  background: var(--hover);
+}
+.shell-account__name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell-account__menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  border: 1px solid var(--seam-strong);
+  border-radius: var(--radius);
+  background: var(--elevated);
+  box-shadow: var(--shadow-pop);
+  z-index: 40;
+}
+.shell-account__menu a,
+.shell-account__menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.shell-account__menu a:hover,
+.shell-account__menu button:hover {
+  background: var(--hover);
+}
+
+/* ---------- one-time API-key secret ---------- */
+
+.key-secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.key-secret__warn {
+  color: var(--warn);
+}
+.key-secret__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.key-secret__value {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--seam);
+  border-radius: var(--radius);
+  background: var(--elevated);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.key-secret__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--text-2);
+}

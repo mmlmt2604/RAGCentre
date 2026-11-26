@@ -22,7 +22,7 @@ def health(ctx: AppContext = Depends(get_ctx)) -> Health:
         version=ctx.version,
         migration=int(ctx.db.scalar("PRAGMA user_version")),
         workers=ctx.worker_count,
-        auth_required=bool(ctx.settings.api_token),
+        auth_required=ctx.settings.api_token is not None or ctx.accounts.has_accounts(),
         secret_storage_enabled=bool(ctx.settings.secret_key),
     )
 

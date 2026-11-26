@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hmac
 import logging
 from pathlib import Path
 from typing import Any
@@ -16,12 +15,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ragcentre import __version__
+from ragcentre.api.principal import NONE, READ, csrf_valid, read_scope_allows, resolve_principal
 from ragcentre.api.routers import ROUTERS
 from ragcentre.api.ui import UiApp, is_api_path
 from ragcentre.context import AppContext
 from ragcentre.errors import ErrorCode, RagError
 from ragcentre.logs import redact
-from ragcentre.settings import Settings
 
 log = logging.getLogger("ragcentre.api")
 
@@ -80,12 +79,17 @@ def _unhandled(_: Request, exc: Exception) -> JSONResponse:
 
 
 class RequestGuard:
-    """Authenticate before routing and bound the body before request parsing."""
+    """Authenticate before routing and bound the body before request parsing.
 
-    def __init__(self, app: ASGIApp, settings: Settings) -> None:
+    Resolves one of three credential types to a principal: the legacy ``RAGCENTRE_API_TOKEN``
+    (full), a named API key (read or full), or a browser session cookie (full). A read-scoped key is
+    confined to the read allowlist in :mod:`ragcentre.api.principal`.
+    """
+
+    def __init__(self, app: ASGIApp, ctx: AppContext) -> None:
         self.app = app
-        self.token = settings.api_token.encode() if settings.api_token else None
-        self.limit = settings.max_upload_bytes
+        self.ctx = ctx
+        self.limit = ctx.settings.max_upload_bytes
 
     @staticmethod
     def _is_public(scope: Scope) -> bool:
@@ -94,9 +98,15 @@ class RequestGuard:
         if "//" in path or "\\" in path or {".", ".."}.intersection(path.split("/")) or b"%2f" in raw_path:
             return False
         if is_api_path(path):
-            return scope["method"] == "GET" and path == "/v1/health"
+            method = scope["method"]
+            if method == "GET" and path in {"/v1/health", "/v1/auth/config", "/v1/auth/whoami"}:
+                return True
+            return method == "POST" and path in {"/v1/auth/login", "/v1/auth/setup"}
         # Every API route is under /v1. Read-only paths outside it serve the built UI.
         return bool(path.startswith("/") and scope["method"] in {"GET", "HEAD"})
+
+    def _auth_required(self) -> bool:
+        return self.ctx.settings.api_token is not None or self.ctx.accounts.has_accounts()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -119,17 +129,38 @@ class RequestGuard:
             send = secured_send
 
         headers = Headers(scope=scope)
-        if self.token is not None and not self._is_public(scope):
-            scheme, _, supplied = headers.get("authorization", "").partition(" ")
-            if scheme.lower() != "bearer" or not hmac.compare_digest(supplied.strip().encode(), self.token):
+        path = get_route_path(scope)
+        principal = resolve_principal(self.ctx, headers)
+        scope["ragcentre_principal"] = principal
+        public = self._is_public(scope)
+
+        if not public and self._auth_required():
+            if principal["scope"] == NONE:
                 response = error_response(
                     401,
                     ErrorCode.UNAUTHORIZED.value,
-                    "This server requires an access token. Send it as 'Authorization: Bearer <token>'.",
+                    "Authentication required. Send 'Authorization: Bearer <key>' or sign in.",
                 )
                 response.headers["WWW-Authenticate"] = "Bearer"
                 await response(scope, receive, send)
                 return
+            if principal["scope"] == READ and not read_scope_allows(scope["method"], path):
+                await error_response(
+                    403, ErrorCode.READ_ONLY_TOKEN.value, "This key can read but cannot access this route."
+                )(scope, receive, send)
+                return
+
+        if (
+            not public
+            and principal["kind"] == "session"
+            and scope["method"] in {"POST", "PUT", "PATCH", "DELETE"}
+            and is_api_path(path)
+            and not csrf_valid(headers, principal)
+        ):
+            await error_response(403, ErrorCode.CSRF_INVALID.value, "Missing or invalid CSRF token.")(
+                scope, receive, send
+            )
+            return
 
         too_large = "Request body exceeds the upload limit."
         lengths = headers.getlist("content-length")
@@ -171,7 +202,7 @@ def create_app(ctx: AppContext | None, ui_dir: Path | None = None) -> FastAPI:
     )
     app.state.ctx = ctx
     if ctx is not None:
-        app.add_middleware(RequestGuard, settings=ctx.settings)
+        app.add_middleware(RequestGuard, ctx=ctx)
     app.add_exception_handler(RagError, _rag_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)

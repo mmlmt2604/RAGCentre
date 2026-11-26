@@ -32,6 +32,13 @@ class ErrorCode(StrEnum):
     PAYLOAD_TOO_LARGE = "payload_too_large"
     CONFLICT = "conflict"
     INTERNAL_ERROR = "internal_error"
+    READ_ONLY_TOKEN = "read_only_token"
+    TOO_MANY_REQUESTS = "too_many_requests"
+    SETUP_UNAVAILABLE = "setup_unavailable"
+    SETUP_REQUIRED = "setup_required"
+    INVALID_CREDENTIALS = "invalid_credentials"
+    SESSION_EXPIRED = "session_expired"
+    CSRF_INVALID = "csrf_invalid"
 
 
 class RagError(Exception):
@@ -121,6 +128,36 @@ class UnsupportedMediaType(RagError):
 class SecretStorageDisabled(RagError):
     code = ErrorCode.SECRET_STORAGE_DISABLED
     status = 409
+
+
+class InvalidCredentials(RagError):
+    code = ErrorCode.INVALID_CREDENTIALS
+    status = 401
+
+
+class RateLimited(RagError):
+    code = ErrorCode.TOO_MANY_REQUESTS
+    status = 429
+
+
+class SetupUnavailable(RagError):
+    code = ErrorCode.SETUP_UNAVAILABLE
+    status = 403
+
+
+class SetupRequired(RagError):
+    code = ErrorCode.SETUP_REQUIRED
+    status = 409
+
+
+class ReadOnlyToken(RagError):
+    code = ErrorCode.READ_ONLY_TOKEN
+    status = 403
+
+
+class CsrfInvalid(RagError):
+    code = ErrorCode.CSRF_INVALID
+    status = 403
 
 
 class GuardError(RagError):

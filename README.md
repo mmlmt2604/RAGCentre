@@ -28,11 +28,17 @@ Or with Docker (builds the web UI; data lives in the `ragcentre-data` volume):
 docker compose up --build       # http://localhost:8700
 ```
 
-Export `RAGCENTRE_API_TOKEN` before starting Compose. For a non-loopback bind, `ragcentre serve`
-requires a token unless you explicitly pass `--allow-no-token`.
+On first run, open the web UI and create your account (username + password). The browser stays signed
+in with a cookie; **API keys** (minted under **Account**) are what the CLI, MCP and scripts use. For a
+headless or Docker host, create the account from the server's shell with `ragcentre account init`.
 
-When a token is configured, `/v1/docs` and `/v1/openapi.json` require an Authorization header.
-To read the schema, run `curl -H "Authorization: Bearer $RAGCENTRE_API_TOKEN" http://127.0.0.1:8700/v1/openapi.json`.
+For a non-loopback bind, `ragcentre serve` requires an account or `RAGCENTRE_API_TOKEN` unless you
+explicitly pass `--allow-no-token`. First-run setup is only offered in the browser on a loopback bind;
+set `RAGCENTRE_ALLOW_REMOTE_SETUP=1` to allow it on a remote host.
+
+`RAGCENTRE_API_TOKEN` still works as a full-scope operator credential for the CLI and MCP. When a
+token is configured, `/v1/docs` and `/v1/openapi.json` require an Authorization header. To read the
+schema, run `curl -H "Authorization: Bearer $RAGCENTRE_API_TOKEN" http://127.0.0.1:8700/v1/openapi.json`.
 
 The example parser services are Compose profiles, so one command also gives you a parser for PDFs,
 Office documents and images:
@@ -158,6 +164,7 @@ Run `ragcentre COMMAND --help` for details.
 | `RAGCENTRE_HOST` / `RAGCENTRE_PORT` | `127.0.0.1` / `8700` | Where `serve` listens |
 | `RAGCENTRE_WORKERS` | `4` | Ingestion worker threads |
 | `RAGCENTRE_API_TOKEN` | unset | When set, API requests need `Authorization: Bearer <token>` except `GET /v1/health` |
+| `RAGCENTRE_ALLOW_REMOTE_SETUP` | unset | Allow first-run account setup in the browser on a non-loopback bind |
 | `RAGCENTRE_SECRET_KEY` | unset | Fernet key for storing provider secrets; without it only environment-variable references are allowed |
 | `RAGCENTRE_SECRET_ENV_PREFIXES` | `RAGCENTRE_PROVIDER_` | Comma-separated prefixes allowed for provider secret references |
 | `RAGCENTRE_EGRESS_ALLOW` | unset | Optional comma-separated provider hostnames, IP addresses or CIDRs |
@@ -263,8 +270,8 @@ To add a store, follow the [adapter guide](docs/protocols/vector-store-adapter-g
 
 `ragcentre serve` also serves the web UI at `/` when it has been built into
 `src/ragcentre/ui_dist/` (released wheels include it; a source checkout needs one build). Without
-a build, `/` explains how to make one. The UI asks for `RAGCENTRE_API_TOKEN` itself when the
-server requires one.
+a build, `/` explains how to make one. The UI signs you in with your account, and **Account → API keys**
+mints the `read`/`full` keys that MCP, the CLI and scripts use.
 
 ```sh
 cd ui

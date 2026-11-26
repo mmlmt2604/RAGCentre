@@ -23,6 +23,7 @@ from ragcentre.providers.egress import checked_http_client
 from ragcentre.settings import Settings
 
 if TYPE_CHECKING:
+    from ragcentre.accounts.service import Accounts
     from ragcentre.blobs import BlobStore
     from ragcentre.embedding_service import EmbeddingService
     from ragcentre.llm_service import LlmService
@@ -152,6 +153,13 @@ class AppContext:
         from ragcentre.ocr.monitor import OcrMonitor
 
         result: OcrMonitor = self._service("ocr", lambda: OcrMonitor(self))
+        return result
+
+    @property
+    def accounts(self) -> Accounts:
+        from ragcentre.accounts.service import Accounts
+
+        result: Accounts = self._service("accounts", lambda: Accounts(self))
         return result
 
     def pipeline_status(self, pipeline_id: str) -> Any:

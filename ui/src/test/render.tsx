@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { setupServer } from "msw/node";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { setToken } from "../api/client";
+import { setCsrf } from "../api/client";
 import { ToastProvider } from "../components/Toast";
 import { loadScenario } from "../mocks/db";
 import { handlers, setLatency } from "../mocks/handlers";
@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 afterEach(() => {
   server.resetHandlers();
-  setToken(null);
+  setCsrf(null);
 });
 afterAll(() => server.close());
 

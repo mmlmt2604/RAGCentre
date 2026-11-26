@@ -16,6 +16,7 @@ import "./styles/eval.css";
 import "./styles/ops.css";
 import "./styles/ocr.css";
 import "./styles/welcome.css";
+import "./styles/auth.css";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";

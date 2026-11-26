@@ -83,6 +83,21 @@ export interface EvalRunRec extends EvalRun {
   deferred?: { finishedAt: string };
 }
 
+export interface AccountRec {
+  username: string;
+  display_name: string;
+  password: string;
+}
+
+export interface ApiKeyRec {
+  id: string;
+  name: string;
+  scope: "read" | "full";
+  token: string; // the plaintext secret, mock-only
+  created_at: string;
+  last_used_at: string | null;
+}
+
 export interface MockState {
   providerTypes: ProviderType[];
   providers: Provider[];
@@ -94,7 +109,14 @@ export interface MockState {
   datasetItems: Record<string, EvalItem[]>;
   evalRuns: EvalRunRec[];
   nextRunId: number;
-  authToken: string | null;
+  /** Legacy RAGCENTRE_API_TOKEN (full-scope bearer). */
+  adminToken: string | null;
+  /** The single account, once created. */
+  account: AccountRec | null;
+  /** Whether the browser has a signed-in session cookie (mock-only). */
+  session: boolean;
+  /** Named API keys minted through POST /v1/keys. */
+  apiKeys: ApiKeyRec[];
   failNetwork: boolean;
   /** Whether the server has RAGCENTRE_SECRET_KEY, so secrets can be stored encrypted. */
   secretStorage: boolean;
@@ -128,7 +150,10 @@ export function emptyState(): MockState {
     datasetItems: {},
     evalRuns: [],
     nextRunId: 1,
-    authToken: null,
+    adminToken: null,
+    account: null,
+    session: false,
+    apiKeys: [],
     failNetwork: false,
     secretStorage: true,
     maxUploadBytes: 200 * 1024 * 1024,

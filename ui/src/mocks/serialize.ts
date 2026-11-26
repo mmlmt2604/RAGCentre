@@ -32,9 +32,9 @@ export function health(state: MockState): Health {
   return {
     status: "ok",
     version: "0.1.0-mock",
-    migration: 1,
+    migration: 5,
     workers: 4,
-    auth_required: state.authToken !== null,
+    auth_required: state.account !== null || state.adminToken !== null,
     secret_storage_enabled: state.secretStorage,
   };
 }

@@ -18,6 +18,9 @@ from ragcentre.settings import Settings
 
 AUTH = {"Authorization": "Bearer test-token"}
 
+# Routes reachable without credentials: health, and the auth endpoints that let a browser in.
+PUBLIC_ROUTES = {"/v1/health", "/v1/auth/config", "/v1/auth/whoami", "/v1/auth/setup", "/v1/auth/login"}
+
 
 @pytest.mark.parametrize("mode", ["direct", "root_path", "mount"])
 def test_public_and_protected_routes(tmp_path: Path, mode: str) -> None:
@@ -35,7 +38,7 @@ def test_public_and_protected_routes(tmp_path: Path, mode: str) -> None:
             assert client.get(prefix + "/v1/health").status_code == 200
             assert client.post(prefix + "/v1/health").status_code == 401
             for path, methods in schema["paths"].items():
-                if path == "/v1/health":
+                if path in PUBLIC_ROUTES:
                     continue
                 for method in methods:
                     assert client.request(method, prefix + path).status_code == 401, (method, path)
