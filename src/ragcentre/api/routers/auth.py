@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response
 
+from ragcentre.accounts.credentials import canonical_base
 from ragcentre.accounts.http import check_origin, cookie_name
 from ragcentre.accounts.sessions import local_enabled
 from ragcentre.accounts.users import complete_setup
@@ -41,6 +42,9 @@ def config(ctx: AppContext = Depends(get_ctx)) -> api.AuthConfig:
     enabled = local_enabled(ctx)
     return api.AuthConfig(
         mode="local" if enabled else "legacy",
+        browser_base_url=canonical_base(ctx.settings) if enabled else None,
+        browser_base_path=ctx.settings.browser_base_path,
+        supported_flows=["invitations", "recovery", "bootstrap"] if enabled and ctx.settings.browser_origin else [],
         setup_required=enabled
         and ctx.db.scalar("SELECT 1 FROM users WHERE status='active' AND is_platform_admin=1") is None,
     )

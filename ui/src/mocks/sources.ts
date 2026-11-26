@@ -1,6 +1,7 @@
 // Mock sync-source operations: the behaviour of the backend's sources router and sync engine,
 // close enough that the UI meets the same errors (IMPLEMENTATION_PLAN.md §11).
 import type { Source, SourceCreate, SourceItem, SourcePatch } from "../api/types";
+import { scopeProblem, scopeSchemaFor } from "../features/sources/scopeModel";
 import { uuidFrom } from "./hash";
 import { findCorpus, findProvider, MockError } from "./providers";
 import { now, type MockState } from "./store";
@@ -25,6 +26,8 @@ export function createSource(state: MockState, corpusId: string, body: SourceCre
   if (!name) throw new MockError(422, "validation_error", "Give the source a name.");
   if (state.sources.some((s) => s.corpus_id === corpusId && s.name === name))
     throw new MockError(409, "conflict", `A source named '${name}' already exists in this corpus.`);
+  const problem = scopeProblem(JSON.stringify(body.scope ?? {}), scopeSchemaFor(state.providerTypes, provider.type));
+  if (problem) throw new MockError(422, "validation_error", problem);
   const schedule_seconds = body.schedule_seconds ?? 3600;
   const source: Source = {
     id: uuidFrom(`source:${corpusId}:${name}:${Date.now()}`),
@@ -49,7 +52,12 @@ export function createSource(state: MockState, corpusId: string, body: SourceCre
 
 export function patchSource(state: MockState, id: string, body: SourcePatch): Source {
   const s = findSource(state, id);
-  if (body.scope !== null && body.scope !== undefined) s.scope = body.scope;
+  if (body.scope !== null && body.scope !== undefined) {
+    const provider = findProvider(state, s.provider_id);
+    const problem = scopeProblem(JSON.stringify(body.scope), scopeSchemaFor(state.providerTypes, provider.type));
+    if (problem) throw new MockError(422, "validation_error", problem);
+    s.scope = body.scope;
+  }
   if (body.metadata_template !== null && body.metadata_template !== undefined) s.metadata_template = body.metadata_template;
   if (body.attributes_template !== null && body.attributes_template !== undefined) s.attributes_template = body.attributes_template;
   if (body.schedule_seconds !== null && body.schedule_seconds !== undefined) {

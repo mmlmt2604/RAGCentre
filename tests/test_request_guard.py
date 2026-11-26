@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from starlette.types import Message
 from typer.testing import CliRunner
 
-from ragcentre.api.app import create_app
+from ragcentre.api.app import PUBLIC_ACCOUNT_LINKS, create_app
 from ragcentre.cli import app as cli
 from ragcentre.context import open_context
 from ragcentre.settings import Settings
@@ -40,6 +40,9 @@ def test_public_and_protected_routes(tmp_path: Path, mode: str) -> None:
                         assert client.request(method, prefix + path).status_code == 200
                     elif (method, path) in {("post", "/v1/auth/login"), ("post", "/v1/auth/setup")}:
                         assert client.request(method, prefix + path).status_code == 422
+                    elif method == "post" and path in PUBLIC_ACCOUNT_LINKS:
+                        # Purpose-token APIs are public but unavailable in legacy mode.
+                        assert client.request(method, prefix + path).status_code == 403
                     else:
                         assert client.request(method, prefix + path).status_code == 401, (method, path)
             for path in ("/v1/docs", "/v1/docs/oauth2-redirect", "/v1/openapi.json"):

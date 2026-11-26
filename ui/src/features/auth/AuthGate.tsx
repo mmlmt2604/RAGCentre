@@ -152,7 +152,7 @@ export function AuthGate() {
     void navigate("/", { replace: true });
   };
   const auth: AuthState = {
-    mode: runtime.legacy ? "legacy" : "local", current: runtime.current, teams: runtime.teams, teamId: runtime.teamId, generation: runtime.generation, localAvailable: runtime.config?.mode === "local",
+    mode: runtime.legacy ? "legacy" : "local", current: runtime.current, teams: runtime.teams, teamId: runtime.teamId, generation: runtime.generation, localAvailable: runtime.config?.mode === "local", browserBaseUrl: runtime.config?.browser_base_url,
     refresh: async () => { await refresh(); channel.current?.postMessage("changed"); },
     useLocal: () => { void refresh(); },
     switchTeam: (id) => {
@@ -174,13 +174,13 @@ export function AuthGate() {
   if (runtime.stage === "loading") content = <AuthFrame title="Connecting to RAGCentre"><p role="status">Checking your session…</p></AuthFrame>;
   else if (runtime.stage === "error") content = <AuthFrame title="Unable to connect"><ErrorState error={runtime.error} onRetry={() => window.location.reload()} /></AuthFrame>;
   else if (runtime.stage === "denied") content = <AuthFrame title="Access restricted"><p>This action is unavailable for your role in the selected team. Contact a team owner if you need access.</p><div className="inline-gap"><Button onClick={() => { void navigate("/", { replace: true }); void refresh(); }}>Return to corpora</Button><Link to="/account">Account and password</Link><LogoutButton /></div>{location.pathname === "/account" ? <AccountPage /> : null}</AuthFrame>;
-  else if (runtime.stage === "uninitialized") content = <AuthFrame title="Initialize local accounts"><p>A server operator must create the first administrator on the server:</p><pre className="mono">ragcentre user init-admin</pre><p className="muted">Then reload this page to sign in.</p><Button onClick={() => window.location.reload()}>Reload</Button><Button variant="ghost" onClick={useLegacy}>Use a legacy API token</Button></AuthFrame>;
+  else if (runtime.stage === "uninitialized") content = <AuthFrame title="Initialize local accounts"><p>A server operator can issue a one-time link to finish setup in this browser:</p><pre className="mono">ragcentre user setup-link</pre><p className="muted">Open the installation link printed by that command. To create the administrator entirely in the terminal, use <code>ragcentre user init-admin</code> instead, then reload to sign in.</p><Button onClick={() => window.location.reload()}>Reload</Button><Button variant="ghost" onClick={useLegacy}>Use a legacy API token</Button></AuthFrame>;
   else if (runtime.stage === "login") content = <Login onLegacy={useLegacy} onLogin={async (current) => {
     await activate(current, runtime.config!, true);
     channel.current?.postMessage("changed");
     void navigate("/", { replace: true });
   }} />;
-  else if (!runtime.legacy && !runtime.teamId && !(runtime.current?.user.is_platform_admin && ["/users", "/teams", "/account", "/admin"].includes(location.pathname))) content = <AuthFrame title="Team access pending"><p>You are signed in as <strong>{runtime.current?.user.username}</strong>. {runtime.current?.user.is_platform_admin ? "Create a team with an initial owner to start working." : "Ask a team owner to add your username to a team."}</p><div className="inline-gap">{runtime.current?.user.is_platform_admin ? <><Link to="/users">Manage users</Link><Link to="/teams">Create a team</Link></> : null}<Link to="/account">Account and password</Link><Button onClick={() => void refresh()}>Check access</Button><LogoutButton /></div>{location.pathname === "/account" ? <AccountPage /> : null}</AuthFrame>;
+  else if (!runtime.legacy && !runtime.teamId && !(runtime.current?.user.is_platform_admin && (["/users", "/teams", "/account", "/admin"].includes(location.pathname) || location.pathname.startsWith("/settings/instance")))) content = <AuthFrame title="Team access pending"><p>You are signed in as <strong>{runtime.current?.user.username}</strong>. {runtime.current?.user.is_platform_admin ? "Create a team with an initial owner to start working." : "Ask a team owner to add your username to a team."}</p><div className="inline-gap">{runtime.current?.user.is_platform_admin ? <><Link to="/users">Manage users</Link><Link to="/teams">Create a team</Link></> : null}<Link to="/account">Account and password</Link><Button onClick={() => void refresh()}>Check access</Button><LogoutButton /></div>{location.pathname === "/account" ? <AccountPage /> : null}</AuthFrame>;
   else content = <Outlet />;
 
   return <AuthContext.Provider value={auth}><ToastProvider key={runtime.generation}>{runtime.stage === "ready" && !runtime.legacy ? <SessionScope>{content}</SessionScope> : <div className="auth-root">{content}</div>}</ToastProvider></AuthContext.Provider>;

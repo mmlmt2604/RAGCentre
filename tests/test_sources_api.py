@@ -138,7 +138,7 @@ def test_duplicate_source_name_is_conflict(world: tuple[AppContext, TestClient])
     _source(client, corpus["id"], "s", provider["id"])
     r = client.post(
         f"/v1/corpora/{corpus['id']}/sources",
-        json={"name": "s", "provider_id": provider["id"], "scope": {}},
+        json={"name": "s", "provider_id": provider["id"], "scope": {"bucket": "b"}},
         headers=ADMIN,
     )
     assert r.status_code == 409, r.text
@@ -169,3 +169,57 @@ def test_cross_team_source_and_provider_are_404(world: tuple[AppContext, TestCli
     # A read token is rejected on every mutating source route.
     token_read = _token(client, team_b["id"], "read", "b-read")
     assert client.post(f"/v1/sources/{src_a['id']}/sync", headers=_auth(token_read)).status_code in (403, 404)
+
+
+def test_source_scope_validation_and_extension_roundtrip(world: tuple[AppContext, TestClient]) -> None:
+    ctx, client = world
+    corpus = _corpus(client, "scope-corpus")
+    provider = _connector(client, "scope-s3")
+    url = f"/v1/corpora/{corpus['id']}/sources"
+    bad = client.post(url, json={"name": "invalid", "provider_id": provider["id"], "scope": {}}, headers=ADMIN)
+    assert bad.status_code == 422
+    assert bad.json()["error"]["details"]["problems"][0]["path"] == "scope.bucket"
+    assert ctx.db.scalar("SELECT COUNT(*) FROM sync_sources") == 0
+    scope = {"bucket": "docs", "prefix": "a/", "future": {"nested": [1, None, True]}}
+    made = client.post(url, json={"name": "valid", "provider_id": provider["id"], "scope": scope}, headers=ADMIN)
+    assert made.status_code == 201, made.text
+    source_id = made.json()["id"]
+    ctx.db.execute("UPDATE sync_sources SET cursor = 'saved-cursor' WHERE id = ?", (source_id,))
+    invalid = client.patch(f"/v1/sources/{source_id}", json={"scope": {"bucket": "docs", "prefix": 123}}, headers=ADMIN)
+    assert invalid.status_code == 422
+    saved = client.get(f"/v1/sources/{source_id}", headers=ADMIN).json()
+    assert saved["scope"] == scope
+    assert saved["cursor"] == "saved-cursor"
+    for seconds in (0, 3600, 86400, 12345):
+        response = client.patch(f"/v1/sources/{source_id}", json={"schedule_seconds": seconds}, headers=ADMIN)
+        assert response.status_code == 200
+        assert response.json()["schedule_seconds"] == seconds
+        assert response.json()["scope"] == scope
+        assert response.json()["cursor"] == "saved-cursor"
+    replacement = {**scope, "prefix": "b/"}
+    response = client.patch(f"/v1/sources/{source_id}", json={"scope": replacement}, headers=ADMIN)
+    assert response.status_code == 200
+    assert response.json()["scope"] == replacement
+
+
+def test_older_scope_can_update_schedule_without_revalidation(world: tuple[AppContext, TestClient]) -> None:
+    ctx, client = world
+    corpus = _corpus(client, "old-corpus")
+    provider = _connector(client, "old-s3")
+    source = _source(client, corpus["id"], "old-source", provider["id"])
+    ctx.db.execute("UPDATE sync_sources SET scope = '{}' WHERE id = ?", (source["id"],))
+    response = client.patch(f"/v1/sources/{source['id']}", json={"schedule_seconds": 7200}, headers=ADMIN)
+    assert response.status_code == 200
+    assert response.json()["scope"] == {}
+
+
+def test_provider_type_scope_metadata(world: tuple[AppContext, TestClient]) -> None:
+    _, client = world
+    response = client.get("/v1/provider-types?limit=500", headers=ADMIN)
+    assert response.status_code == 200
+    items = response.json()["items"]
+    connectors = {item["type"]: item for item in items if item["kind"] == "connector"}
+    for connector in ("s3", "sharepoint", "confluence", "gdrive", "notion"):
+        assert connectors[connector]["scope_schema"]["additionalProperties"] is True
+    assert connectors["s3"]["scope_schema"]["required"] == ["bucket"]
+    assert all(item["scope_schema"] is None for item in items if item["kind"] != "connector")

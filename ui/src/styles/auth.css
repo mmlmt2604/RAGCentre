@@ -6,6 +6,29 @@
 .auth-form pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .auth-fields { display: grid; gap: var(--space-6); margin: var(--space-7) 0; }
 .auth-fields > .rc-btn { justify-self: start; }
+.auth-context { margin: var(--space-7) 0; }
+.auth-context > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5) 0; border-bottom: 1px solid var(--seam); }
+.auth-context dt { color: var(--text-2); }
+.auth-context dd { margin: 0; overflow-wrap: anywhere; }
+.invitations-section { margin: var(--space-7) 0; padding-bottom: var(--space-7); border-bottom: 1px solid var(--seam); }
+.invitations-section h3 { margin: var(--space-7) 0 var(--space-5); }
+.settings-layout { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100%; }
+.settings-nav { padding: var(--space-7) var(--space-6); border-right: 1px solid var(--seam); background: var(--panel); }
+.settings-nav h2 { margin: 0 0 var(--space-5); font-size: var(--text-md, 0.9375rem); }
+.settings-nav p { overflow-wrap: anywhere; }
+.settings-nav nav { display: grid; gap: var(--space-2); }
+.settings-nav a { padding: var(--space-4); border-radius: var(--radius); color: var(--text-2); }
+.settings-nav a:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.settings-nav a.active { color: var(--text); background: var(--accent-soft); }
+.settings-content { min-width: 0; overflow: auto; }
+.settings-overview { display: grid; gap: var(--space-6); max-width: 760px; }
+.settings-overview dt { font-weight: 500; }
+.settings-overview dd { margin: var(--space-3) 0 0; color: var(--text-2); }
+@media (max-width: 760px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  .settings-nav { padding: var(--space-6); border-right: 0; border-bottom: 1px solid var(--seam); }
+  .settings-nav nav { display: flex; flex-wrap: wrap; }
+}
 .account-password { max-width: 480px; }
 .shell-account { display: flex; align-items: center; gap: var(--space-5); min-width: 0; }
 .shell-account .rc-select { max-width: 260px; }

@@ -226,6 +226,14 @@ class ProviderManager:
     def create(
         self, name: str, kind: str, type_: str, config: Mapping[str, Any], *, team_id: str | None = None
     ) -> ProviderRow:
+        prepared = self.prepare_create(name, kind, type_, config, team_id=team_id)
+        with self.db.write() as conn:
+            return self.insert_prepared(conn, prepared)
+
+    def prepare_create(
+        self, name: str, kind: str, type_: str, config: Mapping[str, Any], *, team_id: str | None = None
+    ) -> ProviderRow:
+        """Validate and capture remote metadata before the caller opens a write transaction."""
         if not NAME_RE.match(name):
             raise ValidationFailed(
                 "Provider names use lowercase letters, digits and hyphens, start with a letter, "
@@ -257,17 +265,30 @@ class ProviderManager:
             raise Conflict(f"A provider named {name!r} already exists.")
         now = now_iso()
         fingerprint = fingerprint_for(spec, provider_id, stored)
+        return ProviderRow(provider_id, name, kind, type_, stored, fingerprint, now, now, team_id)
+
+    def insert_prepared(self, conn: sqlite3.Connection, row: ProviderRow) -> ProviderRow:
+        """Insert validated metadata in the caller's resource/result transaction. No network I/O."""
         try:
-            with self.db.write() as conn:
-                conn.execute(
-                    "INSERT INTO providers (id, name, kind, type, config, fingerprint, team_id, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (provider_id, name, kind, type_, json.dumps(stored), fingerprint, team_id, now, now),
-                )
+            conn.execute(
+                "INSERT INTO providers (id, name, kind, type, config, fingerprint, team_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    row.id,
+                    row.name,
+                    row.kind,
+                    row.type,
+                    json.dumps(row.config),
+                    row.fingerprint,
+                    row.team_id,
+                    row.created_at,
+                    row.updated_at,
+                ),
+            )
         except sqlite3.IntegrityError:
-            raise Conflict(f"A provider named {name!r} already exists.") from None
-        log.info("provider created", extra={"provider": name, "kind": kind, "type": type_})
-        return self.get(provider_id)
+            raise Conflict(f"A provider named {row.name!r} already exists.") from None
+        log.info("provider created", extra={"provider": row.name, "kind": row.kind, "type": row.type})
+        return row
 
     def _capture_info(self, spec: ProviderTypeSpec, provider_id: str, name: str, model: BaseModel) -> ServiceInfo:
         """Call ``/info`` (without credentials) to pin the service name and version."""

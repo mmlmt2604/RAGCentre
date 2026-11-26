@@ -7,7 +7,7 @@ export interface SecretDraft {
 }
 
 /**
- * Choose where a secret comes from: an environment variable on the server (recommended), or a
+ * Choose where a secret comes from: an environment variable on the server, or a
  * value stored encrypted (only when the server has RAGCENTRE_SECRET_KEY).
  */
 export function SecretInput({
@@ -41,7 +41,7 @@ export function SecretInput({
           label={`Source for ${secretKey}`}
           value={draft.mode}
           onChange={(mode) => onChange({ mode, value: mode === draft.mode ? draft.value : "" })}
-          options={options}
+          options={options.map((option) => ({ ...option, disabled: disabled || option.disabled }))}
         />
       </div>
       {draft.mode === "skip" ? (
@@ -69,7 +69,7 @@ export function SecretInput({
           ) : (
             <p className="rc-field__hint" id={`${id}-hint`}>
               {draft.mode === "env"
-                ? "The server reads this variable each time it calls the service. Nothing is stored."
+                ? "Only the variable name is saved. The server reads its value each time it calls the service."
                 : "Encrypted with the server's RAGCENTRE_SECRET_KEY. It cannot be read back."}
             </p>
           )}

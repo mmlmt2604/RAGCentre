@@ -1,4 +1,5 @@
-import { useCan, useTransport } from "../auth/context";
+import { useAuth, useCan, useTransport } from "../auth/context";
+import { DurableSetup } from "./DurableSetup";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, CircleCheck, CircleX, FileUp, RotateCw, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -35,6 +36,13 @@ import { ShimGuide } from "./ShimGuide";
  * Four choices fill in a live pipeline chain; nothing is created until the last step.
  */
 export function WelcomeSetup() {
+  const auth = useAuth();
+  const manage = useCan("manage");
+  if (!manage) return null;
+  return auth.mode === "local" ? <DurableSetup /> : <LegacyWelcomeSetup />;
+}
+
+function LegacyWelcomeSetup() {
   const [params, setParams] = useSearchParams();
   const corpora = useCorpora();
   const atHome = useMatch("/");
@@ -573,7 +581,7 @@ function Progress({ step }: { step: number }) {
 
 // ---------- Steps ----------
 
-function Head({ title, children }: { title: ReactNode; children?: ReactNode }) {
+export function Head({ title, children }: { title: ReactNode; children?: ReactNode }) {
   return (
     <header className="wl-head">
       <h2 id="wl-title">{title}</h2>
@@ -646,7 +654,7 @@ function Option({ name, checked, onSelect, title, meta, children, more, tag, arr
 
 const Tag = ({ children }: { children: ReactNode }) => <span className="rc-badge wl-tag">{children}</span>;
 
-function ParseStep({ c, set, errors, providers, ocrStatus, textParser, arrival, animateArrival, onAnimationEnd, onFound }: StepProps & {
+export function ParseStep({ c, set, errors, providers, ocrStatus, textParser, arrival, animateArrival, onAnimationEnd, onFound }: StepProps & {
   providers: Provider[];
   ocrStatus?: OcrStatus;
   textParser: string;
@@ -732,7 +740,7 @@ function ParseStep({ c, set, errors, providers, ocrStatus, textParser, arrival, 
   );
 }
 
-function EmbedStep({ c, set, errors, providers }: StepProps & { providers: Provider[] }) {
+export function EmbedStep({ c, set, errors, providers }: StepProps & { providers: Provider[] }) {
   const existing = providers.filter((p) => p.kind === "embedder");
   const e = c.embedder;
   return (
@@ -770,7 +778,7 @@ function EmbedStep({ c, set, errors, providers }: StepProps & { providers: Provi
   );
 }
 
-function StoreStep({ c, set, errors, providers }: StepProps & { providers: Provider[] }) {
+export function StoreStep({ c, set, errors, providers }: StepProps & { providers: Provider[] }) {
   const existing = providers.filter((p) => p.kind === "vector_store");
   const s = c.store;
   return (
@@ -824,7 +832,7 @@ function StoreStep({ c, set, errors, providers }: StepProps & { providers: Provi
   );
 }
 
-function NameStep({ c, set, errors }: StepProps) {
+export function NameStep({ c, set, errors }: StepProps) {
   return (
     <>
       <Head title="Name it and choose how to search">A corpus is a set of documents you search together. It can hold many pipelines, so you can compare them on the same documents.</Head>
@@ -876,7 +884,7 @@ function CreateStep({ tasks, pipeline }: { tasks: Task[]; pipeline: string }) {
   );
 }
 
-function TaskError({ error }: { error: unknown }) {
+export function TaskError({ error }: { error: unknown }) {
   const api = error instanceof ApiError ? error : null;
   const next = nextStep(error);
   return (

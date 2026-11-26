@@ -141,9 +141,15 @@ describe("local account UI", () => {
   });
   it("lets owners use guided setup without global OCR discovery", async () => {
     current!.memberships[0]!.role = "owner";
+    server.use(http.get("/v1/teams/team-a/setup", () => HttpResponse.json({
+      draft: { version: 0, draft: { mode: "trial", corpus_name: "", pipeline_name: "first-pipeline", retrieval: "hybrid", parser: null, embedder: null, store: null, dismissed: false, choice_step: 0 } },
+      draft_hash: "empty-hash",
+      operation: null,
+      readiness: { owner: true, corpus_id: null, pipeline_id: null, pipeline_fingerprint: null, services: false, providers: [], indexed_documents: 0, first_result_at: null, ready: false },
+    })));
     renderApp("/", "empty");
-    await screen.findByRole("heading", { name: "Set up your first pipeline" });
-    expect(requests.some((r) => new URL(r.url).pathname === "/v1/providers")).toBe(true);
+    await screen.findByRole("heading", { name: "Reach your first useful search" });
+    expect(requests.some((r) => new URL(r.url).pathname === "/v1/teams/team-a/setup")).toBe(true);
     expect(requests.some((r) => new URL(r.url).pathname === "/v1/ocr-services")).toBe(false);
   });
   it("does not sign out on an ordinary cross-team resource 404", async () => {

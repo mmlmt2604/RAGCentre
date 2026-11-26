@@ -37,10 +37,10 @@ export function parseJsonObject(text: string): { value?: Record<string, unknown>
 /** A human-readable schedule: "every hour" / "manual only". */
 export function scheduleLabel(seconds: number): string {
   if (seconds <= 0) return "Manual only";
-  if (seconds < 60) return `Every ${seconds}s`;
-  if (seconds < 3600) return `Every ${Math.round(seconds / 60)} min`;
-  if (seconds < 86_400) return `Every ${Math.round(seconds / 3600)} h`;
-  return `Every ${Math.round(seconds / 86_400)} d`;
+  if (seconds % 86_400 === 0) return `Every ${seconds / 86_400} d`;
+  if (seconds % 3600 === 0) return `Every ${seconds / 3600} h`;
+  if (seconds % 60 === 0) return `Every ${seconds / 60} min`;
+  return `Every ${seconds}s`;
 }
 
 /** The provider behind a source, or undefined while it loads. */

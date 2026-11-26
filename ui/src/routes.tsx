@@ -1,5 +1,8 @@
 import { AuthGate } from "./features/auth/AuthGate";
 import { AccountPage, SetupPage } from "./features/auth/AuthForms";
+import { InitializePage, JoinPage, RecoveryPage } from "./features/auth/LinkPages";
+import { SettingsLayout, TeamSettingsOverview, InstanceSettingsOverview } from "./features/members/SettingsLayout";
+import { TeamSetupPage } from "./features/welcome/TeamSetupPage";
 import { Require } from "./features/auth/Access";
 import { MembersPage } from "./features/members/MembersPage";
 import { UsersPage, TeamsPage } from "./features/members/UsersPage";
@@ -30,7 +33,12 @@ import { SourceList } from "./features/sources/SourceList";
 
 const wrap = (el: React.ReactNode) => <ErrorBoundary>{el}</ErrorBoundary>;
 
-export const routes: RouteObject[] = [{ path: "setup", element: wrap(<SetupPage />) }, { element: <AuthGate />, children: [
+export const routes: RouteObject[] = [
+  { path: "setup", element: wrap(<SetupPage />) },
+  { path: "join", element: wrap(<JoinPage />) },
+  { path: "recover", element: wrap(<RecoveryPage />) },
+  { path: "initialize", element: wrap(<InitializePage />) },
+  { element: <AuthGate />, children: [
   {
     element: <Shell />,
     errorElement: <RouteError />,
@@ -45,11 +53,23 @@ export const routes: RouteObject[] = [{ path: "setup", element: wrap(<SetupPage 
           { path: "providers/:providerId", element: wrap(<Require capability="providers"><ProviderDetail /></Require>) },
           { path: "activity", element: wrap(<ActivityPage />) },
           { path: "account", element: wrap(<AccountPage />) },
-          { path: "members", element: wrap(<Require capability="members"><MembersPage /></Require>) },
-          { path: "team-tokens", element: wrap(<Require capability="manage"><TeamTokensPage /></Require>) },
-          { path: "users", element: wrap(<Require capability="platform"><UsersPage /></Require>) },
-          { path: "teams", element: wrap(<Require capability="platform"><TeamsPage /></Require>) },
+          { path: "members", element: <Navigate to="/settings/team/members" replace /> },
+          { path: "team-tokens", element: <Navigate to="/settings/team/tokens" replace /> },
+          { path: "users", element: <Navigate to="/settings/instance/accounts" replace /> },
+          { path: "teams", element: <Navigate to="/settings/instance/teams" replace /> },
           { path: "admin", element: wrap(<Require capability="platform"><AdminPage /></Require>) },
+          { path: "settings/team", element: wrap(<Require capability="manage"><SettingsLayout scope="team" /></Require>), children: [
+            { index: true, element: wrap(<TeamSettingsOverview />) },
+            { path: "members", element: wrap(<MembersPage />) },
+            { path: "tokens", element: wrap(<TeamTokensPage />) },
+            { path: "setup", element: wrap(<TeamSetupPage />) },
+          ] },
+          { path: "settings/instance", element: wrap(<Require capability="platform"><SettingsLayout scope="instance" /></Require>), children: [
+            { index: true, element: wrap(<InstanceSettingsOverview />) },
+            { path: "accounts", element: wrap(<UsersPage />) },
+            { path: "teams", element: wrap(<TeamsPage />) },
+            { path: "health", element: wrap(<AdminPage />) },
+          ] },
           { path: "*", element: <NotFound /> },
         ],
       },

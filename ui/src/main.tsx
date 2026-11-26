@@ -26,6 +26,7 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import { ApiError } from "./api/client";
 import { initTheme } from "./lib/theme";
 import { routes } from "./routes";
+import { browserBasePath } from "./lib/deployment";
 
 initTheme();
 
@@ -48,7 +49,7 @@ async function start() {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={createBrowserRouter(routes)} />
+        <RouterProvider router={createBrowserRouter(routes, { basename: browserBasePath() || "/" })} />
       </QueryClientProvider>
     </StrictMode>,
   );

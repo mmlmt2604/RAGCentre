@@ -9,6 +9,7 @@ export interface AuthState {
   teamId: string | null;
   generation: number;
   localAvailable: boolean;
+  browserBaseUrl?: string | null;
   switchTeam: (id: string) => void;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;

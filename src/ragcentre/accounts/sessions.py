@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import secrets
+import sqlite3
 import threading
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 
+from ragcentre.accounts.credentials import invalidate_issuer, invalidate_target, prune_credentials
 from ragcentre.accounts.passwords import LoginLimiter, hash_password, needs_rehash, verify_password
 from ragcentre.accounts.users import audit, user_out
 from ragcentre.errors import Unauthorized, ValidationFailed
@@ -15,6 +17,26 @@ from ragcentre.timeutil import after, now_iso
 
 if TYPE_CHECKING:
     from ragcentre.context import AppContext
+
+
+def insert_session(conn: sqlite3.Connection, ctx: AppContext, user_id: str, auth_version: int) -> tuple[str, str]:
+    """Insert a session inside an account-activation transaction."""
+    token, session_id, now = secrets.token_urlsafe(32), new_id(), now_iso()
+    conn.execute(
+        "INSERT INTO user_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            session_id,
+            sha256_text(token),
+            user_id,
+            auth_version,
+            secrets.token_urlsafe(32),
+            now,
+            now,
+            after(ctx.settings.session_lifetime_seconds),
+        ),
+    )
+    audit(conn, "session.login", session_id, actor=user_id)
+    return token, session_id
 
 
 class Sessions:
@@ -35,27 +57,13 @@ class Sessions:
         if not verify_password(encoded, password) or row is None or encoded is None:
             raise Unauthorized("Invalid username or password.")
         upgraded = hash_password(password) if needs_rehash(encoded) else None
-        token, session_id, now = secrets.token_urlsafe(32), new_id(), now_iso()
         with self.ctx.db.write() as conn:
             current = conn.execute("SELECT status, auth_version FROM users WHERE id=?", (row["id"],)).fetchone()
             if current is None or current["status"] != "active" or current["auth_version"] != row["auth_version"]:
                 raise Unauthorized("Invalid username or password.")
             if upgraded:
                 conn.execute("UPDATE local_credentials SET password_hash=? WHERE user_id=?", (upgraded, row["id"]))
-            conn.execute(
-                "INSERT INTO user_sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    session_id,
-                    sha256_text(token),
-                    row["id"],
-                    row["auth_version"],
-                    secrets.token_urlsafe(32),
-                    now,
-                    now,
-                    after(self.ctx.settings.session_lifetime_seconds),
-                ),
-            )
-            audit(conn, "session.login", session_id, actor=row["id"])
+            token, session_id = insert_session(conn, self.ctx, row["id"], row["auth_version"])
         self.prune()
         return token, session_id
 
@@ -119,6 +127,9 @@ class Sessions:
                 (encoded, now_iso(), user_id),
             )
             conn.execute("DELETE FROM user_sessions WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM account_setup_tokens WHERE user_id=?", (user_id,))
+            invalidate_target(conn, user_id)
+            invalidate_issuer(conn, user_id)
             audit(conn, "user.password-change", user_id, actor=user_id)
 
     def prune(self) -> None:
@@ -126,6 +137,7 @@ class Sessions:
             return
         try:
             self._last_cleanup = monotonic()
+            prune_credentials(self.ctx)
             with self.ctx.db.write() as conn:
                 conn.execute(
                     "DELETE FROM user_sessions WHERE id IN (SELECT id FROM user_sessions WHERE expires_at<=? OR last_seen_at<=? LIMIT 100)",

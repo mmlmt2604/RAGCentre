@@ -32,6 +32,7 @@ class Settings:
     api_token: str | None = None
     auth_mode: str | None = None
     browser_origin: str | None = None
+    browser_base_path: str = ""
     insecure_local_cookie: bool = False
     session_idle_seconds: int = 8 * 3600
     session_lifetime_seconds: int = 7 * 86400
@@ -64,6 +65,7 @@ class Settings:
             api_token=_opt(e, "RAGCENTRE_API_TOKEN"),
             auth_mode=_opt(e, "RAGCENTRE_AUTH_MODE"),
             browser_origin=_opt(e, "RAGCENTRE_BROWSER_ORIGIN"),
+            browser_base_path=e.get("RAGCENTRE_BROWSER_BASE_PATH", ""),
             insecure_local_cookie=e.get("RAGCENTRE_INSECURE_LOCAL_COOKIE", "").lower() in {"1", "true"},
             session_idle_seconds=_int(e, "RAGCENTRE_SESSION_IDLE_SECONDS", 8 * 3600),
             session_lifetime_seconds=_int(e, "RAGCENTRE_SESSION_LIFETIME_SECONDS", 7 * 86400),

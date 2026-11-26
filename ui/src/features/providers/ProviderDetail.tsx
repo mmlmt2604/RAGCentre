@@ -134,6 +134,7 @@ function Detail({ p, type }: { p: Provider; type: ProviderType }) {
       {p.kind === "parser" && p.type === "http" ? <Can capability="platform"><OcrPanel provider={p} /></Can> : null}
 
       <TestResultView result={test.data} error={test.error} />
+      {p.kind === "connector" ? <p className="prov-section__desc">A connection check verifies the saved connector credentials and service. It does not verify access to a source's bucket, drive, folder, space or page; run a source sync to check that scope.</p> : null}
 
       {capabilities ? <StoreCapabilitiesPanel caps={capabilities} immutable={[]} /> : null}
 

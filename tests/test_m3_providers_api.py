@@ -61,7 +61,7 @@ def test_provider_types(client: TestClient) -> None:
     assert set(oa["config_schema"]["required"]) == {"base_url", "model"}
     assert items[("parser", "builtin_text")]["capabilities"] is None
     assert set(items[("parser", "http")]) == {
-        "kind", "type", "label", "description", "config_schema", "fingerprint_fields", "secret_keys", "capabilities",
+        "kind", "type", "label", "description", "config_schema", "fingerprint_fields", "secret_keys", "capabilities", "scope_schema",
     }  # fmt: skip
 
 

@@ -1,6 +1,7 @@
 // Synthetic demonstration data. Names and text are invented; nothing here is a real result.
 import type { EnrichMode, MetadataSchema, PipelineConfig, Provider, ProviderType, QueryTransformConfig, Source, SourceItem } from "../api/types";
 import { fp, rng, uuidFrom } from "./hash";
+import { connectorScopeSchemas } from "./scopeSchemas";
 import { ago, type CorpusRec, type DocRec } from "./store";
 
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required });
@@ -9,7 +10,7 @@ const int = (description: string, extra: Record<string, unknown> = {}) => ({ typ
 const bool = (description: string) => ({ type: "boolean", description });
 const http = { base_url: str("Service URL", { format: "uri" }), timeout_seconds: int("Request timeout", { default: 60 }), max_concurrency: int("Parallel requests", { default: 4 }) };
 
-export const providerTypes: ProviderType[] = [
+export const providerTypes: (ProviderType & { scope_schema?: unknown })[] = [
   {
     kind: "parser", type: "builtin_text", label: "Built-in text", description: "Plain text and Markdown, parsed in-process.",
     config_schema: obj({}), fingerprint_fields: ["impl_version"], secret_keys: [], capabilities: null,
@@ -84,27 +85,27 @@ export const providerTypes: ProviderType[] = [
     capabilities: { metrics: ["cosine", "l2", "dot"], max_batch: 1000, multi_vector: false, native_hybrid: false, max_dim: 20000, consistency: "eventual", filter_exact: false, max_collections: null },
   },
   {
-    kind: "connector", type: "s3", label: "S3", description: "Sync objects from an S3-compatible bucket.",
+    kind: "connector", type: "s3", scope_schema: connectorScopeSchemas.s3, label: "S3", description: "Sync objects from an S3-compatible bucket.",
     config_schema: obj({ base_url: str("S3 endpoint", { format: "uri" }), region: str("Region", { default: "us-east-1" }), path_style: bool("Path-style addressing"), timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }),
     fingerprint_fields: ["base_url", "region", "path_style"], secret_keys: ["access_key_id", "secret_access_key", "session_token"], capabilities: null,
   },
   {
-    kind: "connector", type: "sharepoint", label: "SharePoint", description: "Sync files from a SharePoint/OneDrive drive via Microsoft Graph.",
+    kind: "connector", type: "sharepoint", scope_schema: connectorScopeSchemas.sharepoint, label: "SharePoint", description: "Sync files from a SharePoint/OneDrive drive via Microsoft Graph.",
     config_schema: obj({ tenant_id: str("Tenant ID"), client_id: str("App (client) ID"), timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }, ["tenant_id", "client_id"]),
     fingerprint_fields: ["tenant_id", "client_id"], secret_keys: ["client_secret"], capabilities: null,
   },
   {
-    kind: "connector", type: "confluence", label: "Confluence Cloud", description: "Sync pages from a Confluence Cloud space, converted to Markdown.",
+    kind: "connector", type: "confluence", scope_schema: connectorScopeSchemas.confluence, label: "Confluence Cloud", description: "Sync pages from a Confluence Cloud space, converted to Markdown.",
     config_schema: obj({ base_url: str("Confluence Cloud URL", { format: "uri" }), timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }, ["base_url"]),
     fingerprint_fields: ["base_url"], secret_keys: ["email", "api_token"], capabilities: null,
   },
   {
-    kind: "connector", type: "gdrive", label: "Google Drive", description: "Sync files from a shared drive or folder via a service account.",
+    kind: "connector", type: "gdrive", scope_schema: connectorScopeSchemas.gdrive, label: "Google Drive", description: "Sync files from a shared drive or folder via a service account.",
     config_schema: obj({ service_account_email: str("Service account email"), timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }, ["service_account_email"]),
     fingerprint_fields: ["service_account_email"], secret_keys: ["service_account_key"], capabilities: null,
   },
   {
-    kind: "connector", type: "notion", label: "Notion", description: "Sync pages an integration can see (or a database), converted to Markdown.",
+    kind: "connector", type: "notion", scope_schema: connectorScopeSchemas.notion, label: "Notion", description: "Sync pages an integration can see (or a database), converted to Markdown.",
     config_schema: obj({ timeout_seconds: { type: "number", default: 120 }, max_concurrency: int("Parallel requests", { default: 4 }) }),
     fingerprint_fields: [], secret_keys: ["api_token"], capabilities: null,
   },

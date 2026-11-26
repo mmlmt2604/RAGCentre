@@ -9,6 +9,24 @@
   CLI and MCP keep their existing bearer-token contracts. Database migration 0007 adds identity
   tables without re-ingesting documents or changing corpus/provider/pipeline ownership. See
   `docs/user-accounts.md`.
+- Add atomic team invitations, admin-verified password recovery links, and a one-time browser
+  initialization claim (`ragcentre user setup-link`). Invitations reserve their token before
+  activation, can be reissued or revoked, and accept either a new account (activation) or an
+  existing signed-in account. Recovery links let a platform administrator reset a non-admin
+  account's password without signing in; the browser link finishes local-account setup in place of
+  `ragcentre user init-admin`. Database migration 0008 adds the invitation, recovery and claim
+  tables. See `docs/user-accounts.md`.
+- Add resumable team setup for owners. A durable wizard drafts, validates and runs the steps to
+  create a corpus and first pipeline (parser, embedder, vector store, corpus, pipeline, active
+  pipeline and saved-service checks), saving each choice per account and team so an interrupted
+  run resumes instead of starting over. Trial setup uses built-in components and a sample document;
+  custom setup connects existing services. Credentials stay in provider settings, never in the
+  draft. Database migration 0009 adds the draft, operation and step tables.
+- Add connector source scope schemas. Connector provider types expose a JSON schema for their
+  scope, and the source API validates submitted scopes (for example an S3 bucket, SharePoint drive
+  id or Confluence space key) while preserving unknown fields. See `docs/user-accounts.md`.
+- Serve the web UI under a configured browser base path so a reverse proxy can mount RAGCentre
+  beside other applications; the one-time link and asset paths honor the mount.
 
 ## 0.1.1
 

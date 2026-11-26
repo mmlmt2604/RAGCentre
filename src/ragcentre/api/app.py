@@ -18,17 +18,28 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ragcentre import __version__
-from ragcentre.accounts.http import check_csrf, cookie_name, validate_browser_settings
+from ragcentre.accounts.http import check_csrf, check_origin, cookie_name, validate_browser_settings
 from ragcentre.accounts.sessions import local_enabled
 from ragcentre.api.authz import Principal, read_allowed
 from ragcentre.api.routers import ROUTERS
 from ragcentre.api.ui import UiApp, is_api_path
 from ragcentre.context import AppContext
-from ragcentre.errors import ErrorCode, NotFound, RagError
+from ragcentre.errors import ErrorCode, Forbidden, NotFound, RagError, UnsupportedMediaType
 from ragcentre.logs import redact
 from ragcentre.timeutil import now_iso
 
 log = logging.getLogger("ragcentre.api")
+
+PUBLIC_ACCOUNT_LINKS = frozenset(
+    {
+        "/v1/auth/invitations/inspect",
+        "/v1/auth/invitations/activate",
+        "/v1/auth/recovery/inspect",
+        "/v1/auth/recovery/complete",
+        "/v1/auth/bootstrap/inspect",
+        "/v1/auth/bootstrap/complete",
+    }
+)
 
 _STATUS_CODES = {
     400: ErrorCode.VALIDATION_ERROR,
@@ -109,7 +120,7 @@ class RequestGuard:
         if "//" in path or "\\" in path or {".", ".."}.intersection(path.split("/")) or b"%2f" in raw_path:
             return False
         if is_api_path(path):
-            return (scope["method"], path) in {
+            return (scope["method"] == "POST" and path in PUBLIC_ACCOUNT_LINKS) or (scope["method"], path) in {
                 ("GET", "/v1/health"),
                 ("GET", "/v1/auth/config"),
                 ("POST", "/v1/auth/login"),
@@ -180,7 +191,27 @@ class RequestGuard:
             await self.app(scope, receive, send)
             return
 
-        if is_api_path(get_route_path(scope)):
+        if self.ctx.settings.browser_base_path and not scope.get("root_path"):
+            scope = {**scope, "root_path": self.ctx.settings.browser_base_path}
+        path = get_route_path(scope)
+        account_page = path in {
+            prefix + page
+            for prefix in {"", self.ctx.settings.browser_base_path}
+            for page in ("/join", "/recover", "/initialize", "/setup")
+        }
+        if account_page:
+            page_send = send
+
+            async def private_page_send(message: Message) -> None:
+                if message["type"] == "http.response.start":
+                    page_headers = MutableHeaders(scope=message)
+                    page_headers["Cache-Control"] = "no-store"
+                    page_headers["Referrer-Policy"] = "no-referrer"
+                    page_headers.setdefault("X-Content-Type-Options", "nosniff")
+                await page_send(message)
+
+            send = private_page_send
+        if is_api_path(path):
             original_send = send
 
             async def secured_send(message: Message) -> None:
@@ -198,6 +229,20 @@ class RequestGuard:
             send = secured_send
 
         headers = Headers(scope=scope)
+        if scope["method"] == "POST" and path in PUBLIC_ACCOUNT_LINKS:
+            try:
+                if not local_enabled(self.ctx):
+                    raise Forbidden("Local accounts are not enabled.")
+                if not self.ctx.settings.browser_origin:
+                    raise Forbidden("Account links require the configured browser origin.")
+                if "authorization" in headers:
+                    raise Forbidden("Use a purpose-specific account link without bearer authorization.")
+                check_origin(self.ctx.settings, headers, scope)
+                if headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+                    raise UnsupportedMediaType("Use application/json for account requests.")
+            except RagError as exc:
+                await error_response(exc.http_status, exc.error_code.value, exc.message)(scope, receive, send)
+                return
         if not self._is_public(scope):
             try:
                 principal = self._authenticate(headers)
@@ -226,7 +271,8 @@ class RequestGuard:
                 return
             scope.setdefault("state", {})["principal"] = principal
 
-        body_limit = min(self.limit, 16384) if get_route_path(scope).startswith("/v1/auth/") else self.limit
+        account_body = path.startswith("/v1/auth/") or "/invitations" in path or path.endswith("/recovery-token")
+        body_limit = min(self.limit, 16384) if account_body else self.limit
         too_large = "Request body exceeds the upload limit."
         lengths = headers.getlist("content-length")
         if lengths:
@@ -277,5 +323,5 @@ def create_app(ctx: AppContext | None, ui_dir: Path | None = None) -> FastAPI:
     for router in ROUTERS:
         app.include_router(router, prefix="/v1")
     # Last, so every API route matches first.
-    app.mount("/", UiApp(ui_dir), name="ui")
+    app.mount("/", UiApp(ui_dir, base_path=ctx.settings.browser_base_path if ctx else ""), name="ui")
     return app

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
 from ragcentre.errors import Conflict, ErrorCode, GuardError, InvalidPipeline, NotFound
@@ -212,8 +213,8 @@ def create_runs(conn: sqlite3.Connection, corpus_id: str, node_fps: list[str], d
     return created
 
 
-def create_pipeline(ctx: AppContext, corpus_id: str, raw: Any) -> str:
-    """Validate, save and plan a pipeline. Returns its id."""
+def create_pipeline(ctx: AppContext, corpus_id: str, raw: Any, *, connection: sqlite3.Connection | None = None) -> str:
+    """Validate, save and plan a pipeline. A supplied connection owns the transaction and catalog lock."""
     res = resolve_for_corpus(ctx, corpus_id, raw)
     if not res.valid:
         problems = [p.to_json() for p in res.problems]
@@ -223,7 +224,9 @@ def create_pipeline(ctx: AppContext, corpus_id: str, raw: Any) -> str:
     pipeline_id = new_id()
     now = now_iso()
     try:
-        with index_catalog_lock(ctx.settings.data_dir), ctx.db.write() as conn:
+        lock = index_catalog_lock(ctx.settings.data_dir) if connection is None else nullcontext()
+        transaction = ctx.db.write() if connection is None else nullcontext(connection)
+        with lock, transaction as conn:
             conn.execute(
                 "INSERT INTO pipelines (id, corpus_id, name, config, resolved, fingerprint, archived, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, 0, ?)",

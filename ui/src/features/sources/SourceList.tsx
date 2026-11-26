@@ -2,9 +2,9 @@ import { Plug, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../../api/client";
-import { useCorpus, useCreateSource, useDeleteSource, useProviders, useSources, useSyncSource } from "../../api/hooks";
+import { useCorpus, useCreateSource, useDeleteSource, useProviders, useProviderTypes, useSources, useSyncSource } from "../../api/hooks";
 import type { Provider, Source } from "../../api/types";
-import { Button, ButtonLink, IconButton } from "../../components/Button";
+import { Button, IconButton } from "../../components/Button";
 import { ConfirmDialog, Dialog } from "../../components/Dialog";
 import { Field, Select, TextInput } from "../../components/Field";
 import { EmptyState, ErrorState, SkeletonRows } from "../../components/States";
@@ -14,10 +14,17 @@ import { nextStep } from "../../lib/errors";
 import { count } from "../../lib/format";
 import { useToast } from "../../lib/toast";
 import { connectorProviders, parseJsonObject, providerOf, scheduleLabel, scopeText, STATUS_META } from "./model";
+import { useAuth, useTransport } from "../auth/context";
+import { SavedProviderCheck } from "../providers/ProviderCredentials";
+import { InlineConnectorCreate } from "./InlineConnectorCreate";
+import { ScheduleFields, ScopeFields } from "./SourceFields";
+import { broadScopeMessage, scheduleProblem, scopeProblem, scopeSchemaFor } from "./scopeModel";
 
 export function SourceList() {
   const { corpusId = "" } = useParams();
   const toast = useToast();
+  const { generation, teamId } = useAuth();
+  const { isCurrent } = useTransport();
   const corpus = useCorpus(corpusId);
   const providers = useProviders();
   const sources = useSources(corpusId);
@@ -29,7 +36,8 @@ export function SourceList() {
   const [deleting, setDeleting] = useState<Source | null>(null);
 
   const items = sources.data?.items ?? [];
-  const connectors = connectorProviders(providers.data?.items ?? []);
+  const sourceTeamId = corpus.data && "team_id" in corpus.data && typeof corpus.data.team_id === "string" ? corpus.data.team_id : teamId ?? undefined;
+  const connectors = connectorProviders(providers.data?.items ?? []).filter((provider) => !sourceTeamId || !("team_id" in provider) || provider.team_id === sourceTeamId);
 
   const syncNow = async (source: Source) => {
     setSyncingId(source.id);
@@ -68,9 +76,7 @@ export function SourceList() {
                 New source
               </Button>
             ) : (
-              <ButtonLink to="/providers/new?kind=connector" variant="primary" icon={Plus}>
-                Add a data connector
-              </ButtonLink>
+              <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>Add a data connector</Button>
             )
           }
         >
@@ -133,12 +139,15 @@ export function SourceList() {
 
       {creating ? (
         <SourceCreateDialog
+          key={`${generation}:${sourceTeamId}:${corpusId}`}
+          teamId={sourceTeamId}
           corpusName={corpus.data?.name ?? "this corpus"}
           connectors={connectors}
           pending={create.isPending}
           onClose={() => setCreating(false)}
           onSubmit={async (body) => {
             const created = await create.mutateAsync(body);
+            if (!isCurrent()) return;
             setCreating(false);
             toast({ tone: "ok", title: `Created ${created.name}`, body: scheduleLabel(created.schedule_seconds) === "Manual only" ? "Sync it manually, or edit it to add a schedule." : undefined });
           }}
@@ -172,40 +181,54 @@ export function SourceList() {
 }
 
 function SourceCreateDialog({
+  teamId,
   corpusName,
   connectors,
   pending,
   onClose,
   onSubmit,
 }: {
+  teamId?: string;
   corpusName: string;
   connectors: Provider[];
   pending: boolean;
   onClose: () => void;
   onSubmit: (body: { name: string; provider_id: string; scope: Record<string, unknown>; schedule_seconds: number }) => Promise<void>;
 }) {
+  const types = useProviderTypes();
+  const { isCurrent } = useTransport();
   const [name, setName] = useState("");
   const [providerId, setProviderId] = useState("");
   const [scopeTextValue, setScopeTextValue] = useState("{}");
   const [schedule, setSchedule] = useState("3600");
+  const [confirmed, setConfirmed] = useState(false);
+  const [addingConnector, setAddingConnector] = useState(false);
+  const [createdProvider, setCreatedProvider] = useState<Provider | null>(null);
+  const [failedSecrets, setFailedSecrets] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<ApiError | null>(null);
+  const allConnectors = createdProvider && !connectors.some((p) => p.id === createdProvider.id) ? [...connectors, createdProvider] : connectors;
+  const selected = allConnectors.find((p) => p.id === providerId);
+  const schema = scopeSchemaFor(types.data?.items, selected?.type);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setApiError(null);
     const scope = parseJsonObject(scopeTextValue);
-    const scheduleNum = Number(schedule);
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = "Give the source a name.";
     if (!providerId) errs.provider = "Choose a data connector.";
-    if (scope.error) errs.scope = scope.error;
-    if (!Number.isInteger(scheduleNum) || scheduleNum < 0) errs.schedule = "Seconds must be a whole number ≥ 0 (0 = manual only).";
+    const scopeError = scopeProblem(scopeTextValue, schema);
+    if (scopeError) errs.scope = scopeError;
+    if (!scopeError && broadScopeMessage(scopeTextValue, schema) && !confirmed) errs.scope = "Confirm the broad import scope before creating this source.";
+    const scheduleError = scheduleProblem(schedule);
+    if (scheduleError) errs.schedule = scheduleError;
     setErrors(errs);
-    if (Object.keys(errs).length) return;
+    if (Object.keys(errs).length || !isCurrent()) return;
     try {
-      await onSubmit({ name: name.trim(), provider_id: providerId, scope: scope.value ?? {}, schedule_seconds: scheduleNum });
+      await onSubmit({ name: name.trim(), provider_id: providerId, scope: scope.value ?? {}, schedule_seconds: Number(schedule) });
     } catch (e) {
+      if (!isCurrent()) return;
       if (e instanceof ApiError) {
         setApiError(e);
         if (e.code === "conflict") setErrors((x) => ({ ...x, name: e.message }));
@@ -214,47 +237,28 @@ function SourceCreateDialog({
   };
 
   return (
-    <Dialog open onClose={onClose} title="New source" width={520} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={pending} onClick={submit}>Create source</Button></>}>
-      {connectors.length === 0 ? (
-        <p>
-          This corpus has no data connectors yet.{" "}
-          <Link to="/providers/new?kind=connector" className="inline-link">
-            Create a data connector provider
-          </Link>{" "}
-          first, then come back to add a source.
-        </p>
-      ) : (
-        <form className="prov-form" onSubmit={submit} noValidate>
-          <Field label="Name *" error={errors.name}>
-            {(a11y) => <TextInput {...a11y} mono value={name} onChange={(e) => setName(e.target.value)} placeholder={`e.g. ${corpusName}-manuals`} autoComplete="off" required autoFocus />}
-          </Field>
-          <Field label="Data connector *" error={errors.provider} hint="The connector provider whose service this source reads from.">
-            {(a11y) => (
-              <Select {...a11y} value={providerId} onChange={(e) => setProviderId(e.target.value)} required>
-                <option value="">Choose a connector…</option>
-                {connectors.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.type})
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-          <Field label="Scope" error={errors.scope} hint="Connector-specific JSON: a bucket, drive, space or database. Empty for everything the connector can see.">
-            {(a11y) => <textarea {...a11y} className="rc-input mono" rows={4} value={scopeTextValue} spellCheck={false} placeholder='{"bucket": "support-docs"}' onChange={(e) => setScopeTextValue(e.target.value)} />}
-          </Field>
-          <Field label="Schedule (seconds)" error={errors.schedule} hint={`0 = manual only. ${scheduleLabel(Number(schedule) || 0)}`}>
-            {(a11y) => <TextInput {...a11y} mono inputMode="numeric" value={schedule} onChange={(e) => setSchedule(e.target.value)} required />}
-          </Field>
-          {apiError && apiError.code !== "conflict" ? (
-            <div className="form-error" role="alert">
-              <strong>{apiError.message}</strong>
-              {nextStep(apiError) ? <p>{nextStep(apiError)}</p> : null}
-              <code>{apiError.code}</code>
-            </div>
-          ) : null}
-        </form>
-      )}
+    <Dialog open onClose={onClose} title={addingConnector ? "Connect a data source" : "New source"} width={640} footer={addingConnector ? undefined : <><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={pending} disabled={!types.data || !selected} onClick={submit}>Create source</Button></>}>
+      {addingConnector ? <InlineConnectorCreate teamId={teamId} onCancel={() => setAddingConnector(false)} onCreated={(provider, missing) => {
+        if (!isCurrent()) return;
+        setCreatedProvider(provider); setProviderId(provider.id); setFailedSecrets(missing); setConfirmed(false); setAddingConnector(false);
+      }} /> : <form className="prov-form" onSubmit={submit} noValidate>
+        <Field label="Name *" error={errors.name}>
+          {(a11y) => <TextInput {...a11y} mono value={name} onChange={(e) => setName(e.target.value)} placeholder={`e.g. ${corpusName}-manuals`} autoComplete="off" required autoFocus />}
+        </Field>
+        <Field label="Data connector *" error={errors.provider} hint="The connector provider whose service this source reads from.">
+          {(a11y) => <Select {...a11y} value={providerId} onChange={(e) => { setProviderId(e.target.value); setConfirmed(false); }} required>
+            <option value="">Choose a connector…</option>
+            {allConnectors.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.type})</option>)}
+          </Select>}
+        </Field>
+        <Button icon={Plus} onClick={() => setAddingConnector(true)}>Create a connector here</Button>
+        {failedSecrets.length && createdProvider?.id === providerId ? <p className="rc-field__error" role="alert">The connector was created, but {failedSecrets.join(", ")} could not be saved. <Link className="inline-link" to={`/providers/${providerId}`}>Set the missing credentials</Link> before syncing.</p> : null}
+        {selected ? <SavedProviderCheck key={selected.id} provider={selected} /> : null}
+        {types.isError ? <ErrorState error={types.error} onRetry={() => void types.refetch()} /> : null}
+        {selected ? <ScopeFields key={selected.type} schema={schema} value={scopeTextValue} onChange={setScopeTextValue} error={errors.scope} confirmed={confirmed} onConfirm={setConfirmed} /> : null}
+        <ScheduleFields value={schedule} onChange={setSchedule} error={errors.schedule} />
+        {apiError && apiError.code !== "conflict" ? <div className="form-error" role="alert"><strong>{apiError.message}</strong>{nextStep(apiError) ? <p>{nextStep(apiError)}</p> : null}<code>{apiError.code}</code></div> : null}
+      </form>}
     </Dialog>
   );
 }

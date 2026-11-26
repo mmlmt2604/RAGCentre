@@ -17,8 +17,8 @@ type Assignable<From extends To, To> = [From, To];
 // ---- responses: backend -> UI ----------------------------------------------------------------
 export type ResponseChecks = [
   Assignable<S["Health"], T.Health>,
-  Assignable<S["ProviderType"], T.ProviderType>,
-  Assignable<S["Page_ProviderType_"], T.Page<T.ProviderType>>,
+  Assignable<S["ProviderTypeWithScope"], T.ProviderType>,
+  Assignable<S["Page_ProviderTypeWithScope_"], T.Page<T.ProviderType>>,
   Assignable<S["Provider"], T.Provider>,
   Assignable<S["Page_Provider_"], T.Page<T.Provider>>,
   Assignable<S["ProviderTestResult"], T.ProviderTestResult>,

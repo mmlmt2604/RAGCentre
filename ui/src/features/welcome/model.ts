@@ -2,6 +2,7 @@
 import type { OcrService, OcrStatus, PipelineConfig, Provider, ProviderCreate } from "../../api/types";
 import { PROVIDER_NAME_RE } from "../../lib/configSchema";
 import { ENGINES, shimCommand, urlPort, type EngineId, type RunWith } from "./engines";
+import type { SetupDraft } from "./setup";
 
 import { hasLocalContext, transportGeneration } from "../../api/client";
 
@@ -77,6 +78,28 @@ export function guideDetails(choice: GuideChoice, status: OcrStatus, providers: 
     ? choice.url ?? command.watchUrl ?? `http://<host>:${engine.port}`
     : undefined;
   return { engine, command, registered, watchUrl, manualUrl };
+}
+
+export function setupDraft(c: Choices, mode: "trial" | "custom", providers: Provider[], choiceStep: number, dismissed = false): SetupDraft {
+  const taken = new Set(providers.map((p) => p.name));
+  const claim = (pick: Pick | null) => { if (pick && "create" in pick) taken.add(pick.create.name); return pick; };
+  const parser = mode === "custom" && c.parser.mode !== "guide" ? claim(parserPick(c.parser, taken)) : null;
+  const embedder = mode === "custom" ? claim(embedderPick(c.embedder, taken)) : null;
+  const store = mode === "custom" ? claim(storePick(c.store, taken)) : null;
+  return { mode, corpus_name: c.corpus.trim(), pipeline_name: c.pipeline.trim() || "first-pipeline", retrieval: c.retrieval, parser, embedder, store, dismissed, choice_step: choiceStep };
+}
+
+/** Restore only the supported non-secret choices. The server rejects arbitrary draft fields. */
+export function choicesFromDraft(draft: SetupDraft): Choices {
+  const p = draft.parser;
+  const e = draft.embedder;
+  const s = draft.store;
+  return {
+    corpus: draft.corpus_name, pipeline: draft.pipeline_name, retrieval: draft.retrieval,
+    parser: p?.reuse ? { mode: "existing", name: p.reuse } : p?.create ? { mode: "url", url: String(p.create.config.base_url ?? "") } : { mode: "text" },
+    embedder: e?.reuse ? { mode: "existing", name: e.reuse } : e?.create && e.create.type === "openai_compatible" ? { mode: "openai", url: String(e.create.config.base_url ?? ""), model: String(e.create.config.model ?? "") } : { mode: "hash" },
+    store: s?.reuse ? { mode: "existing", name: s.reuse } : s?.create && s.create.type === "qdrant" ? { mode: "qdrant", url: String(s.create.config.url ?? "") } : s?.create && s.create.type === "chroma" ? { mode: "chroma", host: String(s.create.config.host ?? ""), port: String(s.create.config.port ?? 8000) } : { mode: "sqlite" },
+  };
 }
 
 // ---------- Validation, one step at a time ----------

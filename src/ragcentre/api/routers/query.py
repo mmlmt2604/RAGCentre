@@ -37,4 +37,7 @@ def query_corpus(
         body.debug,
         transform=body.transform,
     )
+    from ragcentre.onboarding.service import record_first_result
+
+    record_first_result(ctx, corpus_id, pipeline_id, result)
     return api.QueryResponse.model_validate(result)

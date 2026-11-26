@@ -98,6 +98,9 @@ class WhoAmI(ResponseModel):
 class AuthConfig(ResponseModel):
     mode: Literal["legacy", "local"]
     setup_required: bool
+    browser_base_url: str | None = None
+    browser_base_path: str = ""
+    supported_flows: list[Literal["invitations", "recovery", "bootstrap"]] = Field(default_factory=list)
 
 
 class LocalLogin(RequestModel):
@@ -168,6 +171,86 @@ class CurrentUser(ResponseModel):
 
 class CsrfToken(ResponseModel):
     csrf_token: str
+
+
+class PurposeToken(RequestModel):
+    token: str = Field(min_length=20, max_length=128)
+
+
+class InvitationCreate(RequestModel):
+    username: str = Field(max_length=64)
+    display_name: str = Field(default="", max_length=200)
+    role: Literal["viewer", "editor", "owner"] = "viewer"
+
+
+class TeamInvitation(ResponseModel):
+    id: str
+    team_id: str
+    user_id: str
+    issuer_user_id: str
+    username: str
+    display_name: str
+    role: Literal["viewer", "editor", "owner"]
+    kind: Literal["new_account", "existing_account"]
+    status: Literal["pending", "accepted", "expired", "revoked"]
+    created_at: str
+    expires_at: str
+    accepted_at: str | None
+    revoked_at: str | None
+    generation: int
+
+
+class AccountLinkCreated(ResponseModel):
+    token: str
+    expires_at: str
+    link: str
+    path: str
+
+
+class InvitationCreated(AccountLinkCreated):
+    invitation: TeamInvitation
+
+
+class InvitationInspection(ResponseModel):
+    username: str
+    display_name: str
+    team_id: str
+    team_name: str
+    role: Literal["viewer", "editor", "owner"]
+    expires_at: str
+    mode: Literal["activate", "sign_in"]
+
+
+class InvitationActivation(AccountSetup):
+    display_name: str | None = Field(default=None, max_length=200)
+
+
+class AccountArrival(ResponseModel):
+    current: CurrentUser
+    team_id: str
+    already_member: bool = False
+
+
+class RecoveryIssue(RequestModel):
+    current_password: str = Field(max_length=128)
+
+
+class RecoveryInspection(ResponseModel):
+    username: str
+    display_name: str
+    expires_at: str
+
+
+class BootstrapInspection(ResponseModel):
+    team_id: str
+    team_name: str
+    expires_at: str
+
+
+class BootstrapComplete(AccountSetup):
+    username: str = Field(max_length=64)
+    display_name: str = Field(default="", max_length=200)
+    team_name: str = Field(min_length=1, max_length=200)
 
 
 class ProviderSummary(ResponseModel):

@@ -299,6 +299,18 @@ def worker(
 # ---- local accounts ----------------------------------------------------------------------------
 
 
+@user_app.command("setup-link")
+def user_setup_link() -> None:
+    """Issue a 15-minute browser initialization link using this server's local settings."""
+    from ragcentre.accounts.bootstrap import issue
+
+    with _local_context() as ctx:
+        data = issue(ctx)
+    _emit(
+        data, lambda: typer.echo(f"Open this one-time installation link before {data['expires_at']}:\n{data['link']}")
+    )
+
+
 @user_app.command("init-admin")
 def user_init_admin() -> None:
     """Initialize the first local administrator using the configured data directory."""

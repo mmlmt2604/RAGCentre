@@ -31,9 +31,12 @@ docker compose up --build       # http://localhost:8700
 Export `RAGCENTRE_API_TOKEN` before starting the default Compose configuration. In legacy mode, a
 non-loopback `ragcentre serve` requires a token unless you explicitly pass `--allow-no-token`.
 
-For individual logins and team memberships, run `uv run ragcentre user init-admin`, then configure
-HTTPS for remote use (or `RAGCENTRE_INSECURE_LOCAL_COOKIE=true` for loopback development).
-[Local accounts and team membership](docs/user-accounts.md) covers setup, roles, upgrades and recovery.
+For individual logins and team memberships, run `uv run ragcentre user init-admin` (or issue a
+one-time browser link with `ragcentre user setup-link`), then configure HTTPS for remote use (or
+`RAGCENTRE_INSECURE_LOCAL_COOKIE=true` for loopback development). Team owners invite members by
+username with one-time links, recover lost passwords via an administrator-issued link, and run a
+resumable first-pipeline setup wizard. [Local accounts and team membership](docs/user-accounts.md)
+covers setup, roles, invitations, recovery, upgrades and the setup wizard.
 Accounts use the existing SQLite database; CLI/MCP bearer tokens continue to work.
 
 When a token is configured, `/v1/docs` and `/v1/openapi.json` require an Authorization header.
@@ -165,6 +168,7 @@ Run `ragcentre COMMAND --help` for details.
 | `RAGCENTRE_API_TOKEN` | unset | Global administrator bearer token; remains supported alongside local sessions |
 | `RAGCENTRE_AUTH_MODE` | unset | `legacy` or `local`; unset honors the database's local-account activation marker |
 | `RAGCENTRE_BROWSER_ORIGIN` | unset | Exact browser origin for local login; required for non-loopback serving |
+| `RAGCENTRE_BROWSER_BASE_PATH` | unset | Leading path prefix when the UI is mounted under a sub-path, e.g. `/ragcentre` |
 | `RAGCENTRE_INSECURE_LOCAL_COOKIE` | `false` | Explicit loopback-only HTTP development cookies |
 | `RAGCENTRE_SESSION_IDLE_SECONDS` / `RAGCENTRE_SESSION_LIFETIME_SECONDS` | `28800` / `604800` | Session inactivity / absolute lifetimes |
 | `RAGCENTRE_AUDIT_RETENTION_DAYS` | `90` | Local account audit retention |

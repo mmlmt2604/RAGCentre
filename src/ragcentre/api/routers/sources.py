@@ -12,6 +12,7 @@ from ragcentre.api.authz import principal_of, require_corpus, require_provider, 
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
 from ragcentre.api.permissions import SessionRoute
+from ragcentre.connectors.scopes import validate_scope
 from ragcentre.connectors.sync import enqueue_sync
 from ragcentre.context import AppContext
 from ragcentre.errors import Conflict, NotFound, ValidationFailed
@@ -91,6 +92,7 @@ def create_source(
     name = body.name.strip()
     if not name:
         raise ValidationFailed("Give the source a name.")
+    validate_scope(provider.type, body.scope)
     source_id = new_id()
     now = now_iso()
     next_run = now if body.schedule_seconds > 0 else None
@@ -135,6 +137,7 @@ def patch_source(
     sets: list[str] = []
     params: list[Any] = []
     if body.scope is not None:
+        validate_scope(ctx.providers.get(row["provider_id"]).type, body.scope)
         sets.append("scope = ?")
         params.append(json.dumps(body.scope))
     if body.metadata_template is not None:

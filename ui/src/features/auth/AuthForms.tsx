@@ -23,7 +23,7 @@ export function Login({ onLogin, onLegacy, notice }: { onLogin: (current: Curren
     } catch (e) { setError(e); setPassword(""); } finally { setBusy(false); }
   };
   return <AuthFrame title="Sign in to RAGCentre">
-    <p className="muted">Use the local account created by your platform administrator.</p>
+    <p className="muted">Use your RAGCentre account. If you have an invitation link, open it to join your team.</p>
     {notice ? <p role="status">{notice}</p> : null}
     <form onSubmit={(e) => void submit(e)} className="auth-fields">
       <Field label="Username">{(a) => <TextInput {...a} autoComplete="username" autoCapitalize="none" required maxLength={64} value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />}</Field>
@@ -31,7 +31,7 @@ export function Login({ onLogin, onLegacy, notice }: { onLogin: (current: Curren
       {error ? <ErrorState error={error} title="Sign-in failed" /> : null}
       <Button type="submit" variant="primary" loading={busy}>Sign in</Button>
     </form>
-    <p className="muted">Need a password reset? Contact the server operator.</p>
+    <details><summary>Forgot password?</summary><p className="muted">Ask a platform administrator for a recovery link. Administrator accounts require recovery by the server operator. If you already have a recovery link, open it to set your new password.</p></details>
     <Button variant="ghost" onClick={onLegacy}>Use a legacy API token</Button>
   </AuthFrame>;
 }

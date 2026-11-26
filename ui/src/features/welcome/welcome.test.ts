@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ENGINES, shimCommand, type RunWith } from "./engines";
-import { embedderPick, freeName, pipelineConfig, storePick, validateStep, defaultChoices, type Choices } from "./model";
+import { choicesFromDraft, setupDraft, embedderPick, freeName, pipelineConfig, storePick, validateStep, defaultChoices, type Choices } from "./model";
 
 const base: Choices = { parser: { mode: "text" }, embedder: { mode: "hash" }, store: { mode: "sqlite" }, corpus: "docs", pipeline: "first", retrieval: "hybrid" };
 
@@ -40,6 +40,14 @@ describe("welcome setup model", () => {
     expect(validateStep(2, { ...base, embedder: { mode: "openai", url: "nope", model: "" } }, new Set())).toHaveProperty("embedUrl");
     expect(validateStep(4, { ...base, corpus: "docs" }, new Set(["docs"]))).toHaveProperty("corpus");
     expect(validateStep(4, base, new Set())).toEqual({});
+  });
+
+  it("round-trips safe custom drafts with nullable API references", () => {
+    const choices: Choices = { ...base, embedder: { mode: "openai", url: "https://model.example/v1", model: "small" }, store: { mode: "existing", name: "saved-store" } };
+    const draft = setupDraft(choices, "custom", [], 3);
+    expect(draft).not.toHaveProperty("password");
+    expect(choicesFromDraft({ ...draft, embedder: { reuse: null, create: draft.embedder!.create }, store: { reuse: "saved-store", create: null } })).toEqual(choices);
+    expect(setupDraft(choices, "trial", [], 4)).toMatchObject({ parser: null, embedder: null, store: null });
   });
 
   it("defaults to no-setup built-ins on an empty server", () => {

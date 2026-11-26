@@ -82,7 +82,13 @@ def test_local_mode_never_grants_implicit_admin(tmp_path: Path) -> None:
     try:
         with TestClient(create_app(ctx)) as client:
             assert client.get("/v1/corpora").status_code == 401
-            assert client.get("/v1/auth/config").json() == {"mode": "local", "setup_required": True}
+            assert client.get("/v1/auth/config").json() == {
+                "mode": "local",
+                "setup_required": True,
+                "browser_base_url": None,
+                "browser_base_path": "",
+                "supported_flows": [],
+            }
             assert client.get("/v1/health").json()["auth_required"] is True
     finally:
         ctx.close()

@@ -7,6 +7,7 @@ import secrets
 import sqlite3
 from typing import TYPE_CHECKING, Any, Literal
 
+from ragcentre.accounts.credentials import invalidate_issuer, invalidate_target
 from ragcentre.accounts.passwords import hash_password
 from ragcentre.errors import Conflict, NotFound, ValidationFailed
 from ragcentre.hashing import new_id, sha256_text
@@ -52,6 +53,7 @@ def user_out(ctx: AppContext, user_id: str) -> dict[str, Any]:
 
 
 def _setup_token(conn: sqlite3.Connection, user_id: str) -> str:
+    invalidate_target(conn, user_id)
     token = secrets.token_urlsafe(32)
     conn.execute("DELETE FROM account_setup_tokens WHERE user_id = ?", (user_id,))
     conn.execute(
@@ -113,6 +115,7 @@ def complete_setup(ctx: AppContext, token: str, password: str) -> None:
             "UPDATE users SET status='active', updated_at=?, auth_version=auth_version+1 WHERE id=?",
             (now, current["user_id"]),
         )
+        invalidate_target(conn, current["user_id"])
         audit(conn, "user.activate", current["user_id"], actor=current["user_id"])
 
 
@@ -133,6 +136,9 @@ def init_admin(ctx: AppContext, name: str, password: str) -> dict[str, Any]:
         conn.execute("INSERT INTO local_credentials VALUES (?, ?, ?)", (user_id, encoded, now))
         conn.execute("INSERT INTO team_memberships VALUES (?, ?, 'owner', ?, ?)", (DEFAULT_TEAM_ID, user_id, now, now))
         conn.execute("UPDATE auth_state SET local_enabled=1, activated_at=? WHERE id=1", (now,))
+        conn.execute(
+            "UPDATE installation_claims SET revoked_at=? WHERE consumed_at IS NULL AND revoked_at IS NULL", (now,)
+        )
         audit(conn, "user.init-admin", user_id, kind="operator")
     return user_out(ctx, user_id)
 
@@ -153,6 +159,8 @@ def reset_password(ctx: AppContext, name: str, password: str) -> None:
         )
         conn.execute("DELETE FROM user_sessions WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM account_setup_tokens WHERE user_id=?", (user_id,))
+        invalidate_target(conn, user_id)
+        invalidate_issuer(conn, user_id)
         audit(conn, "user.password-recovery", user_id, kind="operator")
 
 
@@ -190,6 +198,13 @@ def set_membership(
             )
         if (previous is not None and previous["role"] == "owner") or role == "owner":
             ensure_owner(conn, team_id)
+        if (
+            previous is not None
+            and previous["role"] == "owner"
+            and role != "owner"
+            and not conn.execute("SELECT is_platform_admin FROM users WHERE id=?", (user_id,)).fetchone()[0]
+        ):
+            invalidate_issuer(conn, user_id, team_id)
         audit(
             conn,
             "membership.remove" if role is None else "membership.set",
@@ -237,5 +252,7 @@ def patch_user(ctx: AppContext, user_id: str, changes: dict[str, Any], *, actor:
             conn.execute("UPDATE users SET auth_version=auth_version+1 WHERE id=?", (user_id,))
             conn.execute("DELETE FROM user_sessions WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM account_setup_tokens WHERE user_id=?", (user_id,))
+            invalidate_target(conn, user_id)
+            invalidate_issuer(conn, user_id)
         audit(conn, "user.update", user_id, actor=actor)
     return user_out(ctx, user_id)

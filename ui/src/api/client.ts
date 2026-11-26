@@ -1,4 +1,5 @@
 import type { ApiError as ApiErrorBody } from "./types";
+import { apiUrl } from "../lib/deployment";
 
 const TOKEN_KEY = "ragcentre.token";
 let memoryToken: string | null = null;
@@ -88,7 +89,7 @@ function errorFrom(status: number, statusText: string, text: string): ApiError {
 const networkError = () => new ApiError(0, "network_error", "RAGCentre could not be reached. Check that the server is running.");
 
 async function scopedRequest<T>(scope: TransportState, path: string, options: RequestOptions = {}): Promise<T> {
-  const url = new URL(`/v1${path}`, window.location.origin);
+  const url = apiUrl(path);
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
@@ -131,7 +132,7 @@ function scopedUpload<T>(scope: TransportState, path: string, form: FormData, op
       scope.controller.signal.removeEventListener("abort", abort);
       options.signal?.removeEventListener("abort", abort);
     };
-    xhr.open(options.method ?? "POST", new URL(`/v1${path}`, window.location.origin).toString());
+    xhr.open(options.method ?? "POST", apiUrl(path).toString());
     xhr.withCredentials = true;
     for (const [key, value] of Object.entries(headers)) xhr.setRequestHeader(key, value);
     xhr.upload.onprogress = (e) => {
@@ -162,7 +163,7 @@ export function upload<T>(path: string, form: FormData, options: UploadOptions =
 async function scopedDownload(scope: TransportState, path: string, filename: string): Promise<void> {
   const headers = headersFor(scope, path, "GET");
   let response: Response;
-  try { response = await fetch(new URL(`/v1${path}`, window.location.origin), { headers, credentials: "same-origin", signal: scope.controller.signal, cache: "no-store" }); }
+  try { response = await fetch(apiUrl(path), { headers, credentials: "same-origin", signal: scope.controller.signal, cache: "no-store" }); }
   catch { if (scope.controller.signal.aborted) throw aborted(); throw networkError(); }
   assertCurrent(scope);
   if (!response.ok) {

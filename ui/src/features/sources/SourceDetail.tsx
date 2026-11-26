@@ -2,11 +2,11 @@ import { ArrowLeft, RefreshCw, Save, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../../api/client";
-import { useDeleteSource, usePatchSource, useProviders, useSource, useSourceItems, useSyncSource } from "../../api/hooks";
-import type { Source } from "../../api/types";
+import { useDeleteSource, usePatchSource, useProviders, useProviderTypes, useSource, useSourceItems, useSyncSource } from "../../api/hooks";
+import type { Provider, Source } from "../../api/types";
 import { Button, IconButton } from "../../components/Button";
 import { ConfirmDialog } from "../../components/Dialog";
-import { Field, TextInput } from "../../components/Field";
+import { Field } from "../../components/Field";
 import { ErrorState, Skeleton } from "../../components/States";
 import { Badge } from "../../components/Status";
 import { Time } from "../../components/Time";
@@ -14,6 +14,10 @@ import { nextStep } from "../../lib/errors";
 import { bytes } from "../../lib/format";
 import { useToast } from "../../lib/toast";
 import { parseJsonObject, providerOf, scheduleLabel, STATUS_META } from "./model";
+import { SavedProviderCheck } from "../providers/ProviderCredentials";
+import { useTransport } from "../auth/context";
+import { ScheduleFields, ScopeFields } from "./SourceFields";
+import { broadScopeMessage, scheduleProblem, scopeProblem, scopeSchemaFor } from "./scopeModel";
 
 export function SourceDetail() {
   const { corpusId = "", sourceId = "" } = useParams();
@@ -70,7 +74,7 @@ export function SourceDetail() {
         <ErrorState error={source.error} onRetry={() => void source.refetch()} />
       ) : s ? (
         <>
-          <SourceSettings key={s.id} source={s} corpusId={corpusId} providerName={provider?.name} />
+          <SourceSettings key={s.id} source={s} corpusId={corpusId} provider={provider} />
 
           <section className="prov-section" aria-labelledby="status-title">
             <h2 id="status-title">Schedule & status</h2>
@@ -167,8 +171,13 @@ export function SourceDetail() {
   );
 }
 
-function SourceSettings({ source, corpusId, providerName }: { source: Source; corpusId: string; providerName?: string }) {
+function SourceSettings({ source, corpusId, provider }: { source: Source; corpusId: string; provider?: Provider }) {
   const toast = useToast();
+  const { isCurrent } = useTransport();
+  const types = useProviderTypes();
+  const schema = scopeSchemaFor(types.data?.items, provider?.type);
+  const providerName = provider?.name;
+  const [confirmed, setConfirmed] = useState(false);
   const patch = usePatchSource(source.id, corpusId);
   const [scope, setScope] = useState(() => JSON.stringify(source.scope, null, 2));
   const [schedule, setSchedule] = useState(String(source.schedule_seconds));
@@ -185,16 +194,22 @@ function SourceSettings({ source, corpusId, providerName }: { source: Source; co
     const attrObj = parseJsonObject(attributes);
     const scheduleNum = Number(schedule);
     const errs: Record<string, string> = {};
-    if (scopeObj.error) errs.scope = scopeObj.error;
+    const scopeChanged = JSON.stringify(scopeObj.value) !== JSON.stringify(source.scope);
+    const scopeError = scopeChanged ? scopeProblem(scope, schema) : undefined;
+    if (scopeError) errs.scope = scopeError;
+    if (!scopeError && broadScopeMessage(scope, schema) && !confirmed) errs.scope = "Confirm the broad import scope before saving this source.";
     if (metaObj.error) errs.metadata = metaObj.error;
     if (attrObj.error) errs.attributes = attrObj.error;
-    if (!Number.isInteger(scheduleNum) || scheduleNum < 0) errs.schedule = "Seconds must be a whole number ≥ 0 (0 = manual only).";
+    const scheduleError = scheduleProblem(schedule);
+    if (scheduleError) errs.schedule = scheduleError;
     setErrors(errs);
     if (Object.keys(errs).length) return;
     try {
-      await patch.mutateAsync({ scope: scopeObj.value ?? {}, schedule_seconds: scheduleNum, metadata_template: metaObj.value ?? {}, attributes_template: attrObj.value ?? {} });
+      await patch.mutateAsync({ ...(scopeChanged ? { scope: scopeObj.value ?? {} } : {}), schedule_seconds: scheduleNum, metadata_template: metaObj.value ?? {}, attributes_template: attrObj.value ?? {} });
+      if (!isCurrent()) return;
       toast({ tone: "ok", title: `Saved ${source.name}` });
     } catch (e) {
+      if (!isCurrent()) return;
       if (e instanceof ApiError) setApiError(e);
     }
   };
@@ -211,12 +226,10 @@ function SourceSettings({ source, corpusId, providerName }: { source: Source; co
         )}
         . To read from a different connector, create a new source.
       </p>
-      <Field label="Scope" error={errors.scope} hint="Connector-specific JSON: a bucket, drive, space or database.">
-        {(a11y) => <textarea {...a11y} className="rc-input mono" rows={4} value={scope} spellCheck={false} onChange={(e) => setScope(e.target.value)} />}
-      </Field>
-      <Field label="Schedule (seconds)" error={errors.schedule} hint={`0 = manual only. ${scheduleLabel(Number(schedule) || 0)}`}>
-        {(a11y) => <TextInput {...a11y} mono inputMode="numeric" value={schedule} onChange={(e) => setSchedule(e.target.value)} />}
-      </Field>
+      {provider ? <SavedProviderCheck provider={provider} /> : null}
+      {types.isError ? <ErrorState error={types.error} onRetry={() => void types.refetch()} /> : null}
+      <ScopeFields schema={schema} value={scope} onChange={setScope} error={errors.scope} confirmed={confirmed} onConfirm={setConfirmed} />
+      <ScheduleFields value={schedule} onChange={setSchedule} error={errors.schedule} />
       <Field label="Metadata template" error={errors.metadata} hint="Merged into every document this source ingests.">
         {(a11y) => <textarea {...a11y} className="rc-input mono" rows={3} value={metadata} spellCheck={false} onChange={(e) => setMetadata(e.target.value)} />}
       </Field>
@@ -231,7 +244,7 @@ function SourceSettings({ source, corpusId, providerName }: { source: Source; co
         </div>
       ) : null}
       <div className="form-actions">
-        <Button type="submit" variant="primary" icon={Save} loading={patch.isPending}>
+        <Button type="submit" variant="primary" icon={Save} loading={patch.isPending} disabled={!types.data || !provider}>
           Save
         </Button>
       </div>

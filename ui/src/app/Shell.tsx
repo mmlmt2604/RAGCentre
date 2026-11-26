@@ -1,4 +1,4 @@
-import { Activity, Database, Monitor, Moon, Plug, RotateCw, Settings2, Sun, WifiOff, Users, UsersRound, KeyRound } from "lucide-react";
+import { Activity, Database, Monitor, Moon, Plug, RotateCw, Settings, Settings2, Sun, WifiOff } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useMatch, useParams } from "react-router";
@@ -22,10 +22,8 @@ const RAIL: { to: string; label: string; icon: typeof Database; end?: boolean; m
   { to: "/", label: "Corpora", icon: Database, end: true, match: ["/", "/corpora/*"] },
   { to: "/providers", label: "Providers", icon: Plug, capability: "providers" },
   { to: "/activity", label: "Activity", icon: Activity },
-  { to: "/members", label: "Members", icon: Users, capability: "members", localOnly: true },
-  { to: "/team-tokens", label: "Team tokens", icon: KeyRound, capability: "manage", localOnly: true },
-  { to: "/users", label: "Users", icon: UsersRound, capability: "platform", localOnly: true },
-  { to: "/teams", label: "Teams", icon: UsersRound, capability: "platform", localOnly: true },
+  { to: "/settings/team", label: "Team settings", icon: Settings, capability: "manage", localOnly: true },
+  { to: "/settings/instance", label: "Instance administration", icon: Settings2, capability: "platform", localOnly: true },
   { to: "/admin", label: "Admin", icon: Settings2, capability: "platform" },
 ];
 

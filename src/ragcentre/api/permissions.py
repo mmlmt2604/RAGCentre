@@ -32,7 +32,16 @@ def _register(policy: Policy, method: str, paths: str) -> None:
 
 
 _register("public", "GET", "/health /auth/config")
-_register("public", "POST", "/auth/login /auth/setup")
+_register(
+    "public",
+    "POST",
+    "/auth/login /auth/setup /auth/invitations/inspect /auth/invitations/activate /auth/recovery/inspect /auth/recovery/complete /auth/bootstrap/inspect /auth/bootstrap/complete",
+)
+_register("account", "POST", "/auth/invitations/accept")
+_register("admin", "POST", "/users/{user_id}/recovery-token")
+_register("owner", "GET", "/teams/{team_id}/invitations")
+_register("owner", "POST", "/teams/{team_id}/invitations /teams/{team_id}/invitations/{invitation_id}/reissue")
+_register("owner", "DELETE", "/teams/{team_id}/invitations/{invitation_id}")
 _register("account", "GET", "/auth/me /auth/csrf /auth/whoami /me/teams")
 _register("account", "POST", "/auth/logout /auth/password")
 _register("admin", "GET", "/users /teams /ocr-services")
@@ -81,13 +90,18 @@ _register(
     "DELETE",
     "/providers/{provider_id} /providers/{provider_id}/secrets/{key} /sources/{source_id} /teams/{team_id}/members/{username} /teams/{team_id}/tokens/{token_id}",
 )
+_register("owner", "GET", "/teams/{team_id}/setup /teams/{team_id}/setup-operations/{operation_id}")
+_register("owner", "POST", "/teams/{team_id}/setup-operations /teams/{team_id}/setup-operations/{operation_id}/steps/{step}")
+_register("owner", "PUT", "/teams/{team_id}/setup-draft")
 
 
 def authorize(request: Request, route: APIRoute) -> None:
     p = principal_of(request)
+    path = route.path if route.path.startswith("/v1/") else "/v1" + route.path
+    if ("/invitations" in path or path.endswith("/recovery-token")) and p.actor_kind != "user":
+        raise Forbidden("This action requires a local user session.")
     if p.actor_kind != "user":
         return
-    path = route.path if route.path.startswith("/v1/") else "/v1" + route.path
     policy = POLICIES.get((request.method, path))
     if policy is None:
         raise Forbidden("This route is not available to user sessions.")

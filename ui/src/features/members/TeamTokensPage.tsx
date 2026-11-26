@@ -5,7 +5,7 @@ import { Field, Select, TextInput } from "../../components/Field";
 import { ErrorState } from "../../components/States";
 import { useAuth } from "../auth/context";
 import { useDirectory, useManagementAction } from "./data";
-import { OneTimeValue } from "./UsersPage";
+import { OneTimeValue } from "./OneTimeValue";
 interface TeamToken { id: string; name: string; kind: "read" | "full"; created_at: string; last_used_at: string | null }
 export function TeamTokensPage() {
   const { teamId } = useAuth();

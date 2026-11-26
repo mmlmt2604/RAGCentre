@@ -16,7 +16,8 @@ import { nextStep } from "../../lib/errors";
 import { useToast } from "../../lib/toast";
 import { FoundShims } from "../ocr/FoundShims";
 import { KIND_LABEL, KINDS } from "./model";
-import { SecretInput, type SecretDraft } from "./SecretInput";
+import { type SecretDraft } from "./SecretInput";
+import { initialSecretDrafts, ProviderCredentials } from "./ProviderCredentials";
 import { StoreCapabilitiesPanel } from "./StoreCapabilities";
 
 /** Suggest an unused name for a copy: "bge-m3" -> "bge-m3-2". */
@@ -113,7 +114,8 @@ export function ProviderNew() {
           type={type}
           source={source ?? null}
           takenNames={new Set((providers.data?.items ?? []).map((p) => p.name))}
-          storageEnabled={health.data?.secret_storage_enabled ?? true}
+          storageEnabled={health.data?.secret_storage_enabled ?? false}
+          onRecheckStorage={() => void health.refetch()}
           pending={create.isPending}
           onSubmit={async (name, config, secrets) => {
             const created = await create.mutateAsync({ name, kind: type.kind, type: type.type, config });
@@ -140,11 +142,14 @@ export function ProviderNew() {
   );
 }
 
-function ProviderForm({
+export function ProviderForm({
   type,
   source,
   takenNames,
   storageEnabled,
+  preferStored = false,
+  onRecheckStorage,
+  onCancel,
   pending,
   onSubmit,
 }: {
@@ -152,6 +157,9 @@ function ProviderForm({
   source: Provider | null;
   takenNames: Set<string>;
   storageEnabled: boolean;
+  preferStored?: boolean;
+  onRecheckStorage?: () => void;
+  onCancel?: () => void;
   pending: boolean;
   onSubmit: (name: string, config: Record<string, unknown>, secrets: [string, { env: string } | { value: string }][]) => Promise<void>;
 }) {
@@ -162,7 +170,7 @@ function ProviderForm({
   const [values, setValues] = useState<FormValues>(() => initialValues(fields, source?.config));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
-  const [secrets, setSecrets] = useState<Record<string, SecretDraft>>(() => Object.fromEntries(type.secret_keys.map((k) => [k, { mode: "env", value: "" }])));
+  const [secrets, setSecrets] = useState<Record<string, SecretDraft>>(() => initialSecretDrafts(type.secret_keys, storageEnabled, preferStored));
   const [apiError, setApiError] = useState<ApiError | null>(null);
   const capturesInfo = type.fingerprint_fields.includes("service_version");
   const isStore = type.kind === "vector_store";
@@ -231,19 +239,7 @@ function ProviderForm({
       {type.secret_keys.length ? (
         <section className="prov-step" aria-labelledby="step-secrets">
           <h2 id="step-secrets" className="prov-step__title">Secrets</h2>
-          <p className="prov-step__desc">Secrets are write-only: after saving, RAGCentre shows whether one is set and where it comes from, never its value.</p>
-          {type.secret_keys.map((k) => (
-            <SecretInput
-              key={k}
-              secretKey={k}
-              draft={secrets[k]!}
-              onChange={(d) => setSecrets((x) => ({ ...x, [k]: d }))}
-              storageEnabled={storageEnabled}
-              allowSkip
-              error={errors[`secret:${k}`]}
-              disabled={pending}
-            />
-          ))}
+          <ProviderCredentials secretKeys={type.secret_keys} drafts={secrets} onChange={(key, draft) => setSecrets((current) => ({ ...current, [key]: draft }))} storageEnabled={storageEnabled} errors={errors} disabled={pending} onRecheck={onRecheckStorage} />
         </section>
       ) : null}
 
@@ -259,9 +255,7 @@ function ProviderForm({
         <Button type="submit" variant="primary" loading={pending}>
           {capturesInfo ? "Connect and create" : "Create provider"}
         </Button>
-        <Link to="/providers" className="link-btn">
-          Cancel
-        </Link>
+        {onCancel ? <Button onClick={onCancel}>Back to source</Button> : <Link to="/providers" className="link-btn">Cancel</Link>}
       </div>
     </form>
   );

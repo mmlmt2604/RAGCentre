@@ -10,6 +10,7 @@ from ragcentre.api.authz import DEFAULT_TEAM_ID, principal_of, require_provider,
 from ragcentre.api.deps import get_ctx
 from ragcentre.api.pagination import PageParams, page_params
 from ragcentre.api.permissions import SessionRoute
+from ragcentre.connectors.scopes import scope_schema
 from ragcentre.context import AppContext
 from ragcentre.errors import Forbidden, NotFound
 from ragcentre.models import api
@@ -44,8 +45,12 @@ def provider_out(ctx: AppContext, row: ProviderRow, usage: dict[str, int] | None
     )
 
 
-@router.get("/provider-types", response_model=api.Page[api.ProviderType])
-def list_provider_types(params: PageParams = Depends(page_params)) -> api.Page[api.ProviderType]:
+class ProviderTypeWithScope(api.ProviderType):
+    scope_schema: dict[str, Any] | None = None
+
+
+@router.get("/provider-types", response_model=api.Page[ProviderTypeWithScope])
+def list_provider_types(params: PageParams = Depends(page_params)) -> api.Page[ProviderTypeWithScope]:
     items = []
     for spec in sorted(provider_types().values(), key=lambda s: (s.kind, s.type)):
         caps = None
@@ -61,7 +66,8 @@ def list_provider_types(params: PageParams = Depends(page_params)) -> api.Page[a
                 max_collections=spec.capabilities.max_collections,
             )
         items.append(
-            api.ProviderType(
+            ProviderTypeWithScope(
+                scope_schema=scope_schema(spec.type) if spec.kind == "connector" else None,
                 kind=spec.kind,
                 type=spec.type,
                 label=spec.label,
@@ -73,7 +79,7 @@ def list_provider_types(params: PageParams = Depends(page_params)) -> api.Page[a
             )
         )
     part, nxt = params.page(items)
-    return api.Page[api.ProviderType](items=part, next_cursor=nxt)
+    return api.Page[ProviderTypeWithScope](items=part, next_cursor=nxt)
 
 
 @router.get("/providers", response_model=api.Page[api.Provider])

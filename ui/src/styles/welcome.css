@@ -8,6 +8,15 @@
   height: min(600px, calc(100vh - 48px));
   overflow: hidden;
 }
+.wl-durable .wl-main { overflow-y: auto; }
+.wl-durable .wl-main > form { flex-shrink: 0; }
+.wl-durable .wl-pane { overflow: visible; }
+.wl-embedded { width: 100%; max-width: 1100px; height: auto; min-height: 600px; border: 1px solid var(--seam); border-radius: var(--radius-lg); }
+.wl-embedded .wl-grid { height: auto; min-height: 600px; }
+.wl-durable .wl-log__line { grid-template-columns: minmax(0, 1fr) auto; overflow-wrap: anywhere; }
+.wl-durable .wl-log__line > .mono { grid-column: 1 / -1; }
+.wl-durable .wl-pane > form { display: flex; flex-direction: column; gap: var(--space-5); }
+.wl-durable .wl-note { overflow-wrap: anywhere; }
 .wl-loading {
   display: flex;
   align-items: center;
