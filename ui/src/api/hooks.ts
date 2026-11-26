@@ -95,8 +95,17 @@ export function useApiKeys() {
 /** Invalidate auth state after a login/logout/setup so the gate and account menu catch up. */
 function useInvalidateAuth() {
   const qc = useQueryClient();
-  return (csrf: string | null) => {
-    setCsrf(csrf);
+  return (session: AuthSession) => {
+    setCsrf(session.csrf);
+    // Optimistically reflect the sign-in so the gate settles immediately, without a window where a
+    // stale setup_required (or a missing me) sends the visitor back to setup/login.
+    qc.setQueryData(keys.me, session.user);
+    qc.setQueryData(keys.authConfig, {
+      auth_required: true,
+      setup_required: false,
+      login_available: true,
+      setup_allowed: true,
+    });
     void qc.invalidateQueries({ queryKey: keys.me });
     void qc.invalidateQueries({ queryKey: keys.authConfig });
   };
@@ -106,7 +115,7 @@ export function useLogin() {
   const invalidate = useInvalidateAuth();
   return useMutation({
     mutationFn: (body: LoginRequest) => request<AuthSession>("/auth/login", { method: "POST", body }),
-    onSuccess: (session) => invalidate(session.csrf),
+    onSuccess: (session) => invalidate(session),
   });
 }
 
@@ -114,7 +123,7 @@ export function useSetup() {
   const invalidate = useInvalidateAuth();
   return useMutation({
     mutationFn: (body: SetupRequest) => request<AuthSession>("/auth/setup", { method: "POST", body }),
-    onSuccess: (session) => invalidate(session.csrf),
+    onSuccess: (session) => invalidate(session),
   });
 }
 

@@ -48,15 +48,24 @@ export function RequireAuth() {
 
   useEffect(() => onUnauthorized(() => void qc.invalidateQueries({ queryKey: keys.me })), [qc]);
 
-  // Render through until we know auth is required (open mode stays instant; the server still
-  // guards every route, so nothing is exposed before a redirect).
-  if (!config.data?.auth_required) return <Outlet />;
+  const cfg = config.data;
 
-  if (me.isLoading) return <GateLoading />;
+  // A signed-in session always wins, even over a config that is still refetching after login/setup.
   if (me.isSuccess) return <Outlet />;
 
-  if (config.data.setup_required) {
-    return config.data.setup_allowed ? <Navigate to="/setup" replace state={{ from: location }} /> : <NoAccount />;
+  // First-run setup (no account yet): offer it in the browser when this bind allows it. A fresh
+  // install has auth_required false, so this must come before the session check.
+  if (cfg?.setup_required) {
+    return cfg.setup_allowed ? <Navigate to="/setup" replace state={{ from: location }} /> : <NoAccount />;
   }
-  return <Navigate to="/login" replace state={{ from: location }} />;
+
+  // An account or token exists: require a signed-in session, or send the visitor to sign in.
+  if (cfg?.auth_required) {
+    if (me.isLoading) return <GateLoading />;
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  // Config still loading, or auth not required and nothing to set up: render through. The server
+  // guards every route, so nothing is exposed before a redirect resolves.
+  return <Outlet />;
 }

@@ -23,7 +23,10 @@ describe("authentication", () => {
 
   it("creates the single account from first-run setup and signs straight in", async () => {
     const user = userEvent.setup();
-    const { state } = renderApp("/setup", "empty");
+    const { state } = renderApp("/setup", "empty", (s) => {
+      s.account = null;
+      s.session = false;
+    });
     await screen.findByRole("heading", { name: "Create your account" });
 
     await user.type(screen.getByLabelText("Username"), "alice");
@@ -34,6 +37,14 @@ describe("authentication", () => {
     expect(await screen.findByRole("heading", { name: "Corpora" })).toBeInTheDocument();
     expect(state.account?.username).toBe("alice");
     expect(state.session).toBe(true);
+  });
+
+  it("sends a fresh visitor to first-run setup instead of the open app", async () => {
+    renderApp("/", "empty", (s) => {
+      s.account = null;
+      s.session = false;
+    });
+    await screen.findByRole("heading", { name: "Create your account" });
   });
 
   it("signs out and returns to the login screen", async () => {
