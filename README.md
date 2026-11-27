@@ -25,25 +25,32 @@ uv run ragcentre serve          # API on http://127.0.0.1:8700, data in ./data
 Or with Docker (builds the web UI; data lives in the `ragcentre-data` volume):
 
 ```sh
-docker compose run --build --rm -it ragcentre ragcentre account init   # create your account once
-docker compose up --build                                              # http://localhost:8700
+docker compose up --build   # http://localhost:8700 → "Create your account"
 ```
 
-The `account init` step is required before the server starts on a non-loopback bind (the container
-listens on `0.0.0.0`). Or set `RAGCENTRE_API_TOKEN` instead and skip the account. Or create the
-account in the browser instead of the CLI:
+Docker Compose enables first-run browser account setup by default and publishes the application
+only on localhost. Open the URL and create your account; setup closes once an account exists.
+Use `docker compose -p <name> up --build` for a separate installation with its own data volume.
+
+To disable browser setup, set `RAGCENTRE_ALLOW_REMOTE_SETUP=0` and create the account from the CLI
+before starting the server:
 
 ```sh
-RAGCENTRE_ALLOW_REMOTE_SETUP=1 docker compose up --build   # then http://localhost:8700 → "Create your account"
+docker compose run --build --rm -it ragcentre ragcentre account init
+RAGCENTRE_ALLOW_REMOTE_SETUP=0 docker compose up --build
 ```
+
+You can also set `RAGCENTRE_API_TOKEN` for headless access. Before publishing the port beyond
+localhost, create an account or configure that token and disable first-run browser setup.
 
 On first run, open the web UI and create your account (username + password). The browser stays signed
 in with a cookie; **API keys** (minted under **Account**) are what the CLI, MCP and scripts use. For a
 headless or Docker host, create the account from the server's shell with `ragcentre account init`.
 
-For a non-loopback bind, `ragcentre serve` requires an account or `RAGCENTRE_API_TOKEN` unless you
-explicitly pass `--allow-no-token`. First-run setup is only offered in the browser on a loopback bind;
-set `RAGCENTRE_ALLOW_REMOTE_SETUP=1` to allow it on a remote host.
+Outside Docker Compose, first-run browser setup is enabled on loopback binds. A non-loopback bind
+requires an account, `RAGCENTRE_API_TOKEN`, or an explicit opt-in through
+`RAGCENTRE_ALLOW_REMOTE_SETUP=1` or `--allow-no-token`. Only `RAGCENTRE_ALLOW_REMOTE_SETUP=1`
+enables browser setup on that bind; `--allow-no-token` only permits startup.
 
 Behind an HTTPS reverse proxy, serve the UI and API on the same public origin. Preserve the public
 `Host` header, including a non-default port, and have the proxy overwrite `X-Forwarded-Proto` with
@@ -239,6 +246,26 @@ whose extra is missing fails with an error naming it. Secrets (API keys, connect
 never written in a provider file: reference an environment variable (`secrets: {api_key: {env: NAME}}`)
 or set a stored value with `ragcentre provider set-secret`. Each store has an example provider file
 under [`examples/providers/`](examples/providers/), registered with `ragcentre provider add -f FILE`.
+
+For Docker Compose, select the client extras when building the application image. The default is
+empty, so optional clients are installed only when selected:
+
+```sh
+# Include the Chroma client in this installation's application image.
+RAGCENTRE_EXTRAS=chroma docker compose -p ragcentre-fresh up -d --build ragcentre
+
+# Include several clients: comma-separated package extra names.
+RAGCENTRE_EXTRAS=chroma,qdrant docker compose -p ragcentre-fresh build ragcentre
+```
+
+Keep `RAGCENTRE_EXTRAS=chroma` (or your selected list) in Compose's `.env` file to retain the
+selection on future builds. Existing account and document volumes are preserved when rebuilding.
+For a direct Docker build, use `docker build --build-arg RAGCENTRE_EXTRAS=chroma -t ragcentre:chroma .`.
+Selecting a provider in the web UI does not install dependencies; changing the extras requires a
+new image build. Chroma's server still runs separately. With the test server published on host
+port 58000, use `{"mode": "http", "host": "host.docker.internal", "port": 58000, "ssl": false}`
+from the application container; if both services share a Docker network, use its service name and
+internal port instead. A container's `localhost` refers to that container.
 
 <!-- vector-stores:start -->
 | Type | Install | Metrics | Exact filters | Consistency | Max dim | Max batch | Config example | Details |

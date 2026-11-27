@@ -15,9 +15,12 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 COPY --from=ui /app/src/ragcentre/ui_dist ./src/ragcentre/ui_dist
+# Comma-separated optional package extras, e.g. chroma or chroma,qdrant. Empty keeps the base image.
+ARG RAGCENTRE_EXTRAS=""
 RUN uv build --wheel --out-dir /dist \
  && uv venv /opt/venv \
- && VIRTUAL_ENV=/opt/venv uv pip install /dist/*.whl
+ && set -- /dist/*.whl \
+ && VIRTUAL_ENV=/opt/venv uv pip install "${1}${RAGCENTRE_EXTRAS:+[${RAGCENTRE_EXTRAS}]}"
 
 # Stage 3: runtime.
 FROM python:3.13-slim
