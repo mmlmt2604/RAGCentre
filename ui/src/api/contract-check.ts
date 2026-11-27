@@ -32,6 +32,8 @@ export type ResponseChecks = [
   Assignable<S["Document"], T.Document>,
   Assignable<S["Page_Document_"], T.Page<T.Document>>,
   Assignable<S["Chunk"], T.Chunk>,
+  Assignable<S["ChunkWindow"], T.ChunkWindow>,
+  Assignable<S["DocumentOutline"], T.DocumentOutline>,
   Assignable<S["PipelinePlan"], T.PipelinePlan>,
   Assignable<S["Pipeline"], T.Pipeline>,
   Assignable<S["Page_Pipeline_"], T.Page<T.Pipeline>>,

@@ -11,7 +11,7 @@ transactional, database-backed logic.
 from __future__ import annotations
 
 import secrets
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from ragcentre.accounts.passwords import (
     hash_password,
@@ -20,7 +20,7 @@ from ragcentre.accounts.passwords import (
     validate_username,
     verify_password,
 )
-from ragcentre.errors import Conflict, NotFound, ValidationFailed
+from ragcentre.errors import Conflict, InvalidCredentials, NotFound, ValidationFailed
 from ragcentre.hashing import new_id, sha256_text
 from ragcentre.timeutil import after, now_iso
 
@@ -30,6 +30,15 @@ if TYPE_CHECKING:
 SESSION_COOKIE = "ragcentre_session"
 SESSION_LIFETIME_SECONDS = 30 * 24 * 3600  # 30 days, absolute; no idle timeout in single-user mode.
 KEY_LAST_USED_THROTTLE_SECONDS = 60
+
+
+class AccountIdentity(TypedDict):
+    id: str
+    username: str
+    display_name: str
+    is_platform_admin: bool
+    auth_version: int
+
 
 _dummy_hash: str | None = None
 
@@ -58,11 +67,7 @@ class Accounts:
         row = self.ctx.db.one("SELECT * FROM users ORDER BY rowid LIMIT 1")
         return dict(row) if row is not None else None
 
-    def _user_by_username(self, username: str) -> dict[str, Any] | None:
-        row = self.ctx.db.one("SELECT * FROM users WHERE username = ?", (username,))
-        return dict(row) if row is not None else None
-
-    def create_account(self, username: str, display_name: str, password: str) -> dict[str, Any]:
+    def create_account(self, username: str, display_name: str, password: str) -> AccountIdentity:
         """Create the single account and its credential, transactionally. Raises ``Conflict`` if an
         account already exists (there is no second account in this slice)."""
         username = validate_username(username)
@@ -87,38 +92,63 @@ class Accounts:
             "username": username,
             "display_name": display_name.strip(),
             "is_platform_admin": True,
+            "auth_version": 0,
         }
 
-    def verify_login(self, username: str, password: str) -> dict[str, Any] | None:
-        """Return the account when credentials are valid, else ``None`` (callers keep the error generic)."""
-        user = self._user_by_username(normalize_username(username))
-        if user is None:
+    def verify_login(self, username: str, password: str) -> AccountIdentity | None:
+        """Verify a consistent credential/version snapshot without holding a transaction while hashing.
+
+        Session issuance must revalidate this version: the password may change during verification.
+        """
+        row = self.ctx.db.one(
+            "SELECT u.*, c.password_hash FROM users u JOIN local_credentials c ON c.user_id = u.id "
+            "WHERE u.username = ?",
+            (normalize_username(username),),
+        )
+        if row is None:
             _dummy_verify(password)
             return None
-        cred = self.ctx.db.one("SELECT password_hash FROM local_credentials WHERE user_id = ?", (user["id"],))
-        if cred is None:
-            _dummy_verify(password)
+        if not verify_password(row["password_hash"], password) or row["status"] != "active":
             return None
-        if not verify_password(cred["password_hash"], password):
-            return None
-        if user["status"] != "active":
-            return None
-        return user
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "display_name": row["display_name"],
+            "is_platform_admin": bool(row["is_platform_admin"]),
+            "auth_version": row["auth_version"],
+        }
 
     def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
-        cred = self.ctx.db.one("SELECT password_hash FROM local_credentials WHERE user_id = ?", (user_id,))
+        cred = self.ctx.db.one(
+            "SELECT c.password_hash, u.auth_version FROM local_credentials c JOIN users u ON u.id = c.user_id "
+            "WHERE c.user_id = ?",
+            (user_id,),
+        )
         if cred is None:
             raise NotFound("Account credential not found.")
         if not verify_password(cred["password_hash"], current_password):
             raise ValidationFailed("The current password is wrong.")
-        self.reset_password(user_id, new_password)
+        self.reset_password(user_id, new_password, expected_auth_version=cred["auth_version"])
 
-    def reset_password(self, user_id: str, new_password: str) -> None:
-        """Set a new password and revoke every session (operator recovery, password change)."""
+    def reset_password(self, user_id: str, new_password: str, *, expected_auth_version: int | None = None) -> None:
+        """Replace credentials and revoke sessions atomically.
+
+        Browser changes must still match the verified version. Operator recovery intentionally
+        replaces the current credential without requiring the old password/version.
+        """
         validate_password(new_password)
         new_hash = hash_password(new_password)
         now = now_iso()
         with self.ctx.db.write() as conn:
+            user = conn.execute("SELECT status, auth_version FROM users WHERE id = ?", (user_id,)).fetchone()
+            if user is None:
+                raise NotFound("Account not found.")
+            if expected_auth_version is not None and (
+                user["status"] != "active" or user["auth_version"] != expected_auth_version
+            ):
+                raise InvalidCredentials("Credentials changed; sign in again.")
+            if conn.execute("SELECT 1 FROM local_credentials WHERE user_id = ?", (user_id,)).fetchone() is None:
+                raise NotFound("Account credential not found.")
             conn.execute(
                 "UPDATE local_credentials SET password_hash = ?, password_changed_at = ? WHERE user_id = ?",
                 (new_hash, now, user_id),
@@ -130,12 +160,15 @@ class Accounts:
 
     # ---- sessions ------------------------------------------------------------------------------
 
-    def create_session(self, user_id: str) -> tuple[str, str]:
-        """Create a session and return ``(session_token, csrf_secret)``. The token is stored hashed."""
+    def create_session(self, user_id: str, *, expected_auth_version: int) -> tuple[str, str]:
+        """Issue a session only while the verified credential version is still current and active."""
         token = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(32)
         now = now_iso()
         with self.ctx.db.write() as conn:
+            user = conn.execute("SELECT status, auth_version FROM users WHERE id = ?", (user_id,)).fetchone()
+            if user is None or user["status"] != "active" or user["auth_version"] != expected_auth_version:
+                raise InvalidCredentials("Wrong username or password.")
             conn.execute(
                 "INSERT INTO user_sessions (id, user_id, token_hash, auth_version, csrf_secret, created_at, "
                 "last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -143,7 +176,7 @@ class Accounts:
                     new_id(),
                     user_id,
                     sha256_text(token),
-                    0,
+                    expected_auth_version,
                     csrf,
                     now,
                     now,

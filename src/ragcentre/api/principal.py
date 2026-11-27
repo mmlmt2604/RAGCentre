@@ -8,6 +8,7 @@ it through ``get_principal``.
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import re
 from http.cookies import SimpleCookie
 from urllib.parse import urlsplit
@@ -87,21 +88,43 @@ def resolve_principal(ctx: AppContext, headers: Headers) -> dict[str, str]:
     return {"kind": "none", "scope": NONE}
 
 
-def _hostname(value: str) -> str:
-    return (urlsplit(value).hostname or "").lower()
+def _origin(value: str) -> tuple[str, str, int] | None:
+    """Parse a serialized HTTP origin without accepting URL-parser repairs."""
+    if not value or any(ord(char) <= 32 for char in value) or "\\" in value:
+        return None
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or parsed.path or "?" in value or "#" in value:
+            return None
+        if not re.fullmatch(r"(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._-]+)(?::[0-9]+)?", parsed.netloc):
+            return None
+        host = parsed.hostname
+        if not host:
+            return None
+        if ":" in host:
+            host = ipaddress.IPv6Address(host).compressed
+        port = parsed.port
+        return parsed.scheme, host.lower(), port if port is not None else (443 if parsed.scheme == "https" else 80)
+    except ValueError:
+        return None
 
 
-def csrf_valid(headers: Headers, principal: dict[str, str]) -> bool:
-    """Check the session-bound CSRF header and, when present, the request origin."""
+def csrf_valid(headers: Headers, principal: dict[str, str], *, scheme: str) -> bool:
+    """Check the session secret and any Origin against the effective ASGI request origin.
+
+    Proxy trust belongs to the server's proxy middleware; raw forwarding headers are ignored here.
+    Non-browser clients may omit Origin, but a present Origin must be a single valid match.
+    """
     supplied = headers.get("x-ragcentre-csrf", "")
     secret = principal.get("csrf_secret", "")
     if not supplied or not secret or not hmac.compare_digest(supplied.encode(), secret.encode()):
         return False
-    origin = headers.get("origin")
-    host = headers.get("host")
-    if origin and host:
-        origin_host = _hostname(origin)
-        host_host = host.rsplit(":", 1)[0].lower()
-        if origin_host and host_host and origin_host != host_host:
-            return False
-    return True
+    origins = headers.getlist("origin")
+    if not origins:
+        return True
+    hosts = headers.getlist("host")
+    if len(origins) != 1 or len(hosts) != 1:
+        return False
+    origin = _origin(origins[0])
+    target = _origin(f"{scheme}://{hosts[0]}")
+    return origin is not None and target is not None and origin == target

@@ -176,6 +176,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chunks/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chunk
+         * @description Read a current chunk and bounded neighbours from its own document and chunk stage.
+         *
+         *     Retained stages remain readable even when their pipeline is inactive, until garbage collection.
+         *     Chunk IDs identify stage/document/ordinal, not a revision snapshot. Without a pipeline selection,
+         *     enrichment is null: several enrich stages can share the same underlying chunk ID.
+         */
+        get: operations["get_chunk_v1_chunks__chunk_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/corpora": {
         parameters: {
             query?: never;
@@ -388,6 +412,34 @@ export interface paths {
         get: operations["get_content_v1_documents__document_id__content_get"];
         /** Replace Content */
         put: operations["replace_content_v1_documents__document_id__content_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/documents/{document_id}/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Outline
+         * @description Summarize the selected current chunk stage without reading chunk bodies.
+         *
+         *     Defaults to the corpus's active pipeline. A selected pipeline with no current chunks returns
+         *     zero chunks/sections; no active pipeline returns 404. Ambiguous text stages require a pipeline
+         *     with an unambiguous retrieval selection (422, as for the chunk list). Consecutive headings form
+         *     sections. Headingless runs split on page-range changes and at ten chunks. At most 200 sections
+         *     are returned, while chunk_count always counts the full stage. page_count is null: the current
+         *     metadata does not record a reliable source-page total (chunks can omit blank/trailing pages).
+         *     Section page ranges remain available without loading the parsed document body.
+         */
+        get: operations["get_outline_v1_documents__document_id__outline_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -982,6 +1034,15 @@ export interface components {
              */
             type: "chunk";
         };
+        /** ChunkWindow */
+        ChunkWindow: {
+            /** After */
+            after: components["schemas"]["Chunk"][];
+            /** Before */
+            before: components["schemas"]["Chunk"][];
+            chunk: components["schemas"]["Chunk"];
+            document: components["schemas"]["WindowDocument"];
+        };
         /** ConfigChange */
         ConfigChange: {
             /** A */
@@ -1103,6 +1164,21 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "running" | "succeeded" | "failed" | "blocked";
+        };
+        /** DocumentOutline */
+        DocumentOutline: {
+            /** Chunk Count */
+            chunk_count: number;
+            document: components["schemas"]["Document"];
+            /**
+             * Page Count
+             * @description Total source pages when reliably known; otherwise null.
+             */
+            page_count: number | null;
+            /** Sections */
+            sections: components["schemas"]["OutlineSection"][];
+            /** Truncated */
+            truncated: boolean;
         };
         /** DocumentPatch */
         DocumentPatch: {
@@ -1671,6 +1747,19 @@ export interface components {
              */
             text: "ok" | "failed" | "running" | "unknown";
         };
+        /** OutlineSection */
+        OutlineSection: {
+            /** Chunk Count */
+            chunk_count: number;
+            /** First Chunk Id */
+            first_chunk_id: string;
+            /** Heading Path */
+            heading_path: string[];
+            /** Page End */
+            page_end: number | null;
+            /** Page Start */
+            page_start: number | null;
+        };
         /** Page[ApiKey] */
         Page_ApiKey_: {
             /** Items */
@@ -2078,6 +2167,11 @@ export interface components {
             filter?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Max Chars
+             * @description Passage budget in Unicode codepoints, counting text, context, enrichment and each context_before/context_after string, including repeats. Excludes metadata, JSON and transform probes. Supplemental passages are removed first, then lower-ranked hits; an oversized first hit is clipped. Omit to keep all retrieved content.
+             */
+            max_chars?: number | null;
             /** Pipeline Id */
             pipeline_id?: string | null;
             /** Query */
@@ -2104,6 +2198,11 @@ export interface components {
                 [key: string]: number;
             };
             transform: components["schemas"]["QueryTransformInfo"] | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** QueryResult */
         QueryResult: {
@@ -2122,6 +2221,8 @@ export interface components {
             enrichment: string | null;
             /** Heading Path */
             heading_path: string[];
+            /** Ordinal */
+            ordinal: number;
             /** Page End */
             page_end: number | null;
             /** Page Start */
@@ -2347,6 +2448,25 @@ export interface components {
              * @enum {string}
              */
             scope: "full" | "read" | "none";
+        };
+        /** WindowDocument */
+        WindowDocument: {
+            /** Attributes */
+            attributes: {
+                [key: string]: unknown;
+            };
+            /** Corpus Id */
+            corpus_id: string;
+            /** External Id */
+            external_id: string | null;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: string | number | boolean;
+            };
         };
     };
     responses: never;
@@ -2614,6 +2734,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WhoAmI"];
+                };
+            };
+        };
+    };
+    get_chunk_v1_chunks__chunk_id__get: {
+        parameters: {
+            query?: {
+                before?: number;
+                after?: number;
+            };
+            header?: never;
+            path: {
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkWindow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3305,6 +3459,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Document"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_outline_v1_documents__document_id__outline_get: {
+        parameters: {
+            query?: {
+                pipeline_id?: string | null;
+            };
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentOutline"];
                 };
             };
             /** @description Validation Error */

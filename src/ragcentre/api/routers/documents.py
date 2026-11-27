@@ -9,7 +9,7 @@ from contextlib import nullcontext
 from typing import Any, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from fastapi.responses import JSONResponse
 
 from ragcentre.api.deps import get_ctx
@@ -390,50 +390,175 @@ def get_parsed(document_id: str, pipeline_id: str, ctx: AppContext = Depends(get
         return out
 
 
+def _text_stage(pipeline: Any, node_id: str | None = None) -> tuple[str, str | None]:
+    """Use the same chunk/enrichment selection for chunk lists and outlines."""
+    resolved = json.loads(pipeline["resolved"])
+    text_nodes = [n for n in resolved["nodes"] if n["type"] in ("chunk", "enrich")]
+    if node_id:
+        text_node = next((n for n in text_nodes if n["node_id"] == node_id), None)
+    else:
+        enrich = (resolved.get("retrieval_runtime") or {}).get("enrich")
+        chunks = [n for n in text_nodes if n["type"] == "chunk"]
+        text_node = (
+            next((n for n in text_nodes if n["node_id"] == enrich["node_id"]), None)
+            if enrich is not None
+            else chunks[0]
+            if len(chunks) == 1
+            else None
+        )
+    if text_node is None:
+        raise ValidationFailed("Choose a chunk or enrich node, or a pipeline with exactly one chunk node.")
+    if text_node["type"] == "enrich":
+        return text_node["runtime"]["chunk_fp"], text_node["node_fp"]
+    return text_node["node_fp"], None
+
+
+def _chunk_out(row: dict[str, Any]) -> api.Chunk:
+    return api.Chunk(
+        id=row["id"],
+        document_id=row["document_id"],
+        ordinal=row["ordinal"],
+        text=row["text"],
+        context=row["context"],
+        enrichment=row.get("enrichment") or None,
+        page_start=row["page_start"],
+        page_end=row["page_end"],
+        heading_path=json.loads(row["heading_path"]),
+        block_ids=json.loads(row["block_ids"]),
+        char_count=len(row["text"]),
+    )
+
+
+@router.get("/chunks/{chunk_id}", response_model=api.ChunkWindow)
+def get_chunk(
+    chunk_id: str,
+    before: int = Query(default=0, ge=0, le=10),
+    after: int = Query(default=0, ge=0, le=10),
+    ctx: AppContext = Depends(get_ctx),
+) -> api.ChunkWindow:
+    """Read a current chunk and bounded neighbours from its own document and chunk stage.
+
+    Retained stages remain readable even when their pipeline is inactive, until garbage collection.
+    Chunk IDs identify stage/document/ordinal, not a revision snapshot. Without a pipeline selection,
+    enrichment is null: several enrich stages can share the same underlying chunk ID.
+    """
+    document_id = ctx.db.scalar("SELECT document_id FROM chunks WHERE id = ?", (chunk_id,))
+    if document_id is None:
+        raise NotFound(f"Chunk {chunk_id} was not found.")
+    with document_lock(ctx.settings.data_dir, document_id), ctx.db.read():
+        doc = _get(ctx, document_id)
+        chunk = ctx.db.one(
+            "SELECT * FROM chunks WHERE id = ? AND document_id = ? AND doc_revision = ?",
+            (chunk_id, document_id, doc["revision"]),
+        )
+        if doc["status"] != "active" or chunk is None:
+            raise NotFound(f"Chunk {chunk_id} was not found.")
+        scope = (document_id, chunk["chunk_node_fp"], doc["revision"], chunk["ordinal"])
+        earlier = ctx.db.all(
+            "SELECT * FROM chunks WHERE document_id = ? AND chunk_node_fp = ? AND doc_revision = ? "
+            "AND ordinal < ? ORDER BY ordinal DESC LIMIT ?",
+            (*scope, before),
+        )
+        later = ctx.db.all(
+            "SELECT * FROM chunks WHERE document_id = ? AND chunk_node_fp = ? AND doc_revision = ? "
+            "AND ordinal > ? ORDER BY ordinal LIMIT ?",
+            (*scope, after),
+        )
+        return api.ChunkWindow(
+            chunk=_chunk_out(dict(chunk)),
+            before=[_chunk_out(dict(r)) for r in reversed(earlier)],
+            after=[_chunk_out(dict(r)) for r in later],
+            document=api.WindowDocument(
+                id=document_id,
+                corpus_id=doc["corpus_id"],
+                filename=doc["filename"],
+                external_id=doc["external_id"],
+                metadata=json.loads(doc["metadata"]),
+                attributes=json.loads(doc["attributes"]),
+            ),
+        )
+
+
+@router.get("/documents/{document_id}/outline", response_model=api.DocumentOutline)
+def get_outline(
+    document_id: str, pipeline_id: str | None = None, ctx: AppContext = Depends(get_ctx)
+) -> api.DocumentOutline:
+    """Summarize the selected current chunk stage without reading chunk bodies.
+
+    Defaults to the corpus's active pipeline. A selected pipeline with no current chunks returns
+    zero chunks/sections; no active pipeline returns 404. Ambiguous text stages require a pipeline
+    with an unambiguous retrieval selection (422, as for the chunk list). Consecutive headings form
+    sections. Headingless runs split on page-range changes and at ten chunks. At most 200 sections
+    are returned, while chunk_count always counts the full stage. page_count is null: the current
+    metadata does not record a reliable source-page total (chunks can omit blank/trailing pages).
+    Section page ranges remain available without loading the parsed document body.
+    """
+    with document_lock(ctx.settings.data_dir, document_id), ctx.db.read():
+        doc = _get(ctx, document_id)
+        if doc["status"] != "active":
+            raise NotFound(f"Document {document_id} was not found.")
+        if pipeline_id is None:
+            pipeline_id = ctx.db.scalar("SELECT active_pipeline_id FROM corpora WHERE id = ?", (doc["corpus_id"],))
+            if pipeline_id is None:
+                raise NotFound("This corpus has no active pipeline; pass pipeline_id explicitly.")
+        pipeline = _document_pipeline(ctx, document_id, pipeline_id)
+        chunk_fp, _ = _text_stage(pipeline)
+        scope = (document_id, chunk_fp, doc["revision"])
+        chunk_count = ctx.db.scalar(
+            "SELECT COUNT(*) FROM chunks WHERE document_id = ? AND chunk_node_fp = ? AND doc_revision = ?",
+            scope,
+        )
+        sections = ctx.db.all(
+            "WITH selected AS ("
+            " SELECT id, ordinal, json(heading_path) AS heading_path, page_start, page_end FROM chunks "
+            " WHERE document_id = ? AND chunk_node_fp = ? AND doc_revision = ?"
+            "), previous AS ("
+            " SELECT *, LAG(heading_path) OVER w AS prev_heading, LAG(page_start) OVER w AS prev_start,"
+            " LAG(page_end) OVER w AS prev_end FROM selected WINDOW w AS (ORDER BY ordinal)"
+            "), runs AS ("
+            " SELECT *, SUM(CASE WHEN heading_path = prev_heading AND (heading_path != '[]' OR "
+            " (page_start IS prev_start AND page_end IS prev_end)) THEN 0 ELSE 1 END)"
+            " OVER (ORDER BY ordinal) AS run FROM previous"
+            "), numbered AS ("
+            " SELECT *, ROW_NUMBER() OVER (PARTITION BY run ORDER BY ordinal) AS n FROM runs"
+            "), grouped AS ("
+            " SELECT heading_path, MIN(ordinal) AS first_ordinal, MIN(page_start) AS page_start,"
+            " MAX(page_end) AS page_end, COUNT(*) AS chunk_count FROM numbered"
+            " GROUP BY run, CASE WHEN heading_path = '[]' THEN (n - 1) / 10 ELSE 0 END"
+            ") SELECT g.*, s.id AS first_chunk_id FROM grouped g JOIN selected s ON s.ordinal = g.first_ordinal"
+            " ORDER BY g.first_ordinal LIMIT 201",
+            scope,
+        )
+        return api.DocumentOutline(
+            document=_out(ctx, document_id),
+            chunk_count=chunk_count,
+            page_count=None,
+            sections=[
+                api.OutlineSection(
+                    heading_path=json.loads(r["heading_path"]),
+                    first_chunk_id=r["first_chunk_id"],
+                    page_start=r["page_start"],
+                    page_end=r["page_end"],
+                    chunk_count=r["chunk_count"],
+                )
+                for r in sections[:200]
+            ],
+            truncated=len(sections) > 200,
+        )
+
+
 @router.get("/documents/{document_id}/chunks", response_model=list[api.Chunk])
 def get_chunks(
     document_id: str, pipeline_id: str, node_id: str | None = None, ctx: AppContext = Depends(get_ctx)
 ) -> list[api.Chunk]:
     with document_lock(ctx.settings.data_dir, document_id), ctx.db.read():
         pipeline = _document_pipeline(ctx, document_id, pipeline_id)
-        resolved = json.loads(pipeline["resolved"])
-        nodes = resolved["nodes"]
-        text_nodes = [n for n in nodes if n["type"] in ("chunk", "enrich")]
-        if node_id:
-            text_node = next((n for n in text_nodes if n["node_id"] == node_id), None)
-        else:
-            # Without a node id: the enrich node retrieval reads, else the only chunk node.
-            enrich = (resolved.get("retrieval_runtime") or {}).get("enrich")
-            chunk_nodes = [n for n in text_nodes if n["type"] == "chunk"]
-            if enrich is not None:
-                text_node = next((n for n in text_nodes if n["node_id"] == enrich["node_id"]), None)
-            else:
-                text_node = chunk_nodes[0] if len(chunk_nodes) == 1 else None
-        if text_node is None:
-            raise ValidationFailed("Choose a chunk or enrich node, or a pipeline with exactly one chunk node.")
-        chunk_fp = text_node["runtime"]["chunk_fp"] if text_node["type"] == "enrich" else text_node["node_fp"]
+        chunk_fp, enrich_fp = _text_stage(pipeline, node_id)
         rows = ctx.db.all(
             "SELECT c.*, e.enrichment AS enrichment FROM chunks c JOIN documents d ON d.id = c.document_id "
             "LEFT JOIN chunk_enrichments e ON e.enrich_node_fp = ? AND e.chunk_id = c.id "
             "AND e.doc_revision = c.doc_revision "
             "WHERE d.id = ? AND c.chunk_node_fp = ? AND c.doc_revision = d.revision ORDER BY c.ordinal",
-            (text_node["node_fp"] if text_node["type"] == "enrich" else None, document_id, chunk_fp),
+            (enrich_fp, document_id, chunk_fp),
         )
-        return [
-            api.Chunk.model_validate(
-                dict(
-                    id=r["id"],
-                    document_id=r["document_id"],
-                    ordinal=r["ordinal"],
-                    text=r["text"],
-                    context=r["context"],
-                    enrichment=r["enrichment"] or None,
-                    page_start=r["page_start"],
-                    page_end=r["page_end"],
-                    heading_path=json.loads(r["heading_path"]),
-                    block_ids=json.loads(r["block_ids"]),
-                    char_count=len(r["text"]),
-                )
-            )
-            for r in rows
-        ]
+        return [_chunk_out(dict(r)) for r in rows]

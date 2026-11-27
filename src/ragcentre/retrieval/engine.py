@@ -484,6 +484,7 @@ def _assemble(
             {
                 "chunk_id": chunk_id,
                 "document_id": chunk["document_id"],
+                "ordinal": chunk["ordinal"],
                 "score": scores.get(chunk_id, 0.0),
                 "rank": rank,
                 "text": chunk["text"],

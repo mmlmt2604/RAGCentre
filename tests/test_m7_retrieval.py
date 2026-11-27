@@ -78,6 +78,7 @@ def test_query_shapes_sources_expansion(client: TestClient, ready: tuple[str, st
         "results",
         "timings_ms",
         "transform",
+        "truncated",
     }
     assert body["transform"] is None
     assert "total" in body["timings_ms"]

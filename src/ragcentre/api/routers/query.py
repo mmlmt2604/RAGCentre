@@ -8,6 +8,7 @@ from ragcentre.api.deps import get_ctx
 from ragcentre.context import AppContext
 from ragcentre.errors import NotFound
 from ragcentre.models import api
+from ragcentre.retrieval.budget import budget_response
 from ragcentre.retrieval.engine import query as run_query
 
 router = APIRouter(tags=["query"])
@@ -31,4 +32,4 @@ def query_corpus(corpus_id: str, body: api.QueryRequest, ctx: AppContext = Depen
         body.debug,
         transform=body.transform,
     )
-    return api.QueryResponse.model_validate(result)
+    return budget_response(api.QueryResponse.model_validate(result), body.max_chars)

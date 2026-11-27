@@ -154,7 +154,36 @@ jobs:
       - name: Types
         run: uv run mypy
       - name: Tests
-        run: uv run pytest
+        run: uv run pytest -m 'not contract'
+
+  ragcentre-mcp-contract:
+    # Install the current backend only for tests; the published MCP package stays independent.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+    defaults:
+      run:
+        working-directory: packages/ragcentre-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install MCP test environment
+        run: uv sync --frozen
+      - name: Require current backend and run real tool contracts
+        run: |
+          uv run --with-editable ../.. python -c 'import ragcentre'
+          uv run --with-editable ../.. pytest -m contract --junitxml=contract.xml
+          uv run python - <<'PY'
+          import xml.etree.ElementTree as ET
+          suites = ET.parse('contract.xml').getroot().iter('testsuite')
+          counts = [(int(s.get('tests', 0)), int(s.get('skipped', 0))) for s in suites]
+          assert sum(n for n, _ in counts) > 0, 'No backend contracts executed'
+          assert sum(n for _, n in counts) == 0, 'Backend contracts must not skip'
+          PY
 
   parser-shims:
     # The tests of shimkit and of the MinerU, PaddleOCR, Surya, EasyOCR and docTR example parser

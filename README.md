@@ -45,6 +45,15 @@ For a non-loopback bind, `ragcentre serve` requires an account or `RAGCENTRE_API
 explicitly pass `--allow-no-token`. First-run setup is only offered in the browser on a loopback bind;
 set `RAGCENTRE_ALLOW_REMOTE_SETUP=1` to allow it on a remote host.
 
+Behind an HTTPS reverse proxy, serve the UI and API on the same public origin. Preserve the public
+`Host` header, including a non-default port, and have the proxy overwrite `X-Forwarded-Proto` with
+`https`. Set Uvicorn's `FORWARDED_ALLOW_IPS` in the server process to the actual proxy peer IPs
+(the default trusts `127.0.0.1`); restrict direct backend access to those peers. Avoid `*` on an
+exposed backend. Trusted forwarding makes session cookies Secure and lets cookie-authenticated
+mutations match the browser's Origin against the effective HTTPS scheme, host and port. Forwarded
+host headers are not used to replace Host. Mutations also require the session's CSRF secret;
+malformed, null or mismatched Origin headers are rejected.
+
 `RAGCENTRE_API_TOKEN` still works as a full-scope operator credential for the CLI and MCP. When a
 token is configured, `/v1/docs` and `/v1/openapi.json` require an Authorization header. To read the
 schema, run `curl -H "Authorization: Bearer $RAGCENTRE_API_TOKEN" http://127.0.0.1:8700/v1/openapi.json`.

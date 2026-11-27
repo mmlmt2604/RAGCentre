@@ -276,6 +276,7 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
     return {
       chunk_id: id,
       document_id: d.id,
+      ordinal: c.chunk.ordinal,
       score: Number(score.toFixed(5)),
       rank: i + 1,
       text: c.chunk.text,
@@ -294,5 +295,5 @@ export function query(state: MockState, corpusId: string, body: QueryRequest): Q
   timings.total = Object.values(timings).reduce((a, b) => a + b, 0) + (performance.now() - started) * 0.05;
   for (const k of Object.keys(timings)) timings[k] = Number(timings[k]!.toFixed(2));
   const transform = tcfg ? { mode: tcfg.mode, probes: probes.map(({ index, text, kind }) => ({ index, text, kind })), cached } : null;
-  return { pipeline_id: p.id, pipeline_fingerprint: p.fingerprint, partial: health.status !== "ready", enriched_sources: enrichedSources, results, timings_ms: timings, transform };
+  return { pipeline_id: p.id, pipeline_fingerprint: p.fingerprint, partial: health.status !== "ready", enriched_sources: enrichedSources, results, truncated: false, timings_ms: timings, transform };
 }

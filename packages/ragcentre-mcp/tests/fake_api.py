@@ -71,7 +71,7 @@ def err(status: int, code: str, message: str) -> httpx.Response:
 
 @dataclass
 class FakeApi:
-    version: str = "0.0.3"
+    version: str = "0.0.4"
     scope: str = "read"
     corpora: list[dict[str, Any]] = field(default_factory=lambda: [MANUALS, HR, EMPTY])
     whoami_status: int = 200

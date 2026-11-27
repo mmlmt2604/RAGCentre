@@ -195,7 +195,12 @@ test('5. guard rails: building query error, permanent provider settings and acti
     await expect(permanent).toContainText(/cannot|can't|permanent|locked/i);
     await expect(permanent.getByRole('textbox')).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'New provider from this one', exact: true })).toBeVisible();
-    const deniedEdit = await request.patch(`/v1/providers/${embedder.id}`, { data: { config: { dimensions: 128 } } });
+    const csrfResponse = await request.get('/v1/auth/csrf');
+    expect(csrfResponse.status()).toBe(200);
+    const { token: csrf } = await csrfResponse.json() as { token: string };
+    const deniedEdit = await request.patch(`/v1/providers/${embedder.id}`, {
+      headers: { 'X-RAGCentre-CSRF': csrf }, data: { config: { dimensions: 128 } },
+    });
     expect(deniedEdit.status()).toBe(409);
     expect((await deniedEdit.json()).error.code).toBe('immutable_field');
     expect((await api<Provider>('GET', `/providers/${embedder.id}`)).fingerprint).toBe(embedder.fingerprint);

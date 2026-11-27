@@ -155,7 +155,7 @@ class RequestGuard:
             and principal["kind"] == "session"
             and scope["method"] in {"POST", "PUT", "PATCH", "DELETE"}
             and is_api_path(path)
-            and not csrf_valid(headers, principal)
+            and not csrf_valid(headers, principal, scheme=scope["scheme"])
         ):
             await error_response(403, ErrorCode.CSRF_INVALID.value, "Missing or invalid CSRF token.")(
                 scope, receive, send

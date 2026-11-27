@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import threading
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -50,7 +51,7 @@ _limiter = _Limiter()
 _verify_sem = threading.BoundedSemaphore(4)
 
 
-def _me(user: dict[str, Any]) -> api.Me:
+def _me(user: Mapping[str, Any]) -> api.Me:
     return api.Me(
         id=user["id"],
         username=user["username"],
@@ -107,7 +108,7 @@ def setup(
     if not _setup_allowed(ctx):
         raise SetupUnavailable("First-run setup is unavailable on this bind; run 'ragcentre account init' locally.")
     user = ctx.accounts.create_account(body.username, body.display_name, body.password)
-    token, csrf = ctx.accounts.create_session(user["id"])
+    token, csrf = ctx.accounts.create_session(user["id"], expected_auth_version=user["auth_version"])
     _set_session_cookie(response, request, token)
     return api.AuthSession(csrf=csrf, user=_me(user))
 
@@ -128,9 +129,14 @@ def login(
         for key in keys:
             _limiter.record(key)
         raise InvalidCredentials("Wrong username or password.")
+    try:
+        token, csrf = ctx.accounts.create_session(user["id"], expected_auth_version=user["auth_version"])
+    except InvalidCredentials:
+        for key in keys:
+            _limiter.record(key)
+        raise
     for key in keys:
         _limiter.reset(key)
-    token, csrf = ctx.accounts.create_session(user["id"])
     _set_session_cookie(response, request, token)
     return api.AuthSession(csrf=csrf, user=_me(user))
 

@@ -44,10 +44,22 @@ def text_of(result: Any) -> str:
 # ---- startup ------------------------------------------------------------------------------------
 
 
-async def test_old_server_is_refused() -> None:
-    api = RagcentreApi("http://rag.test", "t", transport=FakeApi(version="0.0.2").transport())
-    with pytest.raises(StartupError, match=r"0\.0\.2 is too old"):
-        await startup(api, Options())
+@pytest.mark.parametrize("version", ["0.0.2", "0.0.3"])
+async def test_old_server_is_refused(version: str) -> None:
+    api = RagcentreApi("http://rag.test", "t", transport=FakeApi(version=version).transport())
+    try:
+        with pytest.raises(StartupError, match=rf"{re.escape(version)} is too old.*0\.0\.4"):
+            await startup(api, Options())
+    finally:
+        await api.aclose()
+
+
+async def test_contract_server_is_accepted() -> None:
+    api = RagcentreApi("http://rag.test", "t", transport=FakeApi(version="0.0.4").transport())
+    try:
+        assert (await startup(api, Options())).corpora
+    finally:
+        await api.aclose()
 
 
 async def test_full_token_refused_unless_allowed() -> None:
@@ -63,6 +75,16 @@ async def test_rejected_token_names_the_setting() -> None:
     api = RagcentreApi("http://rag.test", "t", transport=FakeApi(whoami_status=401).transport())
     with pytest.raises(StartupError, match="RAGCENTRE_API_TOKEN"):
         await startup(api, Options())
+
+
+async def test_anonymous_scope_on_protected_backend_is_not_open_mode() -> None:
+    api = RagcentreApi("http://rag.test", "bad-key", transport=FakeApi(scope="none").transport())
+    try:
+        with pytest.raises(StartupError, match="RAGCENTRE_API_TOKEN") as info:
+            await startup(api, Options())
+        assert "RAGCENTRE_READ_TOKEN" not in str(info.value)
+    finally:
+        await api.aclose()
 
 
 async def test_unknown_corpus_in_allowlist() -> None:

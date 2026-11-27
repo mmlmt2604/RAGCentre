@@ -125,18 +125,22 @@ async def startup(api: RagcentreApi, options: Options) -> Catalog:
     except ApiError as exc:
         if exc.status == 401:
             raise StartupError(
-                "RAGCentre rejected the token. Set RAGCENTRE_API_TOKEN to its read-only token (RAGCENTRE_READ_TOKEN)."
+                "RAGCentre rejected the token. Create a read API key under Account → API keys and set "
+                "RAGCENTRE_API_TOKEN to that key."
             ) from None
         raise StartupError(f"Could not check the token's scope: {exc.message}") from None
+    if scope == "none":
+        raise StartupError(
+            "RAGCentre did not authenticate the client. Complete account setup, create a read API key under "
+            "Account → API keys and set RAGCENTRE_API_TOKEN to that key."
+        )
     if scope == "full" and not options.allow_full_token:
         raise StartupError(
-            "RAGCENTRE_API_TOKEN has full access to RAGCentre. Give ragcentre-mcp the read-only token "
-            "(RAGCENTRE_READ_TOKEN on the server), or pass --allow-full-token to run anyway."
+            "RAGCENTRE_API_TOKEN has full access to RAGCentre. Create a read API key under Account → API keys "
+            "and give that key to ragcentre-mcp, or pass --allow-full-token to run anyway."
         )
     if scope == "full":
         log.warning("Running with a full-access token (--allow-full-token). The tools still only read.")
-    elif scope == "none":
-        log.warning("RAGCentre has no API token configured; anyone who can reach it can change it.")
 
     try:
         everything = await api.corpora()

@@ -590,6 +590,14 @@ class QueryRequest(RequestModel):
     query: str
     pipeline_id: str | None = None
     top_k: int | None = Field(default=None, ge=1, le=1000)
+    max_chars: int | None = Field(
+        default=None,
+        ge=200,
+        description="Passage budget in Unicode codepoints, counting text, context, enrichment and each "
+        "context_before/context_after string, including repeats. Excludes metadata, JSON and transform probes. "
+        "Supplemental passages are removed first, then lower-ranked hits; an oversized first hit is clipped. "
+        "Omit to keep all retrieved content.",
+    )
     filter: dict[str, Any] | None = None
     allow_partial: bool = False
     debug: bool = False
@@ -609,9 +617,38 @@ class QueryDocument(ResponseModel):
     attributes: dict[str, Any]
 
 
+class WindowDocument(QueryDocument):
+    id: str
+    corpus_id: str
+
+
+class ChunkWindow(ResponseModel):
+    chunk: Chunk
+    before: list[Chunk]
+    after: list[Chunk]
+    document: WindowDocument
+
+
+class OutlineSection(ResponseModel):
+    heading_path: list[str]
+    first_chunk_id: str
+    page_start: int | None
+    page_end: int | None
+    chunk_count: int
+
+
+class DocumentOutline(ResponseModel):
+    document: Document
+    chunk_count: int
+    page_count: int | None = Field(description="Total source pages when reliably known; otherwise null.")
+    sections: list[OutlineSection]
+    truncated: bool
+
+
 class QueryResult(ResponseModel):
     chunk_id: str
     document_id: str
+    ordinal: int
     score: float
     rank: int
     text: str
@@ -648,6 +685,7 @@ class QueryResponse(ResponseModel):
     # Sources whose index holds the enriched text; empty when the pipeline has no enrich node.
     enriched_sources: list[str]
     results: list[QueryResult]
+    truncated: bool = False
     timings_ms: dict[str, float]
     # What the language model produced from the query; null when the pipeline has no transform
     # or the request turned it off.

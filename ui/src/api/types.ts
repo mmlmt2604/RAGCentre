@@ -118,6 +118,18 @@ export interface Chunk {
   page_start: number | null; page_end: number | null;
   heading_path: string[]; block_ids: string[]; char_count: number;
 }
+export interface ChunkWindow {
+  chunk: Chunk; before: Chunk[]; after: Chunk[];
+  document: QueryResult["document"] & { id: UUID; corpus_id: UUID };
+}
+export interface OutlineSection {
+  heading_path: string[]; first_chunk_id: UUID;
+  page_start: number | null; page_end: number | null; chunk_count: number;
+}
+export interface DocumentOutline {
+  document: Document; chunk_count: number; page_count: number | null;
+  sections: OutlineSection[]; truncated: boolean;
+}
 // GET /documents/{id}/parsed returns the Document IR of section 7 plus `heading_path` on each block.
 
 // ---------- Pipelines ----------
@@ -210,12 +222,12 @@ export interface NodeRun {
 export type Filter = Record<string, unknown>;       // the filter language of section 10.2
 
 export interface QueryRequest {
-  query: string; pipeline_id?: UUID; top_k?: number;
+  query: string; pipeline_id?: UUID; top_k?: number; max_chars?: number | null;
   filter?: Filter; allow_partial?: boolean; debug?: boolean;
   transform?: boolean | null;     // false skips the pipeline's query transform for this request
 }
 export interface QueryResult {
-  chunk_id: UUID; document_id: UUID; score: number; rank: number;
+  chunk_id: UUID; document_id: UUID; ordinal: number; score: number; rank: number;
   text: string; context: string | null;
   enrichment: string | null;                 // null without an enrich node
   page_start: number | null; page_end: number | null; heading_path: string[];
@@ -231,7 +243,7 @@ export interface QueryTransformInfo { mode: TransformMode; probes: QueryProbe[];
 export interface QueryResponse {
   pipeline_id: UUID; pipeline_fingerprint: string; partial: boolean;
   enriched_sources: string[];                // source ids whose index holds the enriched text
-  results: QueryResult[];
+  results: QueryResult[]; truncated: boolean;
   timings_ms: Record<string, number>;        // always includes "total"; "transform" when one ran
   transform: QueryTransformInfo | null;      // null without a transform or when the request skipped it
 }

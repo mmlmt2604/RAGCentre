@@ -579,6 +579,27 @@ def test_api_returns_the_probes_and_honours_the_opt_out(env: Env, fakes: FakeSer
     assert _post(env, env.base)["transform"] is None
 
 
+def test_api_budget_preserves_transformed_provenance_and_cache(env: Env, fakes: FakeServices) -> None:
+    from ragcentre.models.api import QueryResponse
+    from ragcentre.retrieval.budget import passage_chars
+
+    pid = env.make({"mode": "multi_query", "n": 2}, **SPARSE)
+    path = f"/v1/corpora/{env.corpus}/query"
+    body = {"pipeline_id": pid, "query": "fast car", "debug": True}
+    plain = env.client.post(path, json=body).json()
+    calls = fakes.count("llm", CHAT)
+    bounded = env.client.post(path, json={**body, "max_chars": 200}).json()
+    assert fakes.count("llm", CHAT) == calls
+    assert bounded["transform"]["cached"] is True
+    assert bounded["transform"]["probes"] == plain["transform"]["probes"]
+    assert sum(passage_chars(r) for r in QueryResponse.model_validate(bounded).results) <= 200
+    for new, old in zip(bounded["results"], plain["results"], strict=False):
+        assert {k: new[k] for k in ("chunk_id", "ordinal", "score", "rank", "sources", "probes")} == {
+            k: old[k] for k in ("chunk_id", "ordinal", "score", "rank", "sources", "probes")
+        }
+    assert env.client.post(path, json=body).json()["results"] == plain["results"]
+
+
 def test_api_reports_a_failing_model_as_502(env: Env, fakes: FakeServices) -> None:
     pid = env.make({"mode": "rewrite"}, **SPARSE)
     fakes.script("llm", CHAT, [fakes.llm_reply("nope")])

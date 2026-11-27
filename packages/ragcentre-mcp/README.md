@@ -4,7 +4,7 @@ A read-only [MCP](https://modelcontextprotocol.io) server that lets agents searc
 Claude Code, Claude Desktop, Cursor, the OpenAI Responses API, or any other MCP client.
 
 It is a client of RAGCentre's HTTP API and does not depend on the `ragcentre` package, so the machine running
-the agent does not need the server's dependencies. It needs RAGCentre 0.0.3 or later and refuses to start
+the agent does not need the server's dependencies. It needs RAGCentre 0.0.4 or later and refuses to start
 against an older server.
 
 ## Tools
@@ -103,6 +103,8 @@ ragcentre-mcp [--transport stdio|http] [--host 127.0.0.1] [--port 8710] [--corpu
 
 ```sh
 uv sync
-uv run pytest           # no network, no RAGCentre needed: tests use a fake API
+uv run pytest -m 'not contract'  # no network, no RAGCentre needed: tests use a fake API
 uv run ruff check . && uv run mypy
+uv run --with-editable ../.. python -c 'import ragcentre'  # backend is test-only
+uv run --with-editable ../.. pytest -m contract
 ```
