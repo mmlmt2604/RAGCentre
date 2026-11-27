@@ -25,6 +25,7 @@ ui/test-results/
 src/ragcentre/ui_dist/
 
 # Agent and design-skill working files (kept locally, not versioned)
+.codex/
 .impeccable/config.json
 .impeccable/design.json
 .impeccable/surfaces/
