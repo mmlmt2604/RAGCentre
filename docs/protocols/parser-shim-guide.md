@@ -10,7 +10,7 @@ this guide. All of them are built on `examples/shimkit`, the same helper this gu
 engine returns only text lines, as EasyOCR and docTR do, `shimkit.lines_to_ir` groups them into
 paragraphs and can guess headings, and `shimkit.render_pages` turns a PDF into page images.
 
-## 1. A shim in forty lines
+## 1. A shim in fifty lines
 
 Install the helper from a RAGCentre checkout (`pip install ./examples/shimkit`; it is not published
 to PyPI), your engine, and `uvicorn`. This is `examples/shimkit/example/tesseract_shim.py`, a real
@@ -28,10 +28,19 @@ OPTIONS = [string("lang", "eng", "Tesseract language codes, for example eng or e
 IMAGES = {"png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp"}
 
 
+def tesseract_version() -> str | None:
+    try:
+        return str(pytesseract.get_tesseract_version())
+    except pytesseract.TesseractNotFoundError:
+        return None  # the program is not installed or not on PATH
+
+
 def parse(content: bytes, filename: str, options: dict) -> dict:
     opts = parse_options(OPTIONS, options)
     if file_extension(filename) not in IMAGES:
         raise ShimError(415, "unsupported_media_type", f"{filename}: this service reads images only")
+    if tesseract_version() is None:
+        raise ShimError(503, "engine_unavailable", "the tesseract program is not installed or not on PATH")
     installed = pytesseract.get_languages()
     missing = [code for code in opts["lang"].split("+") if code not in installed]  # also "", and a path
     if missing:
@@ -62,7 +71,8 @@ def parse(content: bytes, filename: str, options: dict) -> dict:
 
 app = create_app(
     name="tesseract-shim",
-    version=lambda: f"0.1.0+tesseract.{pytesseract.get_tesseract_version()}",  # RAGCentre pins this
+    version=lambda: f"0.1.0+tesseract.{tesseract_version() or 'unavailable'}",  # RAGCentre pins this
+    engine_check=lambda: tesseract_version() is not None,  # /info says "unreachable" and stays up
     mime_types=["image/png", "image/jpeg", "image/tiff", "image/bmp", "image/webp"],
     capabilities={"page_images": False},
     api_key_env="TESSERACT_SHIM_API_KEY",
