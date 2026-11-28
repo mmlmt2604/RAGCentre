@@ -157,3 +157,50 @@ def test_lines_to_ir_one_block_per_line() -> None:
     ]
     assert [b["text"] for b in lines_to_ir(pages)["blocks"]] == ["one two"]
     assert [b["text"] for b in lines_to_ir(pages, paragraphs=False)["blocks"]] == ["one", "two"]
+
+
+def one_page(*rows: tuple[str, float, float]) -> list[dict[str, Any]]:
+    """A page of full-width lines ``(text, top, height)``, 600 wide, all starting at x 100."""
+    lines = [{"text": text, "bbox": [100, top, 700, top + height], "confidence": 0.95} for text, top, height in rows]
+    return [{"page": 1, "width": 800, "height": 1200, "lines": lines}]
+
+
+def kinds(ir: dict[str, Any]) -> list[tuple[str, int | None, str]]:
+    return [(b["type"], b.get("level"), b["text"]) for b in ir["blocks"]]
+
+
+BODY = "Goods arrive by truck in the early morning and leave by sea"
+
+
+def test_a_heading_a_little_taller_than_the_text_next_to_it_is_not_absorbed_into_a_paragraph() -> None:
+    # 56 px against 40 px is 1.4 times as tall: a heading by the 1.25 rule, but within the 30% height tolerance that
+    # lets lines of one paragraph differ, and 14 px apart. It must still be a block of its own, above and below.
+    pages = one_page(
+        ("Harbour Warehouse Audit", 100, 56),
+        (BODY, 170, 40),
+        (BODY, 215, 40),
+        (BODY, 260, 40),
+        ("Results", 310, 56),
+        (BODY, 380, 40),
+        (BODY, 425, 40),
+    )
+    assert kinds(lines_to_ir(pages, headings=True)) == [
+        ("heading", 1, "Harbour Warehouse Audit"),
+        ("paragraph", None, " ".join([BODY] * 3)),
+        ("heading", 1, "Results"),
+        ("paragraph", None, " ".join([BODY] * 2)),
+    ]
+    assert {b["type"] for b in lines_to_ir(pages)["blocks"]} == {"paragraph"}  # headings stay opt-in
+
+
+def test_a_heading_of_two_lines_stays_one_block() -> None:
+    pages = one_page(
+        ("Harbour Warehouse", 100, 56), ("Audit Report", 162, 56), (BODY, 240, 40), (BODY, 285, 40), (BODY, 330, 40)
+    )
+    assert kinds(lines_to_ir(pages, headings=True))[0] == ("heading", 1, "Harbour Warehouse Audit Report")
+
+
+def test_a_tall_line_of_body_text_does_not_split_its_paragraph() -> None:
+    # The third line is 1.3 times as tall (a tall box around a descender), but it is a sentence, not a heading.
+    pages = one_page((BODY, 100, 40), (BODY, 145, 40), (BODY + " and it was counted twice.", 190, 52))
+    assert [k[0] for k in kinds(lines_to_ir(pages, headings=True))] == ["paragraph"]
