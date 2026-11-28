@@ -199,9 +199,12 @@ config:
   timeout_seconds: 600              # default 600; per request
   job_timeout_seconds: 21600        # async services only: the whole parse, default 6 hours
   max_concurrency: 4                # parallel requests, default 4
-  revision: ""                      # change to force a new fingerprint
+  revision: ""                      # set when the provider is created; a new value is a new fingerprint
   on_version_drift: fail            # or warn
 ```
 
 The fingerprint is `service_name`, `service_version` (both captured from `/info`) and `revision`.
 `base_url`, `timeout_seconds` and `max_concurrency` can be changed later without new work.
+`revision` cannot be changed after the provider exists. A `PATCH` that names it is refused with
+`409 immutable_field`. To make RAGCentre parse again with the same service, create a second provider
+with a different `revision` and point a pipeline at it.
