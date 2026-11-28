@@ -24,7 +24,9 @@ MIME_OVERRIDES = {
     ".csv": "text/csv",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
-POLL_MIN, POLL_MAX = 0.1, 30.0
+# The shim's ``poll_after_seconds`` (2 s) is a hint that spares the server load. The runner reports seconds per
+# probe, so it polls from 0.2 s and backs off to 5 s: a fast parse is timed to about 0.2 s, not to the hint.
+POLL_START, POLL_MAX = 0.2, 5.0
 
 
 @dataclass(frozen=True)
@@ -98,7 +100,7 @@ class EngineClient:
 
     def _finish_job(self, accepted: dict[str, Any], start: float) -> Reply:
         job_id = accepted["job_id"]
-        delay = min(max(float(accepted.get("poll_after_seconds", 2)), POLL_MIN), POLL_MAX)
+        delay = POLL_START
         deadline = start + self.job_timeout
         while True:
             time.sleep(delay)

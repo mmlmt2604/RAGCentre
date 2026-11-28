@@ -12,12 +12,17 @@ from __future__ import annotations
 
 import base64
 import struct
+import time
 import zlib
+from pathlib import Path
 from typing import Any
 
 import predicates as P
 import pytest
-from client import Reply
+from client import EngineClient, Reply
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
 from probe import FixtureTruth, LineTruth, Observation, PageTruth, Probe, runs_at, unmet_requirements
 
 # --- builders for hand-made truth and results ---------------------------------------------------
@@ -318,3 +323,47 @@ def test_requirements_check_the_machine_the_capability_and_what_was_assumed():
     assert unmet_requirements(("platform:plan9",), info) == ["platform:plan9"]
     with pytest.raises(ValueError):
         unmet_requirements(("gpu:yes",), info)
+
+
+# --- client -------------------------------------------------------------------------------------
+
+
+def async_only_app(result: dict[str, Any], *, running_polls: int = 0) -> FastAPI:
+    """A shim that answers every parse with ``202`` and a 2 second ``poll_after_seconds`` hint."""
+    app = FastAPI()
+    polls = {"n": 0}
+
+    @app.get("/info")
+    def info() -> dict[str, Any]:
+        return {"capabilities": {"async": True}}
+
+    @app.post("/parse", response_model=None)
+    def parse(file: UploadFile = File(...)) -> JSONResponse:
+        return JSONResponse({"job_id": "j1", "poll_after_seconds": 2}, status_code=202)
+
+    @app.get("/jobs/{job_id}")
+    def status(job_id: str) -> dict[str, str]:
+        polls["n"] += 1
+        return {"status": "running" if polls["n"] <= running_polls else "succeeded"}
+
+    @app.get("/jobs/{job_id}/result")
+    def job_result(job_id: str) -> dict[str, Any]:
+        return result
+
+    @app.delete("/jobs/{job_id}", status_code=204)
+    def delete(job_id: str) -> None:
+        return None
+
+    return app
+
+
+def test_client_times_a_fast_async_job_by_its_work_not_by_the_two_second_hint(tmp_path: Path):
+    path = tmp_path / "a.png"
+    path.write_bytes(b"not read by this shim")
+    client = EngineClient("http://shim", http=TestClient(async_only_app(ir([para("done")]), running_polls=2)))
+    start = time.perf_counter()
+    reply = client.parse(path)
+    elapsed = time.perf_counter() - start
+    assert (reply.status, reply.mode, reply.body["blocks"][0]["text"]) == (200, "async", "done")
+    assert elapsed < 1.5  # it waited for 2 running polls (0.2 s + 0.3 s), not for the 2 s hint
+    assert reply.seconds == pytest.approx(elapsed, abs=0.05)
