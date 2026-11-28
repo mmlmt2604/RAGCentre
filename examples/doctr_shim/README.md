@@ -28,7 +28,7 @@ uv run uvicorn doctr_shim.app:app --host 127.0.0.1 --port 8706
 
 The first line installs PyTorch's CPU build. Skip it on a machine with an NVIDIA GPU, or on macOS.
 `DOCTR_SHIM_DEVICE` chooses where the models run: `auto` (default: CUDA when PyTorch has it, else the
-CPU), `cpu`, `cuda`, `cuda:1` or `mps`.
+CPU), `cpu`, `cuda`, `cuda:1` or `mps`. `auto` never picks `mps`, so on Apple silicon it runs on the CPU.
 
 The first parse with a model pair downloads it (about 100 to 200 MB) into `~/.cache/doctr`.
 
@@ -42,7 +42,8 @@ docker compose --profile doctr up --build     # the service on http://127.0.0.1:
 
 RAGCentre reaches it by name in the Compose network: register the provider with
 `base_url: http://doctr:8706`. Models go into the `doctr-models` volume. The image installs PyTorch's
-CPU build; `--build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu128` picks a CUDA one.
+CPU build; `--build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu128` picks a CUDA one. Compose
+passes `DOCTR_SHIM_API_KEY` and `DOCTR_SHIM_DEVICE` on from your environment or `.env`.
 
 Then register it with RAGCentre and route files to it (from the repository root):
 
@@ -70,7 +71,7 @@ The parse route's `options` are passed to the service. A typo in an option name 
 | `dpi` | `144` | Render resolution for PDF pages (72 to 400; docTR's own PDF loader uses 144) |
 | `page_range` | every page | `[first, last]`, 1-based and inclusive. For PDFs and multi-page TIFFs. Page numbers stay the original's |
 | `paragraphs` | `true` | Group lines into paragraphs. Off, every line is its own block |
-| `headings` | `false` | Guess headings from the text height |
+| `headings` | `false` | Guess headings from the text height. A heading must be a paragraph of its own: docTR's boxes follow the ink, so a title only a little taller than the lines under it joins their paragraph and is not found. Turn `paragraphs` off to find it (on the test report, 0 headings with `paragraphs` on, 3 with it off) |
 | `min_confidence` | `0` | Drop lines docTR read with a mean word confidence below this, in percent |
 | `include_page_images` | `false` | Return each page image as a base64 PNG in `pages[].image` |
 
