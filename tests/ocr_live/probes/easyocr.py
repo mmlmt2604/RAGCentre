@@ -236,8 +236,29 @@ PROBES = [
             tier="C",
             note="Each decoder returns the clean tokens. No accuracy order between decoders is asserted.",
         )
-        for decoder in ("greedy", "beamsearch", "wordbeamsearch")
+        for decoder in ("greedy", "wordbeamsearch")
     ],
+    Probe(
+        id="easyocr.decoder_beamsearch_answers",
+        engine="easyocr",
+        fixture="scan_clean.png",
+        options={"decoder": "beamsearch"},
+        predicate=P.ir_valid(),
+        tier="C",
+        note="beamsearch is accepted and returns a valid Document IR. Its recall is the next probe.",
+    ),
+    Probe(
+        id="easyocr.decoder_beamsearch_recall",
+        engine="easyocr",
+        fixture="scan_clean.png",
+        options={"decoder": "beamsearch"},
+        predicate=P.recall_at_least(0.85),
+        gate="record",
+        tier="C",
+        note="Recorded, not gated: EasyOCR 1.7.2's own beam search cuts the end off every text piece longer than "
+        "about 40 characters ('The quarterly inspection of the harb'), recall 0.67 on a clean scan. The bare "
+        "library gives the same with beamWidth 5, 25 and 100, on CPU and on MPS, so the shim cannot fix it.",
+    ),
     # --- text detection and rotation ---------------------------------------------------------------------
     Probe(
         id="easyocr.rotated_text_reads_sideways_page",
