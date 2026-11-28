@@ -100,6 +100,13 @@ def test_a_shim_that_reads_one_tiff_frame_is_recorded_with_its_pages_and_does_no
     assert report["summary"]["ok"]
 
 
+def test_a_bad_lang_is_a_bad_option_for_the_oracle_and_a_failure_for_a_shim_that_accepts_it():
+    bad_lang = [p for p in probes() if p.id.startswith("tesseract.lang_") and p.expect_status is not None]
+    assert len(bad_lang) == 3  # an unknown pack, an empty lang and a path
+    assert set(outcomes(run(oracle(), bad_lang)).values()) == {"pass"}
+    assert set(outcomes(run(shims.null_app(), bad_lang)).values()) == {"fail"}
+
+
 def test_the_pdf_is_refused_by_the_oracle_that_reads_images_only():
     report = run(oracle())
     assert outcomes(report)["tesseract.pdf_unsupported"] == "pass"
