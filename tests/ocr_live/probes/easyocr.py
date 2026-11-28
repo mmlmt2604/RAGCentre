@@ -71,6 +71,45 @@ def fewer_tokens_than_control() -> Check:
     return Check("fewer_tokens_than_control", "compare", fn)
 
 
+def headings_only_with_option(level: int = 1) -> Check:
+    """Every heading of ``level`` in the fixture's truth (on the pages the run declares) comes back as a heading of
+    that level (its words recalled at 0.8 or more), and the control has no heading block at all."""
+
+    def fn(obs: Observation) -> Verdict:
+        assert obs.control is not None, "headings_only_with_option needs a control run"
+        pages = P.declared_pages(obs.run.body)
+        wanted = [
+            P.tokenize(b.text)
+            for page in obs.truth.pages
+            if page.page in pages
+            for b in page.blocks
+            if b.type == "heading" and b.level == level
+        ]
+        got = [
+            P.tokenize(str(b.get("text", "")))
+            for b in P.blocks_of(obs.run.body)
+            if b.get("type") == "heading" and b.get("level") == level
+        ]
+        found = sum(any(P.recall(tokens, heading) >= P.RATIO for heading in got) for tokens in wanted)
+        control_headings = len(P.heading_levels(obs.control.body))
+        problems = []
+        if not wanted:
+            problems.append(f"the truth has no level {level} heading on pages {sorted(pages)}")
+        elif found < len(wanted):
+            problems.append(
+                f"{found} of {len(wanted)} level {level} headings found; run has {len(got)} such heading blocks"
+            )
+        if control_headings:
+            problems.append(f"the control has {control_headings} heading blocks")
+        return Verdict(
+            not problems,
+            "; ".join(problems),
+            {"headings_wanted": len(wanted), "headings_found": found, "control_headings": control_headings},
+        )
+
+    return Check(f"headings_level_{level}_only_with_option", "structure", fn)
+
+
 def page_width_ratio(expected: float, tolerance: float = 0.05, page: int = 1) -> Check:
     """The page ``width`` of the run is ``expected`` times that of the control, within ``tolerance``: the
     page was rendered at another resolution."""
@@ -327,22 +366,16 @@ PROBES = [
         note="Grouping lines gives fewer blocks than one block per line.",
     ),
     Probe(
-        id="easyocr.headings_first_block",
+        id="easyocr.headings_title_is_level_1",
         engine="easyocr",
         fixture="report_born_digital.pdf",
         options={"headings": True, "page_range": [1, 1]},
-        predicate=P.first_block_heading(1),
+        control={"headings": False, "page_range": [1, 1]},
+        predicate=headings_only_with_option(1),
         tier="C",
-        note="Plan row: with headings the first block has level 1.",
-    ),
-    Probe(
-        id="easyocr.headings_off_has_no_heading",
-        engine="easyocr",
-        fixture="report_born_digital.pdf",
-        options={"headings": False, "page_range": [1, 1]},
-        predicate=P.no_headings(),
-        tier="C",
-        note="Plan row: with headings false no heading block exists.",
+        note="With headings the page's title ('Harbour Warehouse Audit', level 1 in the truth) is a level 1 "
+        "heading, and with headings false there is no heading block. The plan's 'the first block has level 1' "
+        "is wrong for this fixture: its first block is the running page header.",
     ),
     Probe(
         id="easyocr.dpi_scales_pdf_pages",

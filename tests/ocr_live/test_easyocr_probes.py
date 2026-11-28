@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from client import Reply
-from probe import FixtureTruth, LineTruth, Observation, PageTruth
+from probe import BlockTruth, FixtureTruth, LineTruth, Observation, PageTruth
 
 PROBES_FILE = Path(__file__).resolve().parent / "probes" / "easyocr.py"
 
@@ -70,6 +71,54 @@ def sized(width: float, height: float, page: int = 1) -> dict[str, Any]:
 
 def block(text: str, page: int = 1) -> dict[str, Any]:
     return {"type": "paragraph", "text": text, "page": page}
+
+
+# --- headings_only_with_option ------------------------------------------------------------------
+
+
+def titled(text: str, level: int = 1, page: int = 1) -> dict[str, Any]:
+    return {"type": "heading", "level": level, "text": text, "page": page}
+
+
+def with_blocks(*blocks: tuple[str, str, int | None]) -> FixtureTruth:
+    base = truth({1: "x"})
+    page = base.pages[0]
+    truth_blocks = tuple(BlockTruth(kind, text, (0.0, 0.0, 1.0, 1.0), level) for kind, text, level in blocks)
+    return replace(base, pages=(replace(page, blocks=truth_blocks),))
+
+
+def test_headings_only_with_option_needs_the_truth_title_as_a_heading_and_none_in_the_control():
+    check = E.headings_only_with_option(1)
+    fixture = with_blocks(
+        ("page_header", "Running header", None), ("heading", "Harbour Warehouse Audit", 1), ("heading", "Scope", 2)
+    )
+    pages = [sized(10, 10)]
+    on = ir([block("Running header"), titled("Harbour Warehouse Audit"), block("text")], pages)
+    off = ir([block("Running header"), block("Harbour Warehouse Audit text")], pages)
+    verdict = check(observe(on, off, fixture))
+    assert verdict.ok and verdict.numbers == {"headings_wanted": 1, "headings_found": 1, "control_headings": 0}
+    assert not check(observe(off, off, fixture)).ok  # the title ran into the paragraph below: no heading
+    assert not check(observe(on, on, fixture)).ok  # the control has headings too: the option shows nothing
+    assert not check(observe(ir([titled("Harbour Warehouse Audit", level=2)], pages), off, fixture)).ok  # wrong level
+    assert not check(observe(ir([titled("Sampling rule")], pages), off, fixture)).ok  # another text
+    assert not check(observe(on, off, with_blocks(("paragraph", "no headings", None)))).ok  # nothing to find
+
+
+def test_headings_only_with_option_asks_only_for_headings_on_the_pages_that_were_read():
+    check = E.headings_only_with_option(1)
+    base = truth({1: "x", 2: "y"})
+    page_one, page_two = base.pages
+    fixture = replace(
+        base,
+        pages=(
+            replace(page_one, blocks=(BlockTruth("heading", "First title", (0.0, 0.0, 1.0, 1.0), 1),)),
+            replace(page_two, blocks=(BlockTruth("heading", "Second title", (0.0, 0.0, 1.0, 1.0), 1),)),
+        ),
+    )
+    on = ir([titled("Second title", page=2)], [sized(10, 10, 2)])  # only page 2 was read
+    off = ir([block("Second title", page=2)], [sized(10, 10, 2)])
+    assert check(observe(on, off, fixture)).ok
+    assert not check(observe(ir([titled("First title", page=2)], [sized(10, 10, 2)]), off, fixture)).ok
 
 
 # --- fewer_tokens_than_control ------------------------------------------------------------------
