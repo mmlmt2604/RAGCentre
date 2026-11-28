@@ -5,9 +5,9 @@ paragraphs and, with ``headings``, guesses headings from the line height, so a p
 guess can do and records what it cannot.
 
 Model sweep. ``detection`` and ``recognition`` each list 8 architectures. Every architecture is downloaded on first
-use (about 100 to 200 MB for a detection and recognition pair). A tier C run sweeps the default of each plus one more of
-each family (``DOWNLOADED`` below). The rest need ``OCR_LIVE_DOCTR_ALL_MODELS=1`` and room for about 1 GB of models;
-without it they are reported as ``skipped``, not as passed.
+use (about 100 to 200 MB for a detection and recognition pair). A default tier C run reads with the default of each,
+which every other probe already loads (``DEFAULT_MODELS``). The other 14 need ``OCR_LIVE_DOCTR_ALL_MODELS=1`` and
+room for about 1 GB of models; without it they are reported as ``skipped``, not as passed.
 
 Not covered, because no fixture holds the text: Cyrillic (the README says Latin script works best) and handwriting.
 Chinese is recorded as a limit.
@@ -39,10 +39,7 @@ RECOGNITION = [
     "vitstr_small",
     "vitstr_base",
 ]
-DOWNLOADED = {
-    "detection": {"fast_base", "db_resnet50", "linknet_resnet18"},
-    "recognition": {"crnn_vgg16_bn", "parseq"},
-}
+DEFAULT_MODELS = {"detection": {DETECTION[0]}, "recognition": {RECOGNITION[0]}}
 
 
 # --- checks that only docTR's options need --------------------------------------------------------
@@ -453,7 +450,7 @@ for _arch in DETECTION:
             options={"detection": _arch},
             predicate=P.recall_at_least(0.7),
             tier="C",
-            requires=() if _arch in DOWNLOADED["detection"] else ALL_MODELS,
+            requires=() if _arch in DEFAULT_MODELS["detection"] else ALL_MODELS,
         )
     )
 for _arch in RECOGNITION:
@@ -465,6 +462,6 @@ for _arch in RECOGNITION:
             options={"recognition": _arch},
             predicate=P.recall_at_least(0.7),
             tier="C",
-            requires=() if _arch in DOWNLOADED["recognition"] else ALL_MODELS,
+            requires=() if _arch in DEFAULT_MODELS["recognition"] else ALL_MODELS,
         )
     )

@@ -118,6 +118,7 @@ def test_architectures_that_are_not_downloaded_are_skipped_and_never_passed(monk
         if p.id.startswith(("doctr.detection.", "doctr.recognition.")) and unmet_requirements(p.requires, {})
     }
     offered = set(shim_choices("DETECTION")) | set(shim_choices("RECOGNITION"))
-    assert skipped == offered - doctr.DOWNLOADED["detection"] - doctr.DOWNLOADED["recognition"]
+    assert skipped == offered - doctr.DEFAULT_MODELS["detection"] - doctr.DEFAULT_MODELS["recognition"]
+    assert len(skipped) == 14
     monkeypatch.setenv("OCR_LIVE_DOCTR_ALL_MODELS", "1")
     assert not [p.id for p in doctr.PROBES if unmet_requirements(p.requires, {})]
