@@ -26,6 +26,7 @@ import io
 import json
 import random
 import sys
+import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,7 +36,14 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont  # noqa: E402
-from predicates import tokenize  # noqa: E402  the tokenizer recall uses, so truth and results agree
+from predicates import recall, tokenize  # noqa: E402  the tokenizer recall uses, so truth and results agree
+from reportlab import rl_config  # noqa: E402
+from reportlab.lib.utils import ImageReader  # noqa: E402
+from reportlab.pdfbase import pdfmetrics  # noqa: E402
+from reportlab.pdfbase.ttfonts import TTFont  # noqa: E402
+from reportlab.pdfgen import canvas  # noqa: E402
+
+rl_config.useA85 = 0  # raw Flate for images: ASCII85 would make them a quarter larger
 
 SEED = 20261128
 MAX_BYTES = 200 * 1024
@@ -415,6 +423,569 @@ def build_tiff() -> Built:
     return Built(data, "image", "px", "en", pages, {"frames": len(frames)})
 
 
+# --- PDF fixtures -------------------------------------------------------------------------------
+
+LETTER = (612.0, 792.0)
+LATEX = r"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}"
+CODE = [
+    "def mean(values):",
+    "    total = 0.0",
+    "    for value in values:",
+    "        total += value",
+    "    return total / len(values)",
+]
+HEADER = ("RAGCentre OCR verification", "Synthetic test document")
+pdfmetrics.registerFont(TTFont("MathTimes", str(TIMES)))  # a TrueType subset: the formula needs √, ± and ²
+
+
+def pdf_width(text: str, name: str, size: float) -> float:
+    return pdfmetrics.stringWidth(text, name, size)
+
+
+def pdf_wrap(text: str, name: str, size: float, width: float) -> list[str]:
+    lines: list[str] = []
+    cur = ""
+    for word in text.split():
+        trial = f"{cur} {word}".strip()
+        if cur and pdf_width(trial, name, size) > width:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = trial
+    return [*lines, cur]
+
+
+class Doc:
+    """A cursor over a reportlab canvas. ``y`` runs down from the top edge, in points.
+
+    ``text`` records a line and its tokens (the body). Furniture, formula and code are recorded as blocks only."""
+
+    LEFT, RIGHT, TOP, BOTTOM = 72.0, 540.0, 84.0, 716.0
+    WIDTH = RIGHT - LEFT
+
+    def __init__(self, title: str, total: int, furniture: bool = True) -> None:
+        self.buf = io.BytesIO()
+        self.c = canvas.Canvas(self.buf, pagesize=LETTER, invariant=1, pageCompression=1)
+        self.c.setTitle(title)
+        self.c.setAuthor("RAGCentre OCR verification")
+        self.total, self.furniture, self.pages = total, furniture, []
+        self.number = 0
+        self.outline = 0
+        self.next_page()
+
+    def top(self, y: float) -> float:
+        return LETTER[1] - y
+
+    def next_page(self) -> None:
+        if self.number:
+            self.end_page()
+        self.number += 1
+        self.y = self.TOP
+        self.lines: list[dict[str, Any]] = []
+        self.blocks: list[dict[str, Any]] = []
+        if self.furniture:
+            self.rule(52)
+            box = [
+                self.small(self.LEFT, 46, HEADER[0], "left"),
+                self.small(self.RIGHT, 46, HEADER[1], "right"),
+            ]
+            self.blocks.append(block_truth("page_header", " ".join(HEADER), union(box)))
+
+    def small(self, x: float, baseline: float, text: str, align: str) -> list[float]:
+        """8 pt grey furniture text; it is not part of the body tokens."""
+        width = pdf_width(text, "Helvetica", 8)
+        x0 = x if align == "left" else x - width
+        self.c.setFillGray(0.4)
+        self.c.setFont("Helvetica", 8)
+        self.c.drawString(x0, self.top(baseline), text)
+        self.c.setFillGray(0)
+        return [x0, baseline - 6, x0 + width, baseline + 2]
+
+    def rule(self, y: float) -> None:
+        self.c.setStrokeGray(0.6)
+        self.c.setLineWidth(0.5)
+        self.c.line(self.LEFT, self.top(y), self.RIGHT, self.top(y))
+        self.c.setStrokeGray(0)
+
+    def end_page(self) -> None:
+        if self.y > self.BOTTOM:
+            raise AssertionError(f"page {self.number} overflows: content ends at {self.y:.0f} pt")
+        if self.furniture:
+            self.rule(744)
+            left = ("Confidential draft", f"Page {self.number} of {self.total}")
+            box = [self.small(self.LEFT, 758, left[0], "left"), self.small(self.RIGHT, 758, left[1], "right")]
+            self.blocks.append(block_truth("page_footer", " ".join(left), union(box)))
+        self.c.showPage()
+        self.pages.append(page_truth(self.number, LETTER, self.lines, self.blocks))
+
+    # -- body text --
+    def line(self, x: float, baseline: float, text: str, name: str, size: float) -> list[float]:
+        self.c.setFillGray(0)  # a table or code box leaves its fill colour behind
+        self.c.setFont(name, size)
+        self.c.drawString(x, self.top(baseline), text)
+        box = [x, baseline - 0.72 * size, x + pdf_width(text, name, size), baseline + 0.22 * size]
+        self.lines.append(line_truth(text, box))
+        return box
+
+    def block(self, kind: str, text: str, name: str, size: float, leading: float, *, x: float = 0, width: float = 0,
+              level: int | None = None, before: float = 0, after: float = 8) -> list[float]:  # fmt: skip
+        x = x or self.LEFT
+        self.y += before
+        boxes = []
+        for text_line in pdf_wrap(text, name, size, width or self.WIDTH):
+            boxes.append(self.line(x, self.y + 0.8 * size, text_line, name, size))
+            self.y += leading
+        box = union(boxes)
+        self.blocks.append(block_truth(kind, text, box, level))
+        self.y += after - (leading - size)
+        return box
+
+    def paragraph(self, text: str) -> None:
+        self.block("paragraph", text, "Times-Roman", 11, 15)
+
+    def caption(self, text: str) -> None:
+        self.block("caption", text, "Times-Italic", 10, 13, after=10)
+
+    def heading(self, text: str, level: int) -> None:
+        size, before = {1: (22, 0), 2: (16, 20), 3: (13, 14), 4: (11.5, 10)}[level]
+        self.block("heading", text, "Helvetica-Bold", size, size * 1.3, level=level, before=before, after=6)
+        if level > 1:  # the title is not in the outline
+            key = f"h{self.outline}"
+            self.outline += 1
+            self.c.bookmarkPage(key, fit="XYZ", top=self.top(self.y - size * 1.5))
+            self.c.addOutlineEntry(text, key, level=level - 2, closed=0)
+
+    def bullets(self, items: list[str], size: float = 11, leading: float = 15) -> None:
+        for item in items:
+            first = self.y + 0.8 * size
+            self.c.setFont("Times-Roman", size)
+            self.c.drawString(self.LEFT + 8, self.top(first), "•")
+            boxes = []
+            for text_line in pdf_wrap(item, "Times-Roman", size, self.WIDTH - 28):
+                boxes.append(self.line(self.LEFT + 28, self.y + 0.8 * size, text_line, "Times-Roman", size))
+                self.y += leading
+            self.blocks.append(
+                block_truth("list_item", item, union([*boxes, [self.LEFT + 8, first - 8, self.LEFT + 14, first]]))
+            )
+        self.y += 4
+
+    def table(self, rows: list[list[str]], col_w: list[float], row_h: float = 22) -> None:
+        top, c = self.y, self.c
+        width = sum(col_w)
+        c.setFillGray(0.92)
+        c.rect(self.LEFT, self.top(top + row_h), width, row_h, stroke=0, fill=1)
+        c.setStrokeGray(0)
+        c.setLineWidth(0.8)
+        for r in range(len(rows) + 1):
+            c.line(self.LEFT, self.top(top + r * row_h), self.LEFT + width, self.top(top + r * row_h))
+        for i in range(len(col_w) + 1):
+            x = self.LEFT + sum(col_w[:i])
+            c.line(x, self.top(top), x, self.top(top + len(rows) * row_h))
+        for r, row in enumerate(rows):
+            for i, cell in enumerate(row):
+                name = "Helvetica-Bold" if r == 0 else "Times-Roman"
+                self.line(self.LEFT + sum(col_w[:i]) + 7, top + r * row_h + 15, cell, name, 10.5)
+        box = [self.LEFT, top, self.LEFT + width, top + len(rows) * row_h]
+        self.blocks.append(block_truth("table", "\n".join(" | ".join(r) for r in rows), box, html=True))
+        self.y = box[3] + 12
+
+    def formula(self) -> None:
+        """A display equation as real text: the glyphs, a fraction bar and an equation number."""
+        c, top, size = self.c, self.y, 13.5
+        numerator, denominator, lhs = "−b ± √(b² − 4ac)", "2a", "x ="
+        w_num, w_den, w_lhs = (pdf_width(t, "MathTimes", size) for t in (numerator, denominator, lhs))
+        x0 = (self.LEFT + self.RIGHT) / 2 - (w_lhs + 8 + w_num) / 2
+        bar_y = top + 21
+        frac_x = x0 + w_lhs + 8
+        c.setFont("MathTimes", size)
+        c.drawString(x0, self.top(bar_y + 4), lhs)
+        c.drawString(frac_x, self.top(bar_y - 5), numerator)
+        c.drawString(frac_x + (w_num - w_den) / 2, self.top(bar_y + 15), denominator)
+        c.setLineWidth(0.7)
+        c.line(frac_x, self.top(bar_y), frac_x + w_num, self.top(bar_y))
+        c.drawRightString(self.RIGHT, self.top(bar_y + 4), "(1)")
+        box = [x0, top + 2, self.RIGHT, top + 40]
+        self.blocks.append(block_truth("formula", LATEX, box))
+        self.y = top + 40 + 14
+
+    def code(self, lines: list[str], size: float = 9.5, pad: float = 7) -> None:
+        top, lead = self.y, 12.0
+        height = len(lines) * lead + 2 * pad
+        self.c.setFillGray(0.95)
+        self.c.setStrokeGray(0.75)
+        self.c.setLineWidth(0.5)
+        self.c.rect(self.LEFT, self.top(top + height), self.WIDTH, height, stroke=1, fill=1)
+        self.c.setFillGray(0)
+        self.c.setFont("Courier", size)
+        for i, text_line in enumerate(lines):
+            self.c.drawString(self.LEFT + pad, self.top(top + pad + 9 + i * lead), text_line)
+        self.blocks.append(block_truth("code", "\n".join(lines), [self.LEFT, top, self.RIGHT, top + height]))
+        self.y = top + height + 12
+
+    def picture(self, png: bytes, width: float, height: float, x: float | None = None) -> list[float]:
+        top = self.y
+        x = self.LEFT + (self.WIDTH - width) / 2 if x is None else x
+        self.c.drawImage(ImageReader(io.BytesIO(png)), x, self.top(top + height), width, height)
+        box = [x, top, x + width, top + height]
+        self.blocks.append(block_truth("figure", "", box))
+        self.y = top + height + 8
+        return box
+
+    def finish(self) -> bytes:
+        self.end_page()
+        self.c.save()
+        return self.buf.getvalue()
+
+
+def bar_chart(values: Sequence[int], labels: Sequence[str] | None = None, title: str | None = None) -> bytes:
+    """A bar chart. With ``labels`` and ``title`` its text is part of the picture (pixels), not a text layer."""
+    size = (1200, 780)
+    img = Image.new("RGB", size, "white")
+    d = ImageDraw.Draw(img)
+    left, bottom, top, right = 150, 640, 170 if title else 80, 1120
+    for i in range(5):  # grid
+        y = bottom - i * (bottom - top) // 4
+        d.line([(left, y), (right, y)], fill=(210, 210, 210), width=3)
+    d.line([(left, top), (left, bottom), (right, bottom)], fill="black", width=6)
+    slot = (right - left) // len(values)
+    biggest = max(values)
+    palette = [(52, 101, 164), (204, 102, 51), (60, 140, 90), (140, 80, 150), (180, 150, 40)]
+    label_font, title_font = font(ARIAL, 36), font(ARIAL_BOLD, 46)
+    for i, v in enumerate(values):
+        x0 = left + i * slot + slot // 6
+        y0 = bottom - (bottom - top - 30) * v // biggest
+        d.rectangle([x0, y0, x0 + slot * 2 // 3, bottom - 3], fill=palette[i % len(palette)])
+        if labels:
+            d.text((x0 + slot // 3, y0 - 12), str(v), font=label_font, fill="black", anchor="ms")
+            d.text((x0 + slot // 3, bottom + 20), labels[i], font=label_font, fill="black", anchor="mt")
+    if title:
+        d.text((left, 70), title, font=title_font, fill="black", anchor="ls")
+    return png_bytes(img)
+
+
+def sign_image() -> tuple[bytes, list[str]]:
+    """A photographed notice: bold capitals in a frame."""
+    size, fnt = (1100, 400), font(ARIAL_BOLD, 56)
+    img = Image.new("L", size, 255)
+    d = ImageDraw.Draw(img)
+    d.rectangle([12, 12, size[0] - 12, size[1] - 12], outline=0, width=8)
+    for i, text in enumerate(SIGN):
+        d.text((size[0] // 2, 150 + i * 100), text, font=fnt, fill=0, anchor="mm")
+    return png_bytes(img), SIGN
+
+
+def build_report() -> Built:
+    doc = Doc("OCR verification report", total=5)
+    doc.heading("Harbour Warehouse Audit", 1)
+    doc.paragraph(
+        "This report summarises the yearly audit of the harbour warehouse. It was compiled from site visits, "
+        "counted inventory, and interviews with the loading crew."
+    )
+    doc.heading("1 Introduction", 2)
+    doc.paragraph(
+        "The warehouse stores ceramic tiles, timber boards, and sealed paint drums for three regional builders. "
+        "Goods arrive by truck in the early morning and leave by sea before the evening tide. The audit checks "
+        "whether every pallet can be found, whether the fire doors close, and whether the records match the shelves."
+    )
+    doc.heading("1.1 Scope", 3)
+    doc.paragraph(
+        "Four areas were inspected: the loading docks, the eastern wing, the cold storage room, and the open yard. "
+        "Offices and the staff canteen were left out because they hold no stock. The main goals of the audit were:"
+    )
+    doc.bullets(
+        [
+            "Count every pallet and compare the total with the ledger",
+            "Test each fire door and emergency light",
+            "Photograph every damaged crate",
+            "Interview the night shift supervisor",
+        ]
+    )
+    doc.next_page()
+    doc.heading("2 Method", 2)
+    doc.paragraph(
+        "Two inspectors worked in turns from Monday to Wednesday. Each pallet received a numbered tag, and each "
+        "tag was scanned into a handheld ledger before photographs were taken."
+    )
+    doc.heading("2.1 Inventory counts", 3)
+    doc.paragraph("Table 1 lists the pallets counted in each area together with the change against last year.")
+    doc.caption("Table 1: Pallets counted by area")
+    doc.table(TABLE, [150, 150, 150])
+    doc.heading("2.1.1 Sampling rule", 4)
+    doc.paragraph(
+        "Every tenth pallet was opened and its contents compared with the label. Any mismatch triggered a full "
+        "recount of the shelf."
+    )
+    doc.next_page()
+    doc.heading("3 Analysis", 2)
+    doc.paragraph("The crew estimated the break-even price of a pallet with the quadratic formula shown in Equation 1.")
+    doc.formula()
+    doc.paragraph("Here a, b, and c are the coefficients of the cost curve fitted to last year's invoices.")
+    doc.heading("3.1 Implementation", 3)
+    doc.paragraph(
+        "The ledger totals were computed with a short script. The function below returns the mean pallet count "
+        "per shelf."
+    )
+    doc.code(CODE)
+    doc.paragraph("The script was run twice to confirm that the totals did not change.")
+    doc.next_page()
+    doc.heading("4 Results", 2)
+    doc.paragraph(
+        "Figure 1 shows how the daily count changed during the audit week. Counts rose steadily on Monday and "
+        "Tuesday and settled on Wednesday."
+    )
+    doc.picture(bar_chart([62, 88, 120, 118, 121]), 360, 234)
+    doc.caption("Figure 1: Daily pallet count during the audit week.")
+    doc.paragraph(
+        "No pallet was lost. Eleven labels were torn, three crates were cracked, and one fire door stuck in its frame."
+    )
+    doc.next_page()
+    doc.heading("5 Conclusion", 2)
+    doc.paragraph("The warehouse is in good order. The recommended actions are listed below.")
+    doc.bullets(
+        [
+            "Replace the sticking fire door in the eastern wing",
+            "Print new labels for the eleven torn pallets",
+            "Repair the three cracked crates before shipping",
+            "Repeat the count in the cold storage room next spring",
+        ]
+    )
+    doc.paragraph("The next audit is planned for the same week next year.")
+    data = doc.finish()
+    return Built(
+        data, "pdf", "pt", "en", doc.pages,
+        {
+            "text_layer": True,
+            "heading_levels": {"title": 1, "section": 2, "subsection": 3, "subsubsection": 4},
+            "table": {"page": 2, "rows": 4, "cols": 3, "cells": TABLE, "ruled": True},
+            "formula": {"page": 3, "latex": LATEX, "numbered": "(1)", "in_tokens": False,
+                        "made_as": "vector text glyphs (Times New Roman subset) laid out by hand: numerator, fraction bar, denominator"},
+            "code": {"page": 3, "language": "python", "text": "\n".join(CODE), "in_tokens": False},
+            "figure": {"page": 4, "made_as": "raster PNG bar chart with no text in it", "caption": "Figure 1: Daily pallet count during the audit week."},
+            "furniture": {"header": list(HEADER), "footer": ["Confidential draft", "Page N of 5"], "on_every_page": True},
+            "outline": "bookmarks for every section heading, levels 0 to 2",
+            "bbox_precision": "line boxes come from font metrics, good to about 2 pt",
+        },
+    )  # fmt: skip
+
+
+def posterize(img: Image.Image, levels: int = 16) -> Image.Image:
+    step = 255 / (levels - 1)
+    return img.point(lambda v: round(round(v / step) * step))
+
+
+def build_scan_pdf() -> Built:
+    """Five image-only pages: no text layer. Each page is a 200 dpi greyscale image of 14 pt text."""
+    px, scale = (1700, 2200), 612 / 1700
+    fnt = font(TIMES, 39)
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=LETTER, invariant=1, pageCompression=1)
+    c.setTitle("Scanned pages")
+    pages = []
+    for n, text in enumerate(MULTIPAGE, start=1):
+        img, lines = render_lines(px, wrap(text, fnt, px[0] - 440), fnt, x=220, y=260, leading=62)
+        c.drawImage(ImageReader(posterize(img)), 0, 0, LETTER[0], LETTER[1])
+        c.showPage()
+        lines = [line_truth(ln["text"], [v * scale for v in ln["bbox"]]) for ln in lines]
+        pages.append(page_truth(n, LETTER, lines, paragraph_blocks(lines)))
+    c.save()
+    return Built(buf.getvalue(), "pdf", "pt", "en", pages, {"text_layer": False, "source_dpi": 200})
+
+
+def build_mixed_pdf() -> Built:
+    """Born-digital text and a small picture of text. The picture is 3% of the page, under the 5% bitmap area
+    that Docling OCRs by default, so only a full-page OCR reads it."""
+    doc = Doc("Field notes", total=1, furniture=False)
+    doc.heading("Field Notes", 2)
+    doc.paragraph(
+        "The eastern quay was quiet on Thursday morning. A notice hung on the fence, and it is reproduced below "
+        "as a photograph for the file."
+    )
+    sign, sign_tokens = sign_image()
+    box = doc.picture(sign, 200, 200 * 400 / 1100, x=Doc.LEFT)
+    doc.paragraph("The crew heard about the change by radio before the first shift began.")
+    page = doc.finish()
+    return Built(
+        page, "pdf", "pt", "en", doc.pages,
+        {
+            "text_layer": True,
+            "image_tokens": [t for s in sign_tokens for t in tokenize(s)],
+            "image_text": sign_tokens,
+            "image_bbox": [round(v, 2) for v in box],
+            "image_area_fraction": round((box[2] - box[0]) * (box[3] - box[1]) / (LETTER[0] * LETTER[1]), 4),
+        },
+    )  # fmt: skip
+
+
+def build_figure_pdf() -> Built:
+    """Born-digital text around a chart whose labels, title and values exist only as pixels."""
+    doc = Doc("Weekly summary", total=1, furniture=False)
+    doc.heading("Weekly Summary", 2)
+    doc.paragraph("The chart below compares the storage zones after the recount.")
+    box = doc.picture(bar_chart(CHART_VALUES, CHART_LABELS, CHART_TITLE), 400, 260)
+    doc.caption("Figure 1: Recount results for the four storage zones.")
+    page = doc.finish()
+    figure_tokens = tokenize(" ".join([CHART_TITLE, *CHART_LABELS, *map(str, CHART_VALUES)]))
+    return Built(
+        page, "pdf", "pt", "en", doc.pages,
+        {
+            "text_layer": True,
+            "figure_tokens": figure_tokens,
+            "figure_text": [CHART_TITLE, *CHART_LABELS, *map(str, CHART_VALUES)],
+            "figure_bbox": [round(v, 2) for v in box],
+            "figure_area_fraction": round((box[2] - box[0]) * (box[3] - box[1]) / (LETTER[0] * LETTER[1]), 4),
+        },
+    )  # fmt: skip
+
+
+# --- office and text files ----------------------------------------------------------------------
+
+NOTE = [
+    "The committee met on Monday to review the warehouse audit.",
+    "Two actions were agreed and an owner was named for each.",
+]
+ACTIONS = ["Replace the sticking fire door", "Print new pallet labels", "Repair three cracked crates"]
+OWNERS = [["Item", "Owner"], ["Fire door", "Maria"], ["Labels", "Jonas"]]
+
+
+def office_truth(blocks: list[dict[str, Any]], texts: list[str]) -> list[dict[str, Any]]:
+    """One page without geometry: width and height 0, no boxes."""
+    lines = [line_truth(t, [0, 0, 0, 0]) for t in texts]
+    return [page_truth(1, (0, 0), lines, blocks)]
+
+
+def build_docx() -> Built:
+    def para(text: str, style: str | None = None) -> str:
+        pr = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        return f"<w:p>{pr}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+    def cell(text: str) -> str:
+        return f'<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr>{para(text)}</w:tc>'
+
+    rows = "".join(f"<w:tr>{''.join(cell(t) for t in row)}</w:tr>" for row in OWNERS)
+    table = (
+        "<w:tbl><w:tblPr><w:tblBorders>"
+        + "".join(
+            f'<w:{e} w:val="single" w:sz="4" w:color="000000"/>'
+            for e in ("top", "left", "bottom", "right", "insideH", "insideV")
+        )
+        + '</w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>'
+        + rows
+        + "</w:tbl>"
+    )
+    body = (
+        para("Meeting Notes", "Heading1")
+        + "".join(para(t) for t in NOTE)
+        + "".join(para(t, "ListBullet") for t in ACTIONS)
+        + table
+    )
+    ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    document = (
+        f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document {ns}><w:body>{body}</w:body></w:document>'
+    )
+
+    def style(sid: str, name: str, extra: str = "") -> str:
+        return f'<w:style w:type="paragraph" w:styleId="{sid}"><w:name w:val="{name}"/><w:basedOn w:val="Normal"/>{extra}</w:style>'
+
+    styles = (
+        f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles {ns}>'
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>'
+        + style(
+            "Heading1", "heading 1", '<w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/></w:rPr>'
+        )
+        + style("ListBullet", "List Bullet", '<w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>')
+        + "</w:styles>"
+    )
+    types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+        "</Types>"
+    )
+    rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        f'<Relationship Id="rId1" Type="{rel}/officeDocument" Target="word/document.xml"/></Relationships>'
+    )
+    doc_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        f'<Relationship Id="rId1" Type="{rel}/styles" Target="styles.xml"/></Relationships>'
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, content in [
+            ("[Content_Types].xml", types),
+            ("_rels/.rels", rels),
+            ("word/document.xml", document),
+            ("word/styles.xml", styles),
+            ("word/_rels/document.xml.rels", doc_rels),
+        ]:
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))  # a fixed date keeps the bytes identical
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, content)
+    cells = [c for row in OWNERS for c in row]
+    blocks = [
+        block_truth("heading", "Meeting Notes", [0, 0, 0, 0], 1),
+        *(block_truth("paragraph", t, [0, 0, 0, 0]) for t in NOTE),
+        *(block_truth("list_item", t, [0, 0, 0, 0]) for t in ACTIONS),
+        block_truth("table", "\n".join(" | ".join(r) for r in OWNERS), [0, 0, 0, 0], html=True),
+    ]
+    texts = ["Meeting Notes", *NOTE, *ACTIONS, *cells]
+    return Built(
+        buf.getvalue(),
+        "office",
+        "none",
+        "en",
+        office_truth(blocks, texts),
+        {"table": {"rows": 3, "cols": 2, "cells": OWNERS}},
+    )
+
+
+def text_fixture(kind: str, text: str, blocks: list[dict[str, Any]], texts: list[str], **extras: Any) -> Built:
+    return Built(text.encode("utf-8"), kind, "none", "en", office_truth(blocks, texts), extras)
+
+
+def build_text_files() -> dict[str, Built]:
+    zero = [0, 0, 0, 0]
+    schedule = ["Dock Schedule", "Trucks arrive before dawn and leave before noon.", "Arrivals", *ACTIONS]
+    html = (
+        '<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="utf-8"><title>Dock Schedule</title></head>\n<body>\n'
+        f"<h1>{schedule[0]}</h1>\n<p>{schedule[1]}</p>\n<h2>{schedule[2]}</h2>\n<ul>\n"
+        + "".join(f"<li>{t}</li>\n" for t in ACTIONS)
+        + '</ul>\n<table border="1">\n'
+        + "".join("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>\n" for row in TABLE)
+        + "</table>\n</body>\n</html>\n"
+    )
+    html_blocks = [
+        block_truth("heading", schedule[0], zero, 1),
+        block_truth("paragraph", schedule[1], zero),
+        block_truth("heading", schedule[2], zero, 2),
+        *(block_truth("list_item", t, zero) for t in ACTIONS),
+        block_truth("table", "\n".join(" | ".join(r) for r in TABLE), zero, html=True),
+    ]
+    cells = [c for row in TABLE for c in row]
+    csv = "".join(",".join(row) + "\n" for row in TABLE)
+    note_txt = "\n\n".join(NOTE) + "\n"
+    note_md = "# Meeting Notes\n\n" + "\n\n".join(NOTE) + "\n\n" + "".join(f"- {t}\n" for t in ACTIONS)
+    return {
+        "sample.html": text_fixture("html", html, html_blocks, [*schedule, *cells], table={"rows": 4, "cols": 3, "cells": TABLE}),
+        "sample.csv": text_fixture(
+            "csv", csv, [block_truth("table", "\n".join(" | ".join(r) for r in TABLE), zero, html=True)], cells,
+            table={"rows": 4, "cols": 3, "cells": TABLE},
+        ),
+        "note.txt": text_fixture("text", note_txt, [block_truth("paragraph", t, zero) for t in NOTE], NOTE),
+        "note.md": text_fixture(
+            "text", note_md,
+            [block_truth("heading", "Meeting Notes", zero, 1), *(block_truth("paragraph", t, zero) for t in NOTE), *(block_truth("list_item", t, zero) for t in ACTIONS)],
+            ["Meeting Notes", *NOTE, *ACTIONS],
+        ),
+    }  # fmt: skip
+
+
 # --- checks -------------------------------------------------------------------------------------
 
 
@@ -441,8 +1012,14 @@ def verify(name: str, built: Built) -> None:
                 img.seek(n)
                 check_ink(img.copy(), [ln["bbox"] for ln in page["lines"]], f"{name} page {n + 1}")
     for page in built.pages:
-        if not page["tokens"] and built.kind != "office":
+        if not page["tokens"] and name != "report_born_digital.pdf" and built.kind == "image":
             raise AssertionError(f"{name}: page {page['page']} has no tokens")
+    # Text that only a full-page OCR or a figure reader can find must not also sit in the text layer.
+    for key in ("image_tokens", "figure_tokens"):
+        if key in built.extras:
+            layer = [t for page in built.pages for t in page["tokens"]]
+            if recall(built.extras[key], layer) > 0.15:
+                raise AssertionError(f"{name}: {key} are readable from the text layer")
 
 
 # --- build and write ----------------------------------------------------------------------------
@@ -454,6 +1031,12 @@ def build_all() -> dict[str, Built]:
     built["scan_table.png"] = build_table_image()
     built["large_page.png"] = build_large_page()
     built["multi_frame.tiff"] = build_tiff()
+    built["report_born_digital.pdf"] = build_report()
+    built["scan_multipage.pdf"] = build_scan_pdf()
+    built["mixed_embedded_image.pdf"] = build_mixed_pdf()
+    built["figure_with_text.pdf"] = build_figure_pdf()
+    built["sample.docx"] = build_docx()
+    built.update(build_text_files())
     return dict(sorted(built.items()))
 
 
