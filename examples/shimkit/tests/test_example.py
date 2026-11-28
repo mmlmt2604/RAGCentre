@@ -22,14 +22,27 @@ class FakeImage:
     width, height = 800, 600
 
 
+class TesseractNotFoundError(Exception):
+    """pytesseract's error when the tesseract program is not on PATH."""
+
+
 def load(
-    monkeypatch: pytest.MonkeyPatch, words: dict[str, list[Any]], languages: tuple[str, ...] = ("deu", "eng", "osd")
+    monkeypatch: pytest.MonkeyPatch,
+    words: dict[str, list[Any]],
+    languages: tuple[str, ...] = ("deu", "eng", "osd"),
+    *,
+    program: bool = True,
 ) -> Any:
     seen: dict[str, Any] = {}
     tesseract = types.ModuleType("pytesseract")
     tesseract.Output = types.SimpleNamespace(DICT="dict")  # type: ignore[attr-defined]
-    tesseract.get_tesseract_version = lambda: "5.3.0"  # type: ignore[attr-defined]
-    tesseract.get_languages = lambda: list(languages)  # type: ignore[attr-defined]
+    tesseract.TesseractNotFoundError = TesseractNotFoundError  # type: ignore[attr-defined]
+
+    def without_program() -> Any:
+        raise TesseractNotFoundError("tesseract is not installed or it's not in your PATH")
+
+    tesseract.get_tesseract_version = (lambda: "5.3.0") if program else without_program  # type: ignore[attr-defined]
+    tesseract.get_languages = (lambda: list(languages)) if program else without_program  # type: ignore[attr-defined]
 
     def image_to_data(image: Any, lang: str, output_type: str) -> dict[str, list[Any]]:
         seen["lang"] = lang
@@ -125,6 +138,30 @@ def test_a_bad_lang_ends_an_async_job_as_a_failed_400(monkeypatch: pytest.Monkey
         time.sleep(0.05)
     assert status["status"] == "failed"
     assert (status["error"]["http_status"], status["error"]["code"]) == (400, "invalid_options")
+
+
+def test_without_the_tesseract_program_info_reports_the_engine_unreachable_and_a_parse_is_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    present = TestClient(load(monkeypatch, WORDS).app).get("/info")
+    assert present.status_code == 200 and present.json()["engine"]["state"] == "idle"
+
+    client = TestClient(load(monkeypatch, WORDS, program=False).app, raise_server_exceptions=False)
+    info = client.get("/info")
+    assert info.status_code == 200, info.text  # /info stays up so RAGCentre can see why parses fail
+    body = info.json()
+    assert body["engine"]["state"] == "unreachable"
+    assert body["version"] and body["options_schema"]["properties"]["lang"]["default"] == "eng"
+
+    resp = parse_with_lang(client, "eng")
+    assert (resp.status_code, resp.json()["error"]["code"]) == (503, "engine_unavailable")  # 5xx: retried, not final
+    job_id = parse_with_lang(client, "eng", mode="async").json()["job_id"]
+    for _ in range(100):
+        status = client.get(f"/jobs/{job_id}").json()
+        if status["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert (status["status"], status["error"]["http_status"]) == ("failed", 503)
 
 
 def test_the_guide_shows_the_example_as_it_is() -> None:
