@@ -245,9 +245,32 @@ PROBES = [
         fixture="scan_rotated90.png",
         options={"rotated_text": True},
         control={"rotated_text": False},
-        predicate=P.recall_above_control(margin=0.2, treatment_min=0.8),
+        predicate=P.recall_above_control(margin=0.25),
         tier="C",
-        note="Plan row: true recall is at least 80% and false recall is lower.",
+        note="rotated_text makes a sideways page readable at all: 0.39 recall against 0.00. The plan's 80% is not "
+        "reachable (the bare library, CPU or MPS, gives the same 0.39: the detector finds a sideways page as 42 "
+        "pieces, and turning the page upright first gives 1.00). That number is stored by the next probe.",
+    ),
+    Probe(
+        id="easyocr.rotated_text_sideways_page_plan_threshold",
+        engine="easyocr",
+        fixture="scan_rotated90.png",
+        options={"rotated_text": True},
+        predicate=P.recall_at_least(0.8),
+        gate="record",
+        tier="C",
+        note="The plan's claim for a page rotated 90 degrees (recall of at least 80% with rotated_text). Recorded: "
+        "EasyOCR 1.7.2 reaches 0.39.",
+    ),
+    Probe(
+        id="easyocr.rotated_text_reads_upside_down_page",
+        engine="easyocr",
+        fixture="scan_upside_down.png",
+        options={"rotated_text": True},
+        control={"rotated_text": False},
+        predicate=P.recall_pair(treatment_min=0.8, control_max=0.2),
+        tier="C",
+        note="Turned 180 degrees the page is detected as upright lines and rotated_text reads it (0.99 against 0.03).",
     ),
     Probe(
         id="easyocr.canvas_size_small_reads_less",
