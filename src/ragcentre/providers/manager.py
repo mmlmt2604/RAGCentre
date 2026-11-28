@@ -51,6 +51,19 @@ NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 SECRET_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 
+_STORE_TUNING_FIELDS: dict[str, tuple[str, ...]] = {
+    "qdrant": ("hnsw_ef",),
+    "pgvector": ("ef_search", "max_scan_tuples"),
+    "chroma": ("ef_search",),
+    "lancedb": ("nprobes",),
+    "redis": ("ef_runtime",),
+    "weaviate": ("hnsw_ef",),
+    "elasticsearch": ("num_candidates_factor", "request_timeout"),
+    "opensearch": ("num_candidates_factor", "request_timeout"),
+    "milvus": ("hnsw_ef",),
+    "mongodb": ("exact", "num_candidates_factor"),
+}
+
 # Providers created automatically on first start. They are marked built-in and cannot be deleted.
 BUILTIN_PROVIDERS: dict[str, tuple[str, str]] = {"builtin-text": ("parser", "builtin_text")}
 
@@ -115,6 +128,18 @@ def destination_hash(spec: ProviderTypeSpec, config: Mapping[str, Any]) -> str:
     }
     excluded = tuning | set(spec.captured_fields)
     return fp({key: value for key, value in config.items() if key not in excluded})
+
+
+def _only_store_tuning_changed(spec: ProviderTypeSpec, before: Mapping[str, Any], after: Mapping[str, Any]) -> bool:
+    if spec.kind != "vector_store":
+        return False
+    destination = dict(after)
+    for key in _STORE_TUNING_FIELDS.get(spec.type, ()):
+        if key in before:
+            destination[key] = before[key]
+        else:
+            destination.pop(key, None)
+    return destination_hash(spec, destination) == destination_hash(spec, before)
 
 
 class ProviderManager:
@@ -201,6 +226,8 @@ class ProviderManager:
         if type_ == "lancedb":
             # The URI authority is an object-store bucket or database name.
             endpoint_config.pop("uri", None)
+        if type_ == "redis" and str(config.get("url", "")).startswith("unix:///"):
+            endpoint_config.pop("url", None)
         validate_destination(endpoint_config, self.ctx.settings.egress_allow)
 
     def create(self, name: str, kind: str, type_: str, config: Mapping[str, Any]) -> ProviderRow:
@@ -315,10 +342,23 @@ class ProviderManager:
                 (json.dumps(stored), now_iso(), provider_id),
             )
             secrets_reset = False
-            if destination_hash(spec, stored) != destination_hash(spec, row.config):
-                secrets_reset = bool(
-                    conn.execute("DELETE FROM provider_secrets WHERE provider_id = ?", (provider_id,)).rowcount
-                )
+            old_binding = destination_hash(spec, row.config)
+            new_binding = destination_hash(spec, stored)
+            if new_binding != old_binding:
+                if _only_store_tuning_changed(spec, row.config, stored):
+                    conn.execute(
+                        "DELETE FROM provider_secrets WHERE provider_id = ? AND destination_hash IS NOT ?",
+                        (provider_id, old_binding),
+                    )
+                    conn.execute(
+                        "UPDATE provider_secrets SET destination_hash = ? "
+                        "WHERE provider_id = ? AND destination_hash = ?",
+                        (new_binding, provider_id, old_binding),
+                    )
+                else:
+                    secrets_reset = bool(
+                        conn.execute("DELETE FROM provider_secrets WHERE provider_id = ?", (provider_id,)).rowcount
+                    )
             updated = self.get(provider_id)
         self._retire(provider_id)
         return replace(updated, secrets_reset=secrets_reset)

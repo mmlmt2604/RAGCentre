@@ -590,6 +590,7 @@ class RedisConfig(BaseModel):
     url: str = Field(
         default="redis://localhost:6379/0",
         description="Redis URL (redis://, rediss:// or unix://); it may carry credentials, or use the password secret",
+        json_schema_extra={"x-url-schemes": [scheme.removesuffix("://") for scheme in _SCHEMES]},
     )
     algorithm: Literal["flat", "hnsw"] = Field(
         default="flat",

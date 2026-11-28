@@ -41,12 +41,26 @@ export default defineConfig({
     timeout: 15_000,
     env: { RAGCENTRE_E2E_FIXTURE_PORT: String(fixturePort) },
   }, {
+    command: `uv run --no-sync uvicorn memory_shim:app --app-dir examples/vector_store_shims/memory --host 127.0.0.1 --port ${port + 2000}`,
+    cwd: resolve(fileURLToPath(new URL(".", import.meta.url)), ".."),
+    url: `http://127.0.0.1:${port + 2000}/info`,
+    reuseExistingServer: false,
+    timeout: 15_000,
+    env: { MEMORY_SHIM_API_KEY: "" },
+  }, {
     command: `uv run ragcentre serve --port ${port} --workers 2`,
     cwd: resolve(fileURLToPath(new URL(".", import.meta.url)), ".."),
     url: `${baseURL}/v1/health`,
     reuseExistingServer: false,
     timeout: 60_000,
     // Only the fixture is discovered, never a shim that happens to run on this machine.
-    env: { RAGCENTRE_DISCOVERY_URLS: `http://127.0.0.1:${fixturePort}/ocr-shim`, RAGCENTRE_DATA_DIR: dataDir, RAGCENTRE_LOG_LEVEL: "WARNING" },
+    env: {
+      RAGCENTRE_DISCOVERY_URLS: `http://127.0.0.1:${fixturePort}/ocr-shim`,
+      RAGCENTRE_DATA_DIR: dataDir,
+      RAGCENTRE_LOG_LEVEL: "WARNING",
+      RAGCENTRE_PROVIDER_E2E_PG_PASSWORD: "ragcentre",
+      RAGCENTRE_PROVIDER_E2E_PINECONE_KEY: "local-key",
+      RAGCENTRE_PROVIDER_E2E_MONGODB_URI: "mongodb://127.0.0.1:57017/?directConnection=true",
+    },
   }],
 });
