@@ -462,7 +462,8 @@ def test_the_null_shim_fails_every_paired_probe_on_what_its_predicate_sees():
     assert len(paired) >= 3  # an empty set would make this test pass for nothing
     entries = run_table(paired, shims.null_app())["probes"]
     assert [e["id"] for e in entries if e["met"]] == []
-    assert all(e["outcome"] == "fail" and answered_ok(e) for e in entries)
+    # a gate probe fails, a record probe is recorded: either way its predicate said no on a real 200 answer
+    assert all(e["outcome"] == ("record" if e["gate"] == "record" else "fail") and answered_ok(e) for e in entries)
 
 
 def test_the_garbage_shim_fails_every_recall_probe_on_what_its_predicate_sees():

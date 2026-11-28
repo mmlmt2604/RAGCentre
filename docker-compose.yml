@@ -139,6 +139,8 @@ services:
       - doctr-models:/home/shim/.cache
     environment:
       DOCTR_SHIM_API_KEY: ${DOCTR_SHIM_API_KEY:-}
+      # Where the models run: auto (empty), cpu, cuda or cuda:1. A container cannot use mps.
+      DOCTR_SHIM_DEVICE: ${DOCTR_SHIM_DEVICE:-}
     restart: unless-stopped
 
 volumes:
