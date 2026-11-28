@@ -126,6 +126,8 @@ services:
       EASYOCR_SHIM_API_KEY: ${EASYOCR_SHIM_API_KEY:-}
       # Default languages, comma-separated EasyOCR codes (a route can choose its own).
       EASYOCR_SHIM_LANGS: ${EASYOCR_SHIM_LANGS:-}
+      # 0 forces the CPU. Empty keeps the default: GPU when PyTorch finds one, else CPU.
+      EASYOCR_SHIM_GPU: ${EASYOCR_SHIM_GPU:-}
     restart: unless-stopped
 
   doctr:
