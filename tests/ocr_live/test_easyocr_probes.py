@@ -72,6 +72,18 @@ def block(text: str, page: int = 1) -> dict[str, Any]:
     return {"type": "paragraph", "text": text, "page": page}
 
 
+# --- fewer_tokens_than_control ------------------------------------------------------------------
+
+
+def test_fewer_tokens_than_control_counts_words_and_not_blocks():
+    check = E.fewer_tokens_than_control()
+    one_block, three_blocks = ir([block("alpha bravo charlie delta")], []), ir([block("alpha"), block("bravo")], [])
+    verdict = check(observe(three_blocks, one_block))  # more blocks, fewer words: text was dropped
+    assert verdict.ok and verdict.numbers == {"tokens": 2, "control_tokens": 4}
+    assert not check(observe(one_block, one_block)).ok  # the option dropped nothing
+    assert not check(observe(one_block, three_blocks)).ok  # more words than the control
+
+
 # --- page_width_ratio ---------------------------------------------------------------------------
 
 

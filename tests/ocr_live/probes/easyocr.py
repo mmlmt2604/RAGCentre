@@ -55,6 +55,22 @@ def exact_words_pair(key: str, treatment_min: float, control_max: float) -> Chec
     return Check(f"{key}_exact_pair", "recall", fn)
 
 
+def fewer_tokens_than_control() -> Check:
+    """The run's blocks hold fewer word tokens than the control's: text was dropped. Block counts do not show it,
+    because dropping a low-confidence piece can split one paragraph into several."""
+
+    def fn(obs: Observation) -> Verdict:
+        assert obs.control is not None, "fewer_tokens_than_control needs a control run"
+        run, control = len(P.result_tokens(obs.run.body)), len(P.result_tokens(obs.control.body))
+        return Verdict(
+            run < control,
+            f"{run} tokens with the option, {control} without",
+            {"tokens": run, "control_tokens": control},
+        )
+
+    return Check("fewer_tokens_than_control", "compare", fn)
+
+
 def page_width_ratio(expected: float, tolerance: float = 0.05, page: int = 1) -> Check:
     """The page ``width`` of the run is ``expected`` times that of the control, within ``tolerance``: the
     page was rendered at another resolution."""
@@ -250,9 +266,11 @@ PROBES = [
         fixture="scan_noisy.png",
         options={"min_confidence": 90},
         control={"min_confidence": 0},
-        predicate=P.all_of("fewer_blocks_and_confident", P.fewer_blocks_than_control(), P.confidences_at_least(0.9)),
+        predicate=P.all_of("fewer_tokens_and_confident", fewer_tokens_than_control(), P.confidences_at_least(0.9)),
         tier="C",
-        note="Plan row: fewer blocks than with 0, and every kept block has confidence 0.9 or more.",
+        note="Text below 90% confidence is dropped, and every block that is left has a confidence of 0.9 or more. "
+        "The plan's 'fewer blocks than with 0' is wrong for this engine: dropping pieces splits a paragraph "
+        "(3 blocks with 90, 1 block with 0).",
     ),
     Probe(
         id="easyocr.paragraphs_group_lines",
