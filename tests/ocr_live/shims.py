@@ -1,11 +1,15 @@
 """In-process ``ragcentre.parser/v1`` shims that stand in for an engine. They check the runner, not an engine.
 
-``oracle_app``   returns the fixture's ground truth as a Document IR, validates its options against the schema it
-                 is given (none by default, so any option is a ``400 invalid_options``), and refuses file types
-                 it does not take with ``415``. Pass ``transform`` to model what an option does to the result.
+``oracle_app``   returns the fixture's ground truth as a Document IR and honours ``DEMO_OPTIONS`` (ocr, mode, merge,
+                 granularity), which ``probes/shim.py`` exercises. It validates options against the schema it is
+                 given, so any other option is a ``400 invalid_options``, and refuses gif and the text and office
+                 types with ``415``. Pass ``options`` and ``transform`` to model other engines.
 ``null_app``     the oracle that ignores options: it declares no schema and never reads ``options``. A probe that
                  sends an option on and off and expects different results must FAIL on it.
 ``garbage_app``  returns text unrelated to every fixture. Every recall probe must FAIL on it.
+
+The null and garbage shims take every fixture type, so a probe that fails on them fails on its predicate and not
+on a ``415``.
 
 A fixture is recognised by the SHA-256 of the uploaded bytes, so a shim answers for the real fixture files only.
 Built on ``examples/shimkit`` (a path dependency of the example shims, not installed): the folder is put on
@@ -34,7 +38,16 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / "examples" / "shimkit"))
 
 from probe import FixtureTruth, load_truth  # noqa: E402
-from shimkit import Option, ShimError, build_ir, create_app, file_extension  # noqa: E402
+from shimkit import (  # noqa: E402
+    Option,
+    ShimError,
+    boolean,
+    build_ir,
+    choice,
+    create_app,
+    file_extension,
+    parse_options,
+)
 
 IMAGE_EXTENSIONS = frozenset({"png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"})
 MIME_BY_EXTENSION = {
@@ -45,8 +58,16 @@ MIME_BY_EXTENSION = {
     "bmp": "image/bmp",
     "tif": "image/tiff",
     "tiff": "image/tiff",
+    "gif": "image/gif",
     "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "html": "text/html",
+    "csv": "text/csv",
+    "txt": "text/plain",
+    "md": "text/markdown",
 }
+ALL_EXTENSIONS = frozenset(MIME_BY_EXTENSION)
+ORACLE_EXTENSIONS = IMAGE_EXTENSIONS | {"pdf"}
 GARBAGE = (
     "Sourdough starters need flour, water, and patience. Whisk cinnamon, sugar, and butter until fluffy, then fold "
     "chopped walnuts into the batter before baking. Penguins waddle across glaciers while volcanoes rumble "
@@ -55,6 +76,29 @@ GARBAGE = (
 
 # (the IR for the fixture, the request's options, the fixture's truth) -> the IR to return
 Transform = Callable[[dict[str, Any], dict[str, Any], FixtureTruth], dict[str, Any]]
+
+
+DEMO_OPTIONS: tuple[Option, ...] = (
+    boolean("ocr", True, "False returns no text, as an engine with OCR off does for a scan"),
+    choice("mode", ["accurate", "fast"], "accurate", "fast reads only the first half of every block"),
+    boolean("merge", False, "True returns the whole document as one block"),
+    choice("granularity", ["block", "line"], "block", "line returns one block per text line, with its box"),
+)
+
+
+def demo_transform(ir: dict[str, Any], options: dict[str, Any], truth: FixtureTruth) -> dict[str, Any]:
+    """What ``DEMO_OPTIONS`` do to the truth IR: the oracle's idea of an engine that honours its options."""
+    values = parse_options(DEMO_OPTIONS, options)
+    if values["granularity"] == "line":
+        ir = truth_ir(truth, lines=True)
+    blocks = [] if not values["ocr"] else [dict(b) for b in ir["blocks"]]
+    if values["mode"] == "fast":
+        for block in blocks:
+            words = block["text"].split()
+            block["text"] = " ".join(words[: len(words) // 2])
+    if values["merge"] and blocks:
+        blocks = [{"type": "paragraph", "text": "\n".join(b["text"] for b in blocks), "page": 1}]
+    return build_ir(blocks, ir["pages"], source_name=truth.name)
 
 
 def table_html(text: str) -> str:
@@ -109,10 +153,10 @@ def _parse_function(
 
 def oracle_app(
     *,
-    options: Sequence[Option] | None = (),
-    transform: Transform | None = None,
+    options: Sequence[Option] | None = DEMO_OPTIONS,
+    transform: Transform | None = demo_transform,
     lines: bool = False,
-    extensions: frozenset[str] = IMAGE_EXTENSIONS | {"pdf"},
+    extensions: frozenset[str] = ORACLE_EXTENSIONS,
     jobs: bool = False,
     name: str = "oracle-shim",
 ) -> Any:
@@ -120,7 +164,7 @@ def oracle_app(
     return create_app(
         name=name,
         version=lambda: f"0.0.0+{name}",
-        mime_types=sorted({MIME_BY_EXTENSION[e] for e in extensions if e in MIME_BY_EXTENSION}),
+        mime_types=sorted({MIME_BY_EXTENSION[e] for e in extensions}),
         capabilities={"page_images": False},
         api_key_env="OCR_LIVE_SHIM_API_KEY",
         parse=_parse_function(load_truth(), extensions, lines, transform),
@@ -129,16 +173,13 @@ def oracle_app(
     )
 
 
-def null_app(**kwargs: Any) -> Any:
-    """The oracle that ignores options: no schema, and ``transform`` is dropped."""
-    kwargs.pop("transform", None)
-    return oracle_app(options=None, name="null-shim", **kwargs)
+def null_app(*, jobs: bool = False) -> Any:
+    """The oracle that ignores options: no schema, no transform, every fixture type taken."""
+    return oracle_app(options=None, transform=None, extensions=ALL_EXTENSIONS, jobs=jobs, name="null-shim")
 
 
 def garbage_app(*, jobs: bool = False) -> Any:
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
-        if file_extension(filename) not in IMAGE_EXTENSIONS | {"pdf"}:
-            raise ShimError(415, "unsupported_media_type", f"{filename}: this shim does not read that type")
         sentences = [s.strip() + "." for s in GARBAGE.split(".") if s.strip()]
         return build_ir(
             [{"type": "paragraph", "text": s, "page": 1} for s in sentences], [{"page": 1}], source_name=filename
@@ -156,7 +197,7 @@ def garbage_app(*, jobs: bool = False) -> Any:
     )
 
 
-SHIMS: dict[str, Callable[[], Any]] = {"oracle": oracle_app, "null": null_app, "garbage": garbage_app}
+SHIMS: dict[str, Callable[..., Any]] = {"oracle": oracle_app, "null": null_app, "garbage": garbage_app}
 
 
 @contextmanager
@@ -185,8 +226,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Serve a runner self-test shim.")
     parser.add_argument("shim", choices=sorted(SHIMS))
     parser.add_argument("--port", type=int, default=8791)
+    parser.add_argument("--async", dest="jobs", action="store_true", help="also speak the async job protocol")
     args = parser.parse_args(argv)
-    with serving(SHIMS[args.shim](), port=args.port) as url:
+    with serving(SHIMS[args.shim](jobs=args.jobs), port=args.port) as url:
         print(f"{args.shim} shim at {url}  (Ctrl-C to stop)", flush=True)
         with suppress(KeyboardInterrupt):
             threading.Event().wait()
