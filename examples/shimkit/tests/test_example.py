@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import sys
+import time
 import types
 from pathlib import Path
 from typing import Any
@@ -20,11 +22,14 @@ class FakeImage:
     width, height = 800, 600
 
 
-def load(monkeypatch: pytest.MonkeyPatch, words: dict[str, list[Any]]) -> Any:
+def load(
+    monkeypatch: pytest.MonkeyPatch, words: dict[str, list[Any]], languages: tuple[str, ...] = ("deu", "eng", "osd")
+) -> Any:
     seen: dict[str, Any] = {}
     tesseract = types.ModuleType("pytesseract")
     tesseract.Output = types.SimpleNamespace(DICT="dict")  # type: ignore[attr-defined]
     tesseract.get_tesseract_version = lambda: "5.3.0"  # type: ignore[attr-defined]
+    tesseract.get_languages = lambda: list(languages)  # type: ignore[attr-defined]
 
     def image_to_data(image: Any, lang: str, output_type: str) -> dict[str, list[Any]]:
         seen["lang"] = lang
@@ -84,6 +89,42 @@ def test_the_example_rejects_what_it_cannot_read_and_typos(monkeypatch: pytest.M
     assert pdf.status_code == 415
     typo = client.post("/parse", files={"file": ("a.png", b"x", "image/png")}, data={"options": '{"lng": "eng"}'})
     assert typo.status_code == 400 and "lng" in typo.json()["error"]["message"]
+
+
+def parse_with_lang(client: TestClient, lang: str, **params: str) -> Any:
+    return client.post(
+        "/parse",
+        params=params,
+        files={"file": ("scan.png", io.BytesIO(b"png"), "image/png")},
+        data={"options": json.dumps({"lang": lang})},
+    )
+
+
+def test_a_lang_without_a_pack_is_a_bad_option_that_names_the_packs_and_never_reaches_tesseract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load(monkeypatch, WORDS, languages=("eng", "osd"))
+    client = TestClient(module.app)
+    for lang in ("deu", "eng+xxx", "", "../../etc/passwd"):
+        resp = parse_with_lang(client, lang)
+        error = resp.json()["error"]
+        assert (resp.status_code, error["code"]) == (400, "invalid_options"), lang
+        assert "installed: eng, osd" in error["message"]
+    assert "lang" not in module.seen  # the program was never run: an empty lang crashes it
+    assert parse_with_lang(client, "eng+osd").status_code == 200  # packs that are there still work
+    assert module.seen["lang"] == "eng+osd"
+
+
+def test_a_bad_lang_ends_an_async_job_as_a_failed_400(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = TestClient(load(monkeypatch, WORDS, languages=("eng",)).app)
+    job_id = parse_with_lang(client, "deu", mode="async").json()["job_id"]  # the pack is checked when the job runs
+    for _ in range(100):
+        status = client.get(f"/jobs/{job_id}").json()
+        if status["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert status["status"] == "failed"
+    assert (status["error"]["http_status"], status["error"]["code"]) == (400, "invalid_options")
 
 
 def test_the_guide_shows_the_example_as_it_is() -> None:

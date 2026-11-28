@@ -32,6 +32,12 @@ def parse(content: bytes, filename: str, options: dict) -> dict:
     opts = parse_options(OPTIONS, options)
     if file_extension(filename) not in IMAGES:
         raise ShimError(415, "unsupported_media_type", f"{filename}: this service reads images only")
+    installed = pytesseract.get_languages()
+    missing = [code for code in opts["lang"].split("+") if code not in installed]  # also "", and a path
+    if missing:
+        raise ShimError(
+            400, "invalid_options", f"lang: no pack for {', '.join(missing)}; installed: {', '.join(installed)}"
+        )
     image = Image.open(io.BytesIO(content))
     words = pytesseract.image_to_data(image, lang=opts["lang"], output_type=pytesseract.Output.DICT)
     paragraphs: dict[tuple, list[int]] = {}  # (block, paragraph) -> indexes of its words, in reading order
