@@ -150,7 +150,7 @@ def to_ir(doc: Any, *, include_page_images: bool = False) -> dict[str, Any]:
     """Convert a ``DoclingDocument`` to a Document IR ``dict``."""
     sizes = _page_sizes(doc)
     blocks: list[dict[str, Any]] = []
-    for item, _level in doc.iterate_items():
+    for item, _level in doc.iterate_items(traverse_pictures=True):
         block = _block(item, doc, sizes)
         if block is not None:
             block["id"] = f"b{len(blocks) + 1}"

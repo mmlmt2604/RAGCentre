@@ -12,8 +12,8 @@ environment.
 
 ```sh
 cd examples/docling_shim
-uv sync
-uv run uvicorn docling_shim.app:app --host 127.0.0.1 --port 8701
+uv sync --extra local
+uv run --extra local uvicorn docling_shim.app:app --host 127.0.0.1 --port 8701
 ```
 
 The first conversion is slow while Docling fetches its models.
@@ -62,7 +62,8 @@ routes:
 
 ## Options
 
-The parse route's `options` are passed to the service:
+The parse route's `options` are passed to the service. Pipeline options apply to PDFs and image files.
+Office, HTML, CSV, and Markdown use Docling's format-specific pipelines.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -83,7 +84,7 @@ The parse route's `options` are passed to the service:
 Not offered: Docling's VLM pipeline (GraniteDocling), whose model choices change between Docling releases.
 Docling's remote picture-description service is configured on the server, not per request.
 
-Options must be booleans: `"false"` (a string) is rejected with `400 invalid_options`.
+Boolean options require JSON booleans. For example, `"false"` (a string) is rejected with `400 invalid_options`.
 
 ## Using a docling-serve you already run
 
@@ -98,11 +99,22 @@ DOCLING_SERVE_URL=http://localhost:5001 uv run uvicorn docling_shim.app:app --po
 docker build --build-arg ENGINE=remote -f examples/docling_shim/Dockerfile examples   # the slim image
 ```
 
-(`uv sync --extra local` installs Docling for the in-process mode.) `/info` then reports
-`<shim>+docling-serve.<the server's Docling version>`, so upgrading the server is a new version, as
-it is in-process. The options `ocr`, `include_page_images` and `heading_hierarchy` are sent as
-`do_ocr`, `include_page_images` and `do_pdf_heading_hierarchy`. `DOCLING_SERVE_TIMEOUT` (seconds,
-default 3600) limits one conversion.
+`/info` then reports `<shim>+docling-serve.<the server's Docling version>`, so upgrading the server
+changes the provider version as it does in-process. All options in the table above are forwarded.
+`ocr` becomes `do_ocr`, `heading_hierarchy` becomes `do_pdf_heading_hierarchy`, and
+`force_full_page_ocr` becomes `force_ocr`. The enrichment and picture options use their `do_` names.
+`include_page_images`, `ocr_engine`, `ocr_lang`, `table_mode`, and `page_range` keep their names.
+`max_pages` limits the end of `page_range`. The shim fills in its defaults before it sends the
+request, including `ocr_engine=auto`, so a different OCR default configured on the server does
+not apply. Set `ocr_engine` explicitly to choose it.
+
+The request always asks for `to_formats=json` and `image_export_mode=placeholder`.
+Docling-core 2.107.0 preserves embedded page images in placeholder JSON. The shim returns those
+images when `include_page_images` is true. This JSON round trip is covered by the shim tests.
+A live docling-serve conversion with page images has not been verified. The shim does not fetch
+page images from external URLs.
+
+`DOCLING_SERVE_TIMEOUT` (seconds, default 3600) limits one conversion.
 
 ## Authentication
 
@@ -123,10 +135,13 @@ provider and a new pipeline, so parses from two Docling versions are never mixed
 
 ## How Docling output maps to the IR
 
-See the table at the top of `docling_shim/convert.py`. In short: the title and section headers
-become headings, tables become Markdown (with HTML alongside), pictures become `figure` blocks
-whose text is their caption, and every block carries its page number and a top-left-origin
-bounding box.
+See the table at the top of `docling_shim/convert.py`. Docling's titles and section headers
+become headings. Tables have Markdown in `text` and HTML in `html`. Pictures become `figure`
+blocks whose text holds the caption and any requested description. Text inside pictures becomes
+separate text blocks, so OCR text from a scanned image reaches the IR.
+
+PDF and image blocks carry their page number and a bounding box with a top-left origin when
+Docling supplies provenance. Office and text formats can have no page geometry.
 
 ## Long documents
 

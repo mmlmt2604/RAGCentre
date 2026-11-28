@@ -93,16 +93,24 @@ def check_parser(
 ) -> CheckReport:
     """Check the service at ``base_url`` with ``client`` (which carries any credentials).
 
-    ``file`` is ``(filename, content, mime_type)``; the default is a small built-in PDF whose
-    structure is known, which also lets the reading order and headings be checked."""
+    ``file`` is ``(filename, content, mime_type)``. The default is a small built-in PDF whose
+    structure is known. Services that advertise PNG but not PDF receive the packaged OCR image instead."""
     report = CheckReport(base_url=base_url.rstrip("/"))
     started = time.monotonic()
     try:
         info = _check_info(client, report)
         upload = file or ("pump-manual.pdf", sample_pdf(), "application/pdf")
+        declared = info.get("mime_types")
+        if file is None and isinstance(declared, list) and declared:
+            accepts_pdf = any(_mime_match(str(pattern), "application/pdf") for pattern in declared)
+            accepts_png = any(_mime_match(str(pattern), "image/png") for pattern in declared)
+            if accepts_png and not accepts_pdf:
+                from ragcentre.ocr.probe import page_png
+
+                upload = ("ocr-sample.png", page_png(), "image/png")
         _check_mime(info, upload[2], report)
         ir = _check_parse(client, report, upload, info, job_timeout, sleep)
-        _check_ir(report, ir, builtin=file is None)
+        _check_ir(report, ir, builtin=file is None and upload[2] == "application/pdf")
         if probe_errors:
             _check_error_handling(client, report)
     except _Failed:

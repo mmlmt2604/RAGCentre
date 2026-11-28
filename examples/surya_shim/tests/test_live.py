@@ -74,9 +74,10 @@ def test_live_parse() -> None:
     assert ir["schema_version"] == "1.0"
     blocks = ir["blocks"]
     assert blocks, "the engine found no text"
+    assert "pump" in " ".join(block["text"] for block in blocks).lower(), "the sample's text was not read"
     assert len({b["id"] for b in blocks}) == len(blocks)
     for block in blocks:
-        assert block["type"] in BLOCK_TYPES or isinstance(block["type"], str)
+        assert isinstance(block["type"], str) and block["type"].strip()
         assert isinstance(block["text"], str)
         if block["type"] == "heading":
             assert 1 <= block["level"] <= 6

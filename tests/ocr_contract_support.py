@@ -262,12 +262,15 @@ class Host:
         )
         return response
 
-    def pipeline(self, body: dict[str, Any]) -> str:
-        """Create a pipeline and wait until its work is done (built, or failed for good)."""
+    def pipeline(self, body: dict[str, Any], timeout: float = 15.0) -> str:
+        """Create a pipeline and wait until its work is done (built, or failed for good).
+
+        OCR parsing of an image can take longer than the default 15 s, so callers that parse real
+        images through a live shim pass a larger ``timeout``."""
         r = self.try_create(body)
         assert r.status_code == 201, r.text
         pipeline_id = str(r.json()["id"])
-        self.settle(pipeline_id)
+        self.settle(pipeline_id, timeout=timeout)
         return pipeline_id
 
     def settle(self, pipeline_id: str, timeout: float = 15.0) -> dict[str, Any]:

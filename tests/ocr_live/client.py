@@ -10,6 +10,7 @@ import json
 import mimetypes
 import time
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -76,9 +77,16 @@ class EngineClient:
     def close(self) -> None:
         self.http.close()
 
+    def _get(self, path: str) -> httpx.Response:
+        try:
+            return self.http.get(path)
+        except (httpx.ReadError, httpx.RemoteProtocolError):
+            # Only reads are safe to repeat after a server closes an idle connection.
+            return self.http.get(path)
+
     def info(self) -> Reply:
         start = time.perf_counter()
-        response = self.http.get("/info")
+        response = self._get("/info")
         return Reply(response.status_code, _decode(response), time.perf_counter() - start)
 
     def parse(self, path: Path, options: Mapping[str, Any] | None = None, *, use_async: bool | None = None) -> Reply:
@@ -104,7 +112,7 @@ class EngineClient:
         deadline = start + self.job_timeout
         while True:
             time.sleep(delay)
-            status = self.http.get(f"/jobs/{job_id}")
+            status = self._get(f"/jobs/{job_id}")
             body = _decode(status)
             if status.status_code != 200:
                 return Reply(status.status_code, body, time.perf_counter() - start, "async")
@@ -118,7 +126,8 @@ class EngineClient:
                     "async",
                 )
             delay = min(delay * 1.5, POLL_MAX)
-        result = self.http.get(f"/jobs/{job_id}/result")
+        result = self._get(f"/jobs/{job_id}/result")
         reply = Reply(result.status_code, _decode(result), time.perf_counter() - start, "async")
-        self.http.delete(f"/jobs/{job_id}")  # best effort, as the host does
+        with suppress(httpx.HTTPError):
+            self.http.delete(f"/jobs/{job_id}")  # optional cleanup cannot invalidate a completed parse
         return reply

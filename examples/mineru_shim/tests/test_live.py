@@ -1,7 +1,7 @@
 """Live check: parse a small generated PDF through the real engine.
 
 Skipped unless ``SHIM_LIVE=1`` and MinerU can be imported. It checks only that the result is a
-well-formed Document IR with at least one block that has a page and a bbox, not what the engine read.
+well-formed Document IR with located blocks and the expected text from the generated PDF.
 Run it in an environment that has the engine and its models (the first run downloads them)::
 
     SHIM_LIVE=1 uv run pytest tests/test_live.py -s
@@ -22,10 +22,6 @@ pytestmark = pytest.mark.skipif(
     reason="set SHIM_LIVE=1 in an environment with MinerU installed",
 )
 
-BLOCK_TYPES = {
-    "heading", "paragraph", "list_item", "table", "figure", "code", "formula", "caption", "footnote",
-    "page_header", "page_footer",
-}  # fmt: skip
 OPTIONS = {"tier": "flash"}
 
 
@@ -75,8 +71,10 @@ def test_live_parse() -> None:
     blocks = ir["blocks"]
     assert blocks, "the engine found no text"
     assert len({b["id"] for b in blocks}) == len(blocks)
+    text = " ".join(b["text"] for b in blocks).lower()
+    assert "pump" in text and "valve" in text, text
     for block in blocks:
-        assert block["type"] in BLOCK_TYPES or isinstance(block["type"], str)
+        assert isinstance(block["type"], str) and block["type"]
         assert isinstance(block["text"], str)
         if block["type"] == "heading":
             assert 1 <= block["level"] <= 6

@@ -53,6 +53,7 @@ def load(
     pil_image = types.ModuleType("PIL.Image")
     pil_image.open = lambda stream: FakeImage()  # type: ignore[attr-defined]
     pil.Image = pil_image  # type: ignore[attr-defined]
+    pil.ImageSequence = types.SimpleNamespace(Iterator=lambda image: [image])  # type: ignore[attr-defined]
     for module in (tesseract, pil, pil_image):
         monkeypatch.setitem(sys.modules, module.__name__, module)
     monkeypatch.delenv("TESSERACT_SHIM_API_KEY", raising=False)
@@ -162,6 +163,16 @@ def test_without_the_tesseract_program_info_reports_the_engine_unreachable_and_a
             break
         time.sleep(0.05)
     assert (status["status"], status["error"]["http_status"]) == ("failed", 503)
+
+
+def test_multiframe_tiff_keeps_every_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load(monkeypatch, WORDS)
+    frames = [types.SimpleNamespace(width=800, height=600), types.SimpleNamespace(width=900, height=700)]
+    sys.modules["PIL"].ImageSequence.Iterator = lambda image: iter(frames)
+    result = module.parse(b"tiff", "scan.tiff", {})
+    assert result["pages"] == [{"page": 1, "width": 800, "height": 600}, {"page": 2, "width": 900, "height": 700}]
+    assert [block["page"] for block in result["blocks"]] == [1, 1, 2, 2]
+    assert len({block["id"] for block in result["blocks"]}) == 4
 
 
 def test_the_guide_shows_the_example_as_it_is() -> None:

@@ -117,6 +117,7 @@ def test_service_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     assert info["protocol"] == PROTOCOL and info["name"] == "docling-shim"
     assert info["version"].startswith("0.3.1+docling.")
     assert "application/pdf" in info["mime_types"]
+    assert "image/gif" in info["mime_types"]
     resp = client.post("/parse", files={"file": ("m.pdf", b"%PDF", "application/pdf")},
                        data={"options": json.dumps({"ocr": False})})  # fmt: skip
     assert resp.status_code == 200 and resp.json()["blocks"][0]["text"] == "Pump Manual"
@@ -368,6 +369,40 @@ def test_options_reach_the_pipeline() -> None:
     assert default.heading_hierarchy_options.enabled and not default.do_code_enrichment
 
 
+def test_images_get_the_same_pipeline_options_as_pdfs() -> None:
+    """Docling reads an image with its own defaults unless the converter has an entry for the image format. Without
+    it ``ocr``, ``ocr_engine`` and ``ocr_lang`` did nothing for a PNG."""
+    pytest.importorskip("docling", reason="needs the docling-shim local extra")
+    from docling.datamodel import pipeline_options as po
+    from docling.datamodel.base_models import InputFormat
+
+    from docling_shim.app import DoclingConverter
+
+    built = DoclingConverter()._converter(all_options(ocr=False, ocr_engine="easyocr", ocr_lang=["de"]))
+    for fmt in (InputFormat.PDF, InputFormat.IMAGE):
+        pipeline = built.format_to_options[fmt].pipeline_options
+        assert pipeline.do_ocr is False, fmt
+        assert isinstance(pipeline.ocr_options, po.EasyOcrOptions) and pipeline.ocr_options.lang == ["de"], fmt
+        assert pipeline.heading_hierarchy_options.enabled, fmt
+
+
+def test_text_read_inside_a_picture_is_kept() -> None:
+    """Docling takes a scanned page for one picture and puts the lines OCR reads there under it. Walking the
+    document without ``traverse_pictures`` returned an empty IR for every scanned image."""
+    doc = DoclingDocument(name="scan")
+    doc.add_page(page_no=1, size=Size(width=600, height=800))
+    picture = doc.add_picture(prov=prov(1, 0, 800, 600, 0))
+    doc.add_text(DocItemLabel.TEXT, "First line read from the scan.", parent=picture, prov=prov(1, 50, 700, 500, 680))
+    doc.add_text(DocItemLabel.TEXT, "Second line.", parent=picture, prov=prov(1, 50, 660, 500, 640))
+    blocks = to_ir(doc)["blocks"]
+    assert [(b["type"], b["text"]) for b in blocks] == [
+        ("figure", ""),
+        ("paragraph", "First line read from the scan."),
+        ("paragraph", "Second line."),
+    ]
+    assert [b["id"] for b in blocks] == ["b1", "b2", "b3"] and blocks[1]["page"] == 1
+
+
 @pytest.mark.parametrize(
     ("engine", "class_name"),
     [
@@ -454,6 +489,49 @@ def test_remote_sends_a_repeated_field_for_lists(monkeypatch: pytest.MonkeyPatch
                 data={"options": json.dumps({"ocr_lang": ["en", "de"], "page_range": [2, 4]})})  # fmt: skip
     body = seen[0].content.decode("latin-1")
     assert body.count('name="ocr_lang"') == 2 and body.count('name="page_range"') == 2
+
+
+@pytest.mark.parametrize("include", [False, True])
+def test_remote_page_images_survive_placeholder_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, include: bool
+) -> None:
+    import base64
+    import io
+
+    import httpx
+    from docling_core.types.doc import ImageRef, ImageRefMode
+    from PIL import Image
+
+    doc = DoclingDocument(name="page-image")
+    doc.add_page(page_no=1, size=Size(width=600, height=800))
+    doc.pages[1].image = ImageRef.from_pil(Image.new("RGB", (600, 800), "white"), dpi=72)
+    path = tmp_path / "document.json"
+    doc.save_as_json(path, image_mode=ImageRefMode.PLACEHOLDER)
+    response = {"document": {"json_content": json.loads(path.read_text())}, "status": "success", "errors": []}
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=response)
+
+    client = remote_client(handler, monkeypatch)
+    reply = client.post(
+        "/parse",
+        files={"file": ("m.pdf", b"%PDF", "application/pdf")},
+        data={"options": json.dumps({"include_page_images": include})},
+    )
+    assert reply.status_code == 200
+    body = seen[0].content.decode("latin-1")
+    assert 'name="image_export_mode"\r\n\r\nplaceholder' in body
+    assert 'name="ocr_engine"\r\n\r\nauto' in body
+    assert f'name="include_page_images"\r\n\r\n{str(include).lower()}' in body
+    page = reply.json()["pages"][0]
+    if include:
+        assert page["image"]["mime"] == "image/png"
+        with Image.open(io.BytesIO(base64.b64decode(page["image"]["data_b64"]))) as image:
+            assert image.format == "PNG" and image.size == (600, 800)
+    else:
+        assert "image" not in page
 
 
 # --- richer mapping: pictures, code and items that run over a page break ---------------------------

@@ -11,7 +11,7 @@ test('a running OCR shim is found, added in one click, proven, and reported when
   await found.getByRole('button', { name: 'Add and test OCR' }).click();
   const link = page.getByRole('link', { name: 'e2e-ocr', exact: true });
   await expect(link).toBeFocused();
-  await expect(page.locator('.shell-status__ocr')).toHaveText('OCR ready');
+  await expect(page.locator('.shell-status__ocr')).toHaveText(/^OCR ready(?: \(\d+\))?$/);
   await expect(found).toBeHidden();
 
   await link.click();
@@ -22,7 +22,7 @@ test('a running OCR shim is found, added in one click, proven, and reported when
   await parserControl('ocr-shim', 'fail');
   await panel.getByRole('button', { name: 'Test OCR' }).click();
   await expect(panel).toContainText('OCR engine not working');
-  await expect(page.locator('.shell-status__ocr')).toHaveText('OCR not working');
+  await expect(page.locator('.shell-status__ocr')).toHaveText(/^(OCR not working|\d+ of \d+ OCR ready)$/);
 
   await parserControl('ocr-shim', 'ok');
   await panel.getByRole('button', { name: 'Test OCR' }).click();

@@ -136,6 +136,14 @@ def page_count_is(count: int) -> Check:
 # --- the table ------------------------------------------------------------------------------------
 
 PROBES: list[Probe] = [
+    Probe(
+        id="doctr.gif_unsupported",
+        engine="doctr",
+        fixture="scan_clean.gif",
+        expect_status=415,
+        expect_code="unsupported_media_type",
+        tier="A",
+    ),
     # Errors the shim answers without reading anything (tier A).
     Probe(
         id="doctr.bad_detection_name",
@@ -325,20 +333,19 @@ PROBES: list[Probe] = [
         options={"headings": True},
         control={"headings": False},
         predicate=title_is_heading(1),
-        gate="record",
         tier="C",
-        note="Recorded limit: docTR's boxes follow the ink, so the title is not much taller than the line under it, joins "
-        "that paragraph, and is then not short enough to be a heading. See the README.",
+        note="The shared shimkit layout keeps a heading out of the paragraph next to it, so the title is found even with "
+        "the default grouping (paragraphs on).",
     ),
     Probe(
         id="doctr.min_confidence",
         engine="doctr",
         fixture="scan_noisy.png",
-        options={"min_confidence": 99, "paragraphs": False},
+        options={"min_confidence": 90, "paragraphs": False},
         control={"min_confidence": 0, "paragraphs": False},
-        predicate=P.all_of("min_confidence_drops_lines", P.fewer_blocks_than_control(), P.confidences_at_least(0.99)),
+        predicate=P.all_of("min_confidence_drops_lines", P.fewer_blocks_than_control(), P.confidences_at_least(0.90)),
         tier="C",
-        note="The plan's 90 drops nothing here: docTR is at least 97% sure of every line of the noisy scan.",
+        note="min_confidence=90 drops the noisy scan's one low-confidence line (about 90%) and keeps the rest.",
     ),
     Probe(
         id="doctr.min_confidence.p90",
@@ -349,7 +356,8 @@ PROBES: list[Probe] = [
         predicate=P.all_of("min_confidence_90", P.fewer_blocks_than_control(), P.confidences_at_least(0.9)),
         gate="record",
         tier="C",
-        note="The plan's literal probe. Recorded because the fixture has no line below 90.",
+        note="The plan's literal probe. Recorded: with the default grouping, dropping the one low-confidence line can split "
+        "a paragraph, so the block count does not fall (2 blocks vs 1).",
     ),
     Probe(
         id="doctr.page_images",

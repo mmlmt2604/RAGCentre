@@ -59,6 +59,14 @@ def read_in_format(fixture: str, note: str) -> Probe:
 
 PROBES = [
     Probe(
+        id="tesseract.gif_unsupported",
+        engine="tesseract",
+        fixture="scan_clean.gif",
+        expect_status=415,
+        expect_code="unsupported_media_type",
+        tier="A",
+    ),
+    Probe(
         id="tesseract.clean_scan",
         engine="tesseract",
         fixture="scan_clean.png",
@@ -135,8 +143,7 @@ PROBES = [
         engine="tesseract",
         fixture="multi_frame.tiff",
         predicate=P.all_of("every_frame_is_a_page", P.recall_at_least(0.8), P.page_set_equals({1, 2, 3})),
-        gate="record",
         tier="C",
-        note="Records how many TIFF frames are read: the numbers hold the pages that carry blocks and the recall.",
+        note="Every TIFF frame must retain its page number and text. The live follow-up verified all three frames.",
     ),
 ]

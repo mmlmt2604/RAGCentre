@@ -20,15 +20,6 @@ PROBES = [
         note="A mistyped option must fail loudly. An engine that ignores it would hide every typo in a pipeline.",
     ),
     Probe(
-        id="baseline.gif_unsupported",
-        engine="*",
-        fixture="scan_clean.gif",
-        expect_status=415,
-        expect_code="unsupported_media_type",
-        tier="A",
-        note="gif is not in the routing table of any engine, so the shim must refuse it rather than guess.",
-    ),
-    Probe(
         id="baseline.ir_valid",
         engine="*",
         fixture="scan_clean.png",

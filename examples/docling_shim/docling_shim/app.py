@@ -50,6 +50,7 @@ MIME_TYPES = [
     "image/tiff",
     "image/bmp",
     "image/webp",
+    "image/gif",
 ]
 OCR_ENGINES = ["auto", "easyocr", "tesseract", "rapidocr", "ocrmac"]
 OPTIONS = [
@@ -160,7 +161,7 @@ class DoclingConverter:
     def _converter(self, options: dict[str, Any]) -> Any:
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
-        from docling.document_converter import DocumentConverter, PdfFormatOption
+        from docling.document_converter import DocumentConverter, ImageFormatOption, PdfFormatOption
 
         key = tuple(tuple(v) if isinstance(v, list) else v for v in (options[k] for k in self.PIPELINE_OPTIONS))
         with self._lock:
@@ -180,7 +181,10 @@ class DoclingConverter:
                 pipeline.do_picture_classification = options["picture_classification"]
                 pipeline.do_picture_description = options["picture_description"]
                 self._converters[key] = DocumentConverter(
-                    format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline)}
+                    format_options={
+                        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline),
+                        InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline),
+                    }
                 )
             return self._converters[key]
 

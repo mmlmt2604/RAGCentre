@@ -92,12 +92,12 @@ def test_the_german_probe_is_skipped_until_the_machine_has_the_pack_set_up(monke
     assert report["probes"][0]["detail"] == "needs env:TESSDATA_PREFIX"
 
 
-def test_a_shim_that_reads_one_tiff_frame_is_recorded_with_its_pages_and_does_not_fail_the_run():
+def test_a_shim_that_drops_later_tiff_frames_fails_the_run():
     report = run(oracle(first_frame_only))
     tiff = next(e for e in report["probes"] if e["id"] == "tesseract.multi_frame_tiff_reads_every_frame")
-    assert (tiff["outcome"], tiff["met"], tiff["numbers"]["pages"]) == ("record", False, [1])
+    assert (tiff["outcome"], tiff["met"], tiff["numbers"]["pages"]) == ("fail", False, [1])
     assert 0.2 < tiff["numbers"]["recall"] < 0.4  # 10 of the 35 tokens are on frame 1
-    assert report["summary"]["ok"]
+    assert not report["summary"]["ok"]
 
 
 def test_a_bad_lang_is_a_bad_option_for_the_oracle_and_a_failure_for_a_shim_that_accepts_it():

@@ -120,9 +120,12 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     if engine is None:
         remote = PaddleServingEngine.from_env()
     run = engine or remote or PaddleEngine(lang=lang)
+    service_options = [
+        option for option in OPTIONS if remote is None or option.key not in {"pipeline", "lang", "heading_levels"}
+    ]
 
     def parse(content: bytes, filename: str, options: dict[str, Any]) -> dict[str, Any]:
-        opts = parse_options(OPTIONS, options)
+        opts = parse_options(service_options, options)
         if file_extension(filename) not in SUPPORTED_EXTENSIONS:
             raise ShimError(415, "unsupported_media_type", f"{filename}: PaddleOCR reads PDF and image files only")
         return to_ir(run(content, filename, opts), source_name=filename, list_heuristic=opts["list_heuristic"])
@@ -132,7 +135,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         version=lambda: service_version(lang, remote is not None),
         mime_types=MIME_TYPES,
         capabilities={"page_images": False},
-        options=OPTIONS,
+        options=service_options,
         api_key_env="PADDLEOCR_SHIM_API_KEY",
         parse=parse,
         serialise=remote is None,  # PaddlePaddle pipelines are not safe to call concurrently

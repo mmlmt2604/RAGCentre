@@ -7,7 +7,7 @@ uvicorn tesseract_shim:app --port 8710
 import io
 
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageSequence
 
 from shimkit import ShimError, build_ir, create_app, file_extension, parse_options, string
 
@@ -35,24 +35,25 @@ def parse(content: bytes, filename: str, options: dict) -> dict:
             400, "invalid_options", f"lang: no pack for {', '.join(missing)}; installed: {', '.join(installed)}"
         )
     image = Image.open(io.BytesIO(content))
-    words = pytesseract.image_to_data(image, lang=opts["lang"], output_type=pytesseract.Output.DICT)
-    paragraphs: dict[tuple, list[int]] = {}  # (block, paragraph) -> indexes of its words, in reading order
-    for i, text in enumerate(words["text"]):
-        if text.strip():
-            paragraphs.setdefault((words["block_num"][i], words["par_num"][i]), []).append(i)
-    blocks = []
-    for indexes in paragraphs.values():
-        boxes = [(words["left"][i], words["top"][i], words["width"][i], words["height"][i]) for i in indexes]
-        blocks.append(
-            {
-                "type": "paragraph",
-                "text": " ".join(words["text"][i] for i in indexes),
-                "page": 1,
-                "bbox": [min(x for x, _, _, _ in boxes), min(y for _, y, _, _ in boxes),
-                         max(x + w for x, _, w, _ in boxes), max(y + h for _, y, _, h in boxes)],
-            }
-        )  # fmt: skip
-    pages = [{"page": 1, "width": image.width, "height": image.height}]
+    blocks, pages = [], []
+    for page, frame in enumerate(ImageSequence.Iterator(image), start=1):
+        words = pytesseract.image_to_data(frame, lang=opts["lang"], output_type=pytesseract.Output.DICT)
+        paragraphs: dict[tuple, list[int]] = {}
+        for i, text in enumerate(words["text"]):
+            if text.strip():
+                paragraphs.setdefault((words["block_num"][i], words["par_num"][i]), []).append(i)
+        for indexes in paragraphs.values():
+            boxes = [(words["left"][i], words["top"][i], words["width"][i], words["height"][i]) for i in indexes]
+            blocks.append(
+                {
+                    "type": "paragraph",
+                    "text": " ".join(words["text"][i] for i in indexes),
+                    "page": page,
+                    "bbox": [min(x for x, _, _, _ in boxes), min(y for _, y, _, _ in boxes),
+                             max(x + w for x, _, w, _ in boxes), max(y + h for _, y, _, h in boxes)],
+                }
+            )  # fmt: skip
+        pages.append({"page": page, "width": frame.width, "height": frame.height})
     return build_ir(blocks, pages, source_name=filename)
 
 

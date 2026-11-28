@@ -389,14 +389,14 @@ def test_engine_passes_options_to_the_constructor_and_predict(fake_paddleocr: ty
     ]
 
 
-def test_engine_keeps_one_pipeline_per_option_combination(fake_paddleocr: type[FakePipeline]) -> None:
+def test_engine_reuses_current_pipeline_when_model_options_match(fake_paddleocr: type[FakePipeline]) -> None:
     engine = PaddleEngine()
     engine(b"x", "a.pdf", OPTIONS)
     engine(b"x", "b.pdf", OPTIONS)
     assert len(fake_paddleocr.instances) == 1 and len(fake_paddleocr.instances[0].predict_calls) == 2
     engine(b"x", "c.pdf", {**OPTIONS, "charts": True})
     assert len(fake_paddleocr.instances) == 2
-    engine(b"x", "d.pdf", {**OPTIONS, "heading_levels": True})  # not a pipeline flag: same pipeline
+    engine(b"x", "d.pdf", {**OPTIONS, "charts": True, "heading_levels": True})  # heading levels reuse it
     assert len(fake_paddleocr.instances) == 2
 
 
@@ -624,9 +624,9 @@ def test_lang_and_detection_limit_per_request(fake_paddleocr: type[FakePipeline]
     engine(b"x", "a.pdf", OPTIONS)
     engine(b"x", "b.pdf", {**OPTIONS, "lang": "japan"})
     engine(b"x", "c.pdf", {**OPTIONS, "text_det_limit_side_len": 1920})
-    engine(b"x", "d.pdf", {**OPTIONS, "lang": "japan"})  # the same combination: reused
+    engine(b"x", "d.pdf", {**OPTIONS, "lang": "japan"})
     langs = [p.kwargs.get("lang") for p in fake_paddleocr.instances]
-    assert langs == ["en", "japan", "en"] and len(fake_paddleocr.instances) == 3
+    assert langs == ["en", "japan", "en", "japan"] and len(fake_paddleocr.instances) == 4
     limited = fake_paddleocr.instances[2]
     assert limited.kwargs["text_det_limit_side_len"] == 1920
     assert limited.predict_calls[0][1]["text_det_limit_side_len"] == 1920

@@ -84,7 +84,9 @@ The parse route's `options` are passed to the service:
 | `dpi` | `192` | Render resolution for PDF pages, an integer from 72 to 400 |
 | `page_range` | all pages | PDFs only: `[first, last]`, 1-based and inclusive; a `last` past the end is clamped. Blocks keep the original page numbers |
 
-Each block also carries Surya's recognition `confidence` (0 to 1) as `metadata.confidence`.
+When Surya supplies a recognition `confidence` (0 to 1), the shim copies it into `metadata.confidence`.
+Surya 0.24.0's full-page recognition path assigns one score to all blocks on a page.
+This score does not measure the accuracy of each individual block.
 
 The shim does not serialise parses: it is a client of the inference server. The provider file sets
 `max_concurrency: 2`. Only the first frame of a multi-page TIFF is read.

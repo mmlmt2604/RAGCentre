@@ -114,4 +114,8 @@ class MineruEngine:
                 if translated is None:
                     raise
                 raise translated from exc
-            return content_list, page_sizes(path, extension)
+            sizes = page_sizes(path, extension)
+            if extension == "pdf" and options.get("page_range") and sizes:
+                selected = {page.page_idx + 1 for page in result.middle_json.pages}
+                sizes = {number: size for number, size in sizes.items() if number in selected}
+            return content_list, sizes

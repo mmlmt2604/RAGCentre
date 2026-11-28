@@ -673,7 +673,6 @@ def test_the_engine_filter_and_probe_globs_pick_what_runs(served, tmp_path):
     assert code == 0 and list(report["engines"]) == ["shim"]
     assert [e["id"] for e in report["engines"]["shim"]["probes"]] == [
         "baseline.unknown_option",
-        "baseline.gif_unsupported",
     ]
 
 

@@ -90,6 +90,8 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         opts = parse_options(OPTIONS, options)
         if file_extension(filename) not in SUPPORTED_EXTENSIONS:
             raise ShimError(415, "unsupported_media_type", f"{filename}: Surya reads PDF and image files only")
+        if opts["page_range"] and file_extension(filename) != "pdf":
+            raise ShimError(400, "invalid_options", "option 'page_range' only applies to PDF files")
         pages = run(content, filename, opts)
         return to_ir(pages, source_name=filename, include_page_images=opts["include_page_images"])
 

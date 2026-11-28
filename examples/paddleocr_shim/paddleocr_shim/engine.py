@@ -1,13 +1,12 @@
 """Calls PaddleOCR's PP-StructureV3 and reduces each page result to plain dicts for ``convert``.
 
-PaddleOCR is imported on first use, so importing this module needs no engine. Each distinct
-combination of options builds (and keeps) its own pipeline, because PaddleX only loads the models
-for the features that are on when the pipeline is built: a request can turn a feature off, but it
-cannot turn on one the pipeline was built without.
+PaddleOCR is imported on first use, so importing this module needs no engine. PaddleX only loads
+models for features that are enabled when a pipeline is built.
 """
 
 from __future__ import annotations
 
+import gc
 import os
 from typing import Any
 
@@ -133,6 +132,9 @@ class PaddleEngine:
     def _structure_pipeline(self, flags: dict[str, bool], lang: str | None, limit: int | None) -> Any:
         key = ("structure_v3", tuple(sorted(flags.items())), lang, limit)
         if key not in self._pipelines:
+            if self._pipelines:
+                self._pipelines.clear()
+                gc.collect()
             try:
                 from paddleocr import PPStructureV3
 
@@ -150,6 +152,9 @@ class PaddleEngine:
     def _vl_pipeline(self, flags: dict[str, bool]) -> Any:
         key = ("vl", tuple(sorted(flags.items())))
         if key not in self._pipelines:
+            if self._pipelines:
+                self._pipelines.clear()
+                gc.collect()
             try:
                 from paddleocr import PaddleOCRVL
 

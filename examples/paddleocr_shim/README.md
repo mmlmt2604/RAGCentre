@@ -15,7 +15,7 @@ Python 3.11 to 3.13 (PaddlePaddle publishes no wheels for newer versions yet).
 
 ```sh
 cd examples/paddleocr_shim
-uv sync
+uv sync --extra local
 uv pip install paddlepaddle      # CPU build; see below for GPUs
 uv run uvicorn paddleocr_shim.app:app --host 127.0.0.1 --port 8703
 ```
@@ -83,9 +83,10 @@ The parse route's `options` are passed to the service. A typo in an option name 
 | `text_det_limit_side_len` | engine's | Longest-side limit in pixels for text detection input (PP-StructureV3 only); raise it for dense pages |
 | `list_heuristic` | `false` | PaddleOCR has no list label, so a bullet comes out as a paragraph. With this on, a paragraph whose every line starts with a bullet (`•`, `-`, `*`...) or a number (`1.`, `2)`, `(3)`, `a)`) becomes one `list_item` per line. It is a guess; leave it off if your documents have numbered headings or paragraphs |
 
-PaddleX loads models for a feature when a pipeline is *built*, so the shim builds and keeps one
-pipeline per combination of the feature switches, `lang` and `text_det_limit_side_len`; a request can only use features its pipeline
-was built with. Using many different combinations holds many pipelines in memory.
+PaddleX loads models for a feature when a pipeline is *built*. The shim keeps the current pipeline
+and reuses it while its feature switches, `lang`, and `text_det_limit_side_len` match. Changing those
+settings releases the old pipeline before building its replacement, so trying different strategies
+does not retain a full set of models for every combination. Switching back reloads that pipeline.
 
 The shim serialises parses (one at a time) and the provider file sets `max_concurrency: 1`.
 
@@ -170,11 +171,12 @@ docker build --build-arg ENGINE=remote -f examples/paddleocr_shim/Dockerfile exa
 - The server's pipeline was built with its own features. A request can switch a feature off (the
   options above are sent as `useTableRecognition` and so on) but cannot switch on one the server
   loaded without.
-- The server's JSON has no heading levels, so `heading_levels` has no effect and every section title
-  is level 2.
-- PaddleX serving reports no version, so `/info` says `<shim>+paddlex-serving.remote`. Set the
-  provider's `revision` whenever you change the server's pipeline or models, so RAGCentre does not
-  mix the outputs. `PADDLEX_SERVING_API_KEY` is sent as a bearer token for a reverse proxy in front
+- `pipeline`, `lang`, and `heading_levels` are local-only options. Remote mode omits them from
+  `/info.options_schema` and returns `400 invalid_options` if they are sent. Configure the server's
+  pipeline and language on the server. Section titles default to level 2 when its result has no `title_level`.
+- PaddleX serving reports no version, so `/info` says `<shim>+paddlex-serving.remote`. Create a new
+  provider with a different `revision` whenever you change the server's pipeline or models, so RAGCentre
+  does not mix the outputs. `PADDLEX_SERVING_API_KEY` is sent as a bearer token for a reverse proxy in front
   of it; `PADDLEX_SERVING_TIMEOUT` (seconds, default 3600) limits one document.
 
 ## Long documents

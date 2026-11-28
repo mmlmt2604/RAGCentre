@@ -303,7 +303,13 @@ def build_scans(rng: random.Random) -> dict[str, Built]:
     add("scan_clean.png", page, png_bytes(page), lines, source="Times New Roman 46 px, 300 dpi")
     add("scan_clean.jpg", page, image_bytes(page, "JPEG", quality=85, optimize=True), lines)
     add("scan_clean.webp", page, image_bytes(page, "WEBP", quality=90, method=6), lines)
-    add("scan_clean.gif", page, image_bytes(page, "GIF"), lines, note="a GIF: every engine must refuse it with 415")
+    add(
+        "scan_clean.gif",
+        page,
+        image_bytes(page, "GIF"),
+        lines,
+        note="GIF support differs by engine; verify the engine-specific media contract",
+    )
     add("scan_clean.bmp", page, image_bytes(bilevel(page), "BMP"), lines, note="1-bit, so that it fits in 200 KB")
     add(
         "scan_noisy.png",

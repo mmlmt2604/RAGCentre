@@ -17,7 +17,9 @@ from ragcentre.providers.base import BuildEnv, HttpConfig, HttpService, Provider
 
 class HttpRerankerConfig(HttpConfig):
     model: str = Field(min_length=1, description="Model name")
-    revision: str = Field(default="", description="Optional revision tag; set at creation; a new value is a new fingerprint")
+    revision: str = Field(
+        default="", description="Optional revision tag; set at creation; a new value is a new fingerprint"
+    )
 
 
 class HttpReranker(HttpService):

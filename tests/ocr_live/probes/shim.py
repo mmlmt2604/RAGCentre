@@ -11,6 +11,14 @@ import predicates as P
 from probe import Probe
 
 PROBES = [
+    Probe(
+        id="shim.gif_unsupported",
+        engine="shim",
+        fixture="scan_clean.gif",
+        expect_status=415,
+        expect_code="unsupported_media_type",
+        tier="A",
+    ),
     # Paired: the option on against the option off on the same fixture.
     Probe(
         id="shim.ocr_off_reads_nothing",

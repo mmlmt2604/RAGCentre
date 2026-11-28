@@ -5069,7 +5069,7 @@
     }
    ],
    "extras": {
-    "note": "a GIF: every engine must refuse it with 415"
+    "note": "GIF support differs by engine; verify the engine-specific media contract"
    }
   },
   "scan_clean.jpg": {

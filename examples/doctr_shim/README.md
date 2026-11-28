@@ -71,7 +71,7 @@ The parse route's `options` are passed to the service. A typo in an option name 
 | `dpi` | `144` | Render resolution for PDF pages (72 to 400; docTR's own PDF loader uses 144) |
 | `page_range` | every page | `[first, last]`, 1-based and inclusive. For PDFs and multi-page TIFFs. Page numbers stay the original's |
 | `paragraphs` | `true` | Group lines into paragraphs. Off, every line is its own block |
-| `headings` | `false` | Guess headings from the text height. A heading must be a paragraph of its own: docTR's boxes follow the ink, so a title only a little taller than the lines under it joins their paragraph and is not found. Turn `paragraphs` off to find it (on the test report, 0 headings with `paragraphs` on, 3 with it off) |
+| `headings` | `false` | Guess headings from the text height. The shared layout keeps a heading out of the paragraph next to it, so a taller title stays its own paragraph and is found (on the test report, 3 headings with `paragraphs` on and off) |
 | `min_confidence` | `0` | Drop lines docTR read with a mean word confidence below this, in percent |
 | `include_page_images` | `false` | Return each page image as a base64 PNG in `pages[].image` |
 

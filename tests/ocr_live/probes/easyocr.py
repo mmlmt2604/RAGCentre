@@ -159,6 +159,14 @@ def pages_read(expected: set[int]) -> Check:
 # --- the probe table --------------------------------------------------------------------------------
 
 PROBES = [
+    Probe(
+        id="easyocr.gif_unsupported",
+        engine="easyocr",
+        fixture="scan_clean.gif",
+        expect_status=415,
+        expect_code="unsupported_media_type",
+        tier="A",
+    ),
     # --- bad options and unsupported input: the answer comes before any text is read -------------------
     Probe(
         id="easyocr.dpi_below_minimum",
