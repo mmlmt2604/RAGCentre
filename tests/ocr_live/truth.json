@@ -1,0 +1,3791 @@
+{
+ "seed": 20261128,
+ "fixtures": {
+  "large_page.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "c5b7c124c7469dd039fc760ead1eaa96313356516f6fb8c24ffaa9ad859f3d4b",
+   "bytes": 110771,
+   "pages": [
+    {
+     "page": 1,
+     "width": 3508,
+     "height": 4961,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher",
+      "later",
+      "the",
+      "supervisor",
+      "walked",
+      "the",
+      "yard",
+      "with",
+      "a",
+      "clipboard",
+      "checking",
+      "each",
+      "stack",
+      "of",
+      "timber",
+      "against",
+      "the",
+      "delivery",
+      "notes",
+      "rain",
+      "began",
+      "after",
+      "lunch",
+      "so",
+      "the",
+      "tarpaulins",
+      "were",
+      "pulled",
+      "over",
+      "the",
+      "paint",
+      "drums",
+      "and",
+      "the",
+      "last",
+      "forklift",
+      "was",
+      "parked",
+      "beside",
+      "the",
+      "gate",
+      "before",
+      "the",
+      "evening",
+      "shift",
+      "arrived"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a",
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors"
+       ],
+       "bbox": [
+        302.0,
+        313.0,
+        2965.0,
+        374.0
+       ]
+      },
+      {
+       "text": "measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number",
+       "tokens": [
+        "measured",
+        "the",
+        "loading",
+        "docks",
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every",
+        "serial",
+        "number"
+       ],
+       "bbox": [
+        300.0,
+        413.0,
+        3140.0,
+        474.0
+       ]
+      },
+      {
+       "text": "in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room",
+       "tokens": [
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had",
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room"
+       ],
+       "bbox": [
+        302.0,
+        513.0,
+        3151.0,
+        574.0
+       ]
+      },
+      {
+       "text": "still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire",
+       "tokens": [
+        "still",
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects",
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire"
+       ],
+       "bbox": [
+        303.0,
+        613.0,
+        3197.0,
+        674.0
+       ]
+      },
+      {
+       "text": "extinguisher.",
+       "tokens": [
+        "extinguisher"
+       ],
+       "bbox": [
+        302.0,
+        713.0,
+        647.0,
+        774.0
+       ]
+      },
+      {
+       "text": "Later the supervisor walked the yard with a clipboard, checking each stack of timber against the delivery",
+       "tokens": [
+        "later",
+        "the",
+        "supervisor",
+        "walked",
+        "the",
+        "yard",
+        "with",
+        "a",
+        "clipboard",
+        "checking",
+        "each",
+        "stack",
+        "of",
+        "timber",
+        "against",
+        "the",
+        "delivery"
+       ],
+       "bbox": [
+        301.0,
+        913.0,
+        3135.0,
+        974.0
+       ]
+      },
+      {
+       "text": "notes. Rain began after lunch, so the tarpaulins were pulled over the paint drums, and the last forklift was",
+       "tokens": [
+        "notes",
+        "rain",
+        "began",
+        "after",
+        "lunch",
+        "so",
+        "the",
+        "tarpaulins",
+        "were",
+        "pulled",
+        "over",
+        "the",
+        "paint",
+        "drums",
+        "and",
+        "the",
+        "last",
+        "forklift",
+        "was"
+       ],
+       "bbox": [
+        300.0,
+        1013.0,
+        3149.0,
+        1074.0
+       ]
+      },
+      {
+       "text": "parked beside the gate before the evening shift arrived.",
+       "tokens": [
+        "parked",
+        "beside",
+        "the",
+        "gate",
+        "before",
+        "the",
+        "evening",
+        "shift",
+        "arrived"
+       ],
+       "bbox": [
+        299.0,
+        1113.0,
+        1782.0,
+        1174.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        300.0,
+        313.0,
+        3197.0,
+        774.0
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "Later the supervisor walked the yard with a clipboard, checking each stack of timber against the delivery notes. Rain began after lunch, so the tarpaulins were pulled over the paint drums, and the last forklift was parked beside the gate before the evening shift arrived.",
+       "bbox": [
+        299.0,
+        913.0,
+        3149.0,
+        1174.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "paper": "A3 at 300 dpi"
+   }
+  },
+  "multi_frame.tiff": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "bdf51d7fc561144377552a895712ba0516c660ec6b41dbf9dec744dd17be9c6d",
+   "bytes": 20432,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1000,
+     "height": 300,
+     "tokens": [
+      "frame",
+      "one",
+      "shows",
+      "a",
+      "ladder",
+      "leaning",
+      "against",
+      "a",
+      "whitewashed",
+      "wall"
+     ],
+     "lines": [
+      {
+       "text": "Frame one shows a ladder leaning against a",
+       "tokens": [
+        "frame",
+        "one",
+        "shows",
+        "a",
+        "ladder",
+        "leaning",
+        "against",
+        "a"
+       ],
+       "bbox": [
+        100.0,
+        89.0,
+        839.0,
+        127.0
+       ]
+      },
+      {
+       "text": "whitewashed wall.",
+       "tokens": [
+        "whitewashed",
+        "wall"
+       ],
+       "bbox": [
+        100.0,
+        153.0,
+        412.0,
+        183.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "Frame one shows a ladder leaning against a whitewashed wall.",
+       "bbox": [
+        100.0,
+        89.0,
+        839.0,
+        183.0
+       ]
+      }
+     ]
+    },
+    {
+     "page": 2,
+     "width": 1000,
+     "height": 300,
+     "tokens": [
+      "frame",
+      "two",
+      "shows",
+      "a",
+      "bucket",
+      "of",
+      "nails",
+      "beside",
+      "a",
+      "coil",
+      "of",
+      "yellow",
+      "rope"
+     ],
+     "lines": [
+      {
+       "text": "Frame two shows a bucket of nails beside a",
+       "tokens": [
+        "frame",
+        "two",
+        "shows",
+        "a",
+        "bucket",
+        "of",
+        "nails",
+        "beside",
+        "a"
+       ],
+       "bbox": [
+        100.0,
+        89.0,
+        837.0,
+        119.0
+       ]
+      },
+      {
+       "text": "coil of yellow rope.",
+       "tokens": [
+        "coil",
+        "of",
+        "yellow",
+        "rope"
+       ],
+       "bbox": [
+        101.0,
+        153.0,
+        430.0,
+        191.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "Frame two shows a bucket of nails beside a coil of yellow rope.",
+       "bbox": [
+        100.0,
+        89.0,
+        837.0,
+        191.0
+       ]
+      }
+     ]
+    },
+    {
+     "page": 3,
+     "width": 1000,
+     "height": 300,
+     "tokens": [
+      "frame",
+      "three",
+      "shows",
+      "a",
+      "lantern",
+      "hanging",
+      "from",
+      "a",
+      "hook",
+      "above",
+      "the",
+      "door"
+     ],
+     "lines": [
+      {
+       "text": "Frame three shows a lantern hanging from a",
+       "tokens": [
+        "frame",
+        "three",
+        "shows",
+        "a",
+        "lantern",
+        "hanging",
+        "from",
+        "a"
+       ],
+       "bbox": [
+        100.0,
+        89.0,
+        848.0,
+        127.0
+       ]
+      },
+      {
+       "text": "hook above the door.",
+       "tokens": [
+        "hook",
+        "above",
+        "the",
+        "door"
+       ],
+       "bbox": [
+        100.0,
+        153.0,
+        455.0,
+        183.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "Frame three shows a lantern hanging from a hook above the door.",
+       "bbox": [
+        100.0,
+        89.0,
+        848.0,
+        183.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "frames": 3
+   }
+  },
+  "scan_chinese.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "zh",
+   "sha256": "5a5b7ba572f6a6869f19dcc905d2b1ee01aa35f3d0884c6548165db48701c43d",
+   "bytes": 50314,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "今",
+      "天",
+      "上",
+      "午",
+      "检",
+      "查",
+      "人",
+      "员",
+      "来",
+      "到",
+      "港",
+      "口",
+      "仓",
+      "库",
+      "清",
+      "点",
+      "了",
+      "四",
+      "十",
+      "二",
+      "箱",
+      "陶",
+      "瓷",
+      "砖",
+      "并",
+      "把",
+      "每",
+      "一",
+      "个",
+      "编",
+      "号",
+      "都",
+      "写",
+      "进",
+      "了",
+      "蓝",
+      "色",
+      "的",
+      "笔",
+      "记",
+      "本",
+      "中",
+      "午",
+      "之",
+      "前",
+      "他",
+      "们",
+      "完",
+      "成",
+      "了",
+      "东",
+      "侧",
+      "大",
+      "厅",
+      "的",
+      "检",
+      "查",
+      "冷",
+      "藏",
+      "室",
+      "还",
+      "在",
+      "等",
+      "待",
+      "最",
+      "终",
+      "报",
+      "告",
+      "将",
+      "列",
+      "出",
+      "十",
+      "七",
+      "处",
+      "缺",
+      "陷",
+      "从",
+      "破",
+      "裂",
+      "的",
+      "窗",
+      "户",
+      "到",
+      "缺",
+      "失",
+      "的",
+      "灭",
+      "火",
+      "器"
+     ],
+     "lines": [
+      {
+       "text": "今天上午，检查人员来到港口仓库，清点了四十二箱陶瓷砖，",
+       "tokens": [
+        "今",
+        "天",
+        "上",
+        "午",
+        "检",
+        "查",
+        "人",
+        "员",
+        "来",
+        "到",
+        "港",
+        "口",
+        "仓",
+        "库",
+        "清",
+        "点",
+        "了",
+        "四",
+        "十",
+        "二",
+        "箱",
+        "陶",
+        "瓷",
+        "砖"
+       ],
+       "bbox": [
+        101.0,
+        91.0,
+        1306.0,
+        137.0
+       ]
+      },
+      {
+       "text": "并把每一个编号都写进了蓝色的笔记本。中午之前，他们完",
+       "tokens": [
+        "并",
+        "把",
+        "每",
+        "一",
+        "个",
+        "编",
+        "号",
+        "都",
+        "写",
+        "进",
+        "了",
+        "蓝",
+        "色",
+        "的",
+        "笔",
+        "记",
+        "本",
+        "中",
+        "午",
+        "之",
+        "前",
+        "他",
+        "们",
+        "完"
+       ],
+       "bbox": [
+        102.0,
+        163.0,
+        1294.0,
+        209.0
+       ]
+      },
+      {
+       "text": "成了东侧大厅的检查，冷藏室还在等待。最终报告将列出十",
+       "tokens": [
+        "成",
+        "了",
+        "东",
+        "侧",
+        "大",
+        "厅",
+        "的",
+        "检",
+        "查",
+        "冷",
+        "藏",
+        "室",
+        "还",
+        "在",
+        "等",
+        "待",
+        "最",
+        "终",
+        "报",
+        "告",
+        "将",
+        "列",
+        "出",
+        "十"
+       ],
+       "bbox": [
+        102.0,
+        236.0,
+        1294.0,
+        281.0
+       ]
+      },
+      {
+       "text": "七处缺陷，从破裂的窗户到缺失的灭火器。",
+       "tokens": [
+        "七",
+        "处",
+        "缺",
+        "陷",
+        "从",
+        "破",
+        "裂",
+        "的",
+        "窗",
+        "户",
+        "到",
+        "缺",
+        "失",
+        "的",
+        "灭",
+        "火",
+        "器"
+       ],
+       "bbox": [
+        102.0,
+        308.0,
+        946.0,
+        353.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "今天上午，检查人员来到港口仓库，清点了四十二箱陶瓷砖， 并把每一个编号都写进了蓝色的笔记本。中午之前，他们完 成了东侧大厅的检查，冷藏室还在等待。最终报告将列出十 七处缺陷，从破裂的窗户到缺失的灭火器。",
+       "bbox": [
+        101.0,
+        91.0,
+        1306.0,
+        353.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "source": "Hiragino Sans GB 46 px"
+   }
+  },
+  "scan_clean.bmp": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "5adbbf088ece0ec8070eeb0d2a494d0fad21aaed4f136cd87bc998db0a1f522b",
+   "bytes": 112702,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        101.0,
+        99.0,
+        1240.0,
+        141.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        100.0,
+        165.0,
+        1296.0,
+        207.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        101.0,
+        231.0,
+        1231.0,
+        273.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        102.0,
+        297.0,
+        1292.0,
+        339.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        101.0,
+        363.0,
+        1180.0,
+        405.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        100.0,
+        429.0,
+        1237.0,
+        471.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        101.0,
+        495.0,
+        1092.0,
+        537.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        100.0,
+        99.0,
+        1296.0,
+        537.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "note": "1-bit, so that it fits in 200 KB"
+   }
+  },
+  "scan_clean.gif": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "8b16b08baf1daf941f2547f2195668c3581c11824b594f85e7f147f8ce505891",
+   "bytes": 69986,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        101.0,
+        99.0,
+        1240.0,
+        141.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        100.0,
+        165.0,
+        1296.0,
+        207.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        101.0,
+        231.0,
+        1231.0,
+        273.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        102.0,
+        297.0,
+        1292.0,
+        339.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        101.0,
+        363.0,
+        1180.0,
+        405.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        100.0,
+        429.0,
+        1237.0,
+        471.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        101.0,
+        495.0,
+        1092.0,
+        537.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        100.0,
+        99.0,
+        1296.0,
+        537.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "note": "a GIF: every engine must refuse it with 415"
+   }
+  },
+  "scan_clean.jpg": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "0c1aa3afe4e5011bb7a765a3b942d991e9b308b5edb121357a5f03ad9d1a0ef8",
+   "bytes": 120427,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        101.0,
+        99.0,
+        1240.0,
+        141.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        100.0,
+        165.0,
+        1296.0,
+        207.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        101.0,
+        231.0,
+        1231.0,
+        273.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        102.0,
+        297.0,
+        1292.0,
+        339.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        101.0,
+        363.0,
+        1180.0,
+        405.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        100.0,
+        429.0,
+        1237.0,
+        471.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        101.0,
+        495.0,
+        1092.0,
+        537.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        100.0,
+        99.0,
+        1296.0,
+        537.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {}
+  },
+  "scan_clean.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "c5a5abc1680c11a760baddb7204d4366f9256ea40b3dd67638c2aad23c31d01a",
+   "bytes": 39521,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        101.0,
+        99.0,
+        1240.0,
+        141.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        100.0,
+        165.0,
+        1296.0,
+        207.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        101.0,
+        231.0,
+        1231.0,
+        273.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        102.0,
+        297.0,
+        1292.0,
+        339.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        101.0,
+        363.0,
+        1180.0,
+        405.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        100.0,
+        429.0,
+        1237.0,
+        471.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        101.0,
+        495.0,
+        1092.0,
+        537.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        100.0,
+        99.0,
+        1296.0,
+        537.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "source": "Times New Roman 46 px, 300 dpi"
+   }
+  },
+  "scan_clean.webp": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "3df5cb84260cd2756582d2758a693008826716ffa4ee999ec7cda043c26c760d",
+   "bytes": 78054,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        101.0,
+        99.0,
+        1240.0,
+        141.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        100.0,
+        165.0,
+        1296.0,
+        207.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        101.0,
+        231.0,
+        1231.0,
+        273.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        102.0,
+        297.0,
+        1292.0,
+        339.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        101.0,
+        363.0,
+        1180.0,
+        405.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        100.0,
+        429.0,
+        1237.0,
+        471.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        101.0,
+        495.0,
+        1092.0,
+        537.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        100.0,
+        99.0,
+        1296.0,
+        537.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {}
+  },
+  "scan_german.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "de",
+   "sha256": "09f9b6d11236d01712d1a75abe62def93bc48f2a054eb1d9fc025767b45e79f8",
+   "bytes": 42204,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "die",
+      "prüfung",
+      "der",
+      "lagerhalle",
+      "im",
+      "hafen",
+      "begann",
+      "an",
+      "einem",
+      "windigen",
+      "dienstagmorgen",
+      "die",
+      "prüfer",
+      "maßen",
+      "die",
+      "laderampen",
+      "zählten",
+      "zweiundvierzig",
+      "paletten",
+      "mit",
+      "keramikfliesen",
+      "und",
+      "notierten",
+      "jede",
+      "seriennummer",
+      "in",
+      "einem",
+      "abgegriffenen",
+      "blauen",
+      "notizbuch",
+      "bis",
+      "zum",
+      "mittag",
+      "war",
+      "der",
+      "ostflügel",
+      "fertig",
+      "während",
+      "der",
+      "kühlraum",
+      "noch",
+      "warten",
+      "musste",
+      "der",
+      "abschlussbericht",
+      "nennt",
+      "siebzehn",
+      "mängel",
+      "vom",
+      "gesprungenen",
+      "fenster",
+      "bis",
+      "zum",
+      "fehlenden",
+      "feuerlöscher"
+     ],
+     "lines": [
+      {
+       "text": "Die Prüfung der Lagerhalle im Hafen begann an einem windigen",
+       "tokens": [
+        "die",
+        "prüfung",
+        "der",
+        "lagerhalle",
+        "im",
+        "hafen",
+        "begann",
+        "an",
+        "einem",
+        "windigen"
+       ],
+       "bbox": [
+        100.0,
+        99.0,
+        1293.0,
+        141.0
+       ]
+      },
+      {
+       "text": "Dienstagmorgen. Die Prüfer maßen die Laderampen, zählten",
+       "tokens": [
+        "dienstagmorgen",
+        "die",
+        "prüfer",
+        "maßen",
+        "die",
+        "laderampen",
+        "zählten"
+       ],
+       "bbox": [
+        100.0,
+        165.0,
+        1217.0,
+        207.0
+       ]
+      },
+      {
+       "text": "zweiundvierzig Paletten mit Keramikfliesen und notierten jede",
+       "tokens": [
+        "zweiundvierzig",
+        "paletten",
+        "mit",
+        "keramikfliesen",
+        "und",
+        "notierten",
+        "jede"
+       ],
+       "bbox": [
+        101.0,
+        231.0,
+        1253.0,
+        273.0
+       ]
+      },
+      {
+       "text": "Seriennummer in einem abgegriffenen blauen Notizbuch. Bis",
+       "tokens": [
+        "seriennummer",
+        "in",
+        "einem",
+        "abgegriffenen",
+        "blauen",
+        "notizbuch",
+        "bis"
+       ],
+       "bbox": [
+        103.0,
+        297.0,
+        1229.0,
+        339.0
+       ]
+      },
+      {
+       "text": "zum Mittag war der Ostflügel fertig, während der Kühlraum",
+       "tokens": [
+        "zum",
+        "mittag",
+        "war",
+        "der",
+        "ostflügel",
+        "fertig",
+        "während",
+        "der",
+        "kühlraum"
+       ],
+       "bbox": [
+        101.0,
+        363.0,
+        1207.0,
+        405.0
+       ]
+      },
+      {
+       "text": "noch warten musste. Der Abschlussbericht nennt siebzehn",
+       "tokens": [
+        "noch",
+        "warten",
+        "musste",
+        "der",
+        "abschlussbericht",
+        "nennt",
+        "siebzehn"
+       ],
+       "bbox": [
+        100.0,
+        429.0,
+        1171.0,
+        462.0
+       ]
+      },
+      {
+       "text": "Mängel, vom gesprungenen Fenster bis zum fehlenden",
+       "tokens": [
+        "mängel",
+        "vom",
+        "gesprungenen",
+        "fenster",
+        "bis",
+        "zum",
+        "fehlenden"
+       ],
+       "bbox": [
+        100.0,
+        495.0,
+        1108.0,
+        537.0
+       ]
+      },
+      {
+       "text": "Feuerlöscher.",
+       "tokens": [
+        "feuerlöscher"
+       ],
+       "bbox": [
+        100.0,
+        561.0,
+        344.0,
+        594.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "Die Prüfung der Lagerhalle im Hafen begann an einem windigen Dienstagmorgen. Die Prüfer maßen die Laderampen, zählten zweiundvierzig Paletten mit Keramikfliesen und notierten jede Seriennummer in einem abgegriffenen blauen Notizbuch. Bis zum Mittag war der Ostflügel fertig, während der Kühlraum noch warten musste. Der Abschlussbericht nennt siebzehn Mängel, vom gesprungenen Fenster bis zum fehlenden Feuerlöscher.",
+       "bbox": [
+        100.0,
+        99.0,
+        1293.0,
+        594.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "umlaut_words": [
+     "prüfung",
+     "prüfer",
+     "maßen",
+     "zählten",
+     "ostflügel",
+     "während",
+     "kühlraum",
+     "mängel",
+     "feuerlöscher"
+    ]
+   }
+  },
+  "scan_noisy.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "87d3e59570da1817b4d2308fbffe12d4ac49df3267d5afd15ea4bf7e9285ca28",
+   "bytes": 110187,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        101.0,
+        99.0,
+        1240.0,
+        141.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        100.0,
+        165.0,
+        1296.0,
+        207.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        101.0,
+        231.0,
+        1231.0,
+        273.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        102.0,
+        297.0,
+        1292.0,
+        339.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        101.0,
+        363.0,
+        1180.0,
+        405.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        100.0,
+        429.0,
+        1237.0,
+        471.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        101.0,
+        495.0,
+        1092.0,
+        537.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        100.0,
+        99.0,
+        1296.0,
+        537.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "note": "same text and boxes as scan_clean.png, blurred, low contrast, speckled"
+   }
+  },
+  "scan_rotated90.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "89019e59808f0c10d4d4eeaa499066141ec0d626c157a8334a4f491f5b1230aa",
+   "bytes": 60453,
+   "pages": [
+    {
+     "page": 1,
+     "width": 640,
+     "height": 1400,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        99.0,
+        160.0,
+        141.0,
+        1299.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        165.0,
+        104.0,
+        207.0,
+        1300.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        231.0,
+        169.0,
+        273.0,
+        1299.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        297.0,
+        108.0,
+        339.0,
+        1298.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        363.0,
+        220.0,
+        405.0,
+        1299.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        429.0,
+        163.0,
+        471.0,
+        1300.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        495.0,
+        308.0,
+        537.0,
+        1299.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        99.0,
+        104.0,
+        537.0,
+        1300.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "note": "rotated 90 degrees counter-clockwise"
+   }
+  },
+  "scan_skew12.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "c7962c578b3f7af63f179a4d75b1e90f5f7dba4910f5a7826cd907ade4795532",
+   "bytes": 114146,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1504,
+     "height": 918,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        121.0,
+        143.0,
+        1240.0,
+        398.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        135.0,
+        192.0,
+        1309.0,
+        463.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        152.0,
+        273.0,
+        1256.0,
+        528.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        165.0,
+        314.0,
+        1333.0,
+        593.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        178.0,
+        402.0,
+        1237.0,
+        657.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        190.0,
+        466.0,
+        1307.0,
+        721.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        205.0,
+        561.0,
+        1179.0,
+        786.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        121.0,
+        143.0,
+        1333.0,
+        786.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "note": "tilted 12 degrees counter-clockwise; line boxes are the axis-aligned box of the tilted line"
+   }
+  },
+  "scan_table.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "3ec563db659c01736ad66f588fb6f8dcda8757d20176f7793dc6de02ef659c25",
+   "bytes": 12480,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 560,
+     "tokens": [
+      "area",
+      "pallets",
+      "change",
+      "docks",
+      "120",
+      "4",
+      "5",
+      "wing",
+      "95",
+      "3",
+      "1",
+      "yard",
+      "210",
+      "7",
+      "8"
+     ],
+     "lines": [
+      {
+       "text": "Area",
+       "tokens": [
+        "area"
+       ],
+       "bbox": [
+        130.0,
+        129.0,
+        217.0,
+        161.0
+       ]
+      },
+      {
+       "text": "Pallets",
+       "tokens": [
+        "pallets"
+       ],
+       "bbox": [
+        530.0,
+        129.0,
+        646.0,
+        161.0
+       ]
+      },
+      {
+       "text": "Change",
+       "tokens": [
+        "change"
+       ],
+       "bbox": [
+        931.0,
+        129.0,
+        1064.0,
+        169.0
+       ]
+      },
+      {
+       "text": "Docks",
+       "tokens": [
+        "docks"
+       ],
+       "bbox": [
+        130.0,
+        219.0,
+        242.0,
+        251.0
+       ]
+      },
+      {
+       "text": "120",
+       "tokens": [
+        "120"
+       ],
+       "bbox": [
+        535.0,
+        220.0,
+        595.0,
+        250.0
+       ]
+      },
+      {
+       "text": "4.5",
+       "tokens": [
+        "4",
+        "5"
+       ],
+       "bbox": [
+        930.0,
+        220.0,
+        982.0,
+        251.0
+       ]
+      },
+      {
+       "text": "Wing",
+       "tokens": [
+        "wing"
+       ],
+       "bbox": [
+        130.0,
+        309.0,
+        227.0,
+        349.0
+       ]
+      },
+      {
+       "text": "95",
+       "tokens": [
+        "95"
+       ],
+       "bbox": [
+        531.0,
+        310.0,
+        571.0,
+        340.0
+       ]
+      },
+      {
+       "text": "3.1",
+       "tokens": [
+        "3",
+        "1"
+       ],
+       "bbox": [
+        931.0,
+        310.0,
+        980.0,
+        341.0
+       ]
+      },
+      {
+       "text": "Yard",
+       "tokens": [
+        "yard"
+       ],
+       "bbox": [
+        130.0,
+        399.0,
+        219.0,
+        431.0
+       ]
+      },
+      {
+       "text": "210",
+       "tokens": [
+        "210"
+       ],
+       "bbox": [
+        531.0,
+        400.0,
+        595.0,
+        430.0
+       ]
+      },
+      {
+       "text": "7.8",
+       "tokens": [
+        "7",
+        "8"
+       ],
+       "bbox": [
+        931.0,
+        400.0,
+        983.0,
+        431.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "table",
+       "text": "Area | Pallets | Change\nDocks | 120 | 4.5\nWing | 95 | 3.1\nYard | 210 | 7.8",
+       "bbox": [
+        100.0,
+        100.0,
+        1300.0,
+        460.0
+       ],
+       "html": true
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "table": {
+     "rows": 4,
+     "cols": 3,
+     "cells": [
+      [
+       "Area",
+       "Pallets",
+       "Change"
+      ],
+      [
+       "Docks",
+       "120",
+       "4.5"
+      ],
+      [
+       "Wing",
+       "95",
+       "3.1"
+      ],
+      [
+       "Yard",
+       "210",
+       "7.8"
+      ]
+     ],
+     "ruled": true
+    }
+   }
+  },
+  "scan_upside_down.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "303c60b5755a1012cf680a8ff9dbf79523d06b0c470ce605c0fa97226ba3b3b5",
+   "bytes": 39626,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1400,
+     "height": 640,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        160.0,
+        499.0,
+        1299.0,
+        541.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        104.0,
+        433.0,
+        1300.0,
+        475.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        169.0,
+        367.0,
+        1299.0,
+        409.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        108.0,
+        301.0,
+        1298.0,
+        343.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        220.0,
+        235.0,
+        1299.0,
+        277.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        163.0,
+        169.0,
+        1300.0,
+        211.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        308.0,
+        103.0,
+        1299.0,
+        145.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        104.0,
+        103.0,
+        1300.0,
+        541.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "note": "rotated 180 degrees"
+   }
+  },
+  "scan_warped.png": {
+   "kind": "image",
+   "units": "px",
+   "language": "en",
+   "sha256": "7bc18d48f98d2071b147e81ba7345dd3ce6173ca6be500f3875c4560ea4e9405",
+   "bytes": 99955,
+   "pages": [
+    {
+     "page": 1,
+     "width": 1500,
+     "height": 800,
+     "tokens": [
+      "the",
+      "quarterly",
+      "inspection",
+      "of",
+      "the",
+      "harbour",
+      "warehouse",
+      "began",
+      "on",
+      "a",
+      "windy",
+      "tuesday",
+      "morning",
+      "inspectors",
+      "measured",
+      "the",
+      "loading",
+      "docks",
+      "counted",
+      "forty",
+      "two",
+      "pallets",
+      "of",
+      "ceramic",
+      "tiles",
+      "and",
+      "recorded",
+      "every",
+      "serial",
+      "number",
+      "in",
+      "a",
+      "battered",
+      "blue",
+      "notebook",
+      "by",
+      "noon",
+      "the",
+      "crew",
+      "had",
+      "finished",
+      "the",
+      "eastern",
+      "wing",
+      "while",
+      "the",
+      "cold",
+      "storage",
+      "room",
+      "still",
+      "waited",
+      "for",
+      "its",
+      "turn",
+      "the",
+      "final",
+      "report",
+      "will",
+      "list",
+      "seventeen",
+      "defects",
+      "from",
+      "a",
+      "cracked",
+      "window",
+      "to",
+      "a",
+      "missing",
+      "fire",
+      "extinguisher"
+     ],
+     "lines": [
+      {
+       "text": "The quarterly inspection of the harbour warehouse began on a",
+       "tokens": [
+        "the",
+        "quarterly",
+        "inspection",
+        "of",
+        "the",
+        "harbour",
+        "warehouse",
+        "began",
+        "on",
+        "a"
+       ],
+       "bbox": [
+        288.0,
+        102.0,
+        1155.0,
+        162.0
+       ]
+      },
+      {
+       "text": "windy Tuesday morning. Inspectors measured the loading docks,",
+       "tokens": [
+        "windy",
+        "tuesday",
+        "morning",
+        "inspectors",
+        "measured",
+        "the",
+        "loading",
+        "docks"
+       ],
+       "bbox": [
+        271.0,
+        152.0,
+        1218.0,
+        218.0
+       ]
+      },
+      {
+       "text": "counted forty-two pallets of ceramic tiles, and recorded every",
+       "tokens": [
+        "counted",
+        "forty",
+        "two",
+        "pallets",
+        "of",
+        "ceramic",
+        "tiles",
+        "and",
+        "recorded",
+        "every"
+       ],
+       "bbox": [
+        250.0,
+        218.0,
+        1170.0,
+        275.0
+       ]
+      },
+      {
+       "text": "serial number in a battered blue notebook. By noon the crew had",
+       "tokens": [
+        "serial",
+        "number",
+        "in",
+        "a",
+        "battered",
+        "blue",
+        "notebook",
+        "by",
+        "noon",
+        "the",
+        "crew",
+        "had"
+       ],
+       "bbox": [
+        228.0,
+        281.0,
+        1247.0,
+        334.0
+       ]
+      },
+      {
+       "text": "finished the eastern wing, while the cold storage room still",
+       "tokens": [
+        "finished",
+        "the",
+        "eastern",
+        "wing",
+        "while",
+        "the",
+        "cold",
+        "storage",
+        "room",
+        "still"
+       ],
+       "bbox": [
+        207.0,
+        355.0,
+        1154.0,
+        409.0
+       ]
+      },
+      {
+       "text": "waited for its turn. The final report will list seventeen defects,",
+       "tokens": [
+        "waited",
+        "for",
+        "its",
+        "turn",
+        "the",
+        "final",
+        "report",
+        "will",
+        "list",
+        "seventeen",
+        "defects"
+       ],
+       "bbox": [
+        189.0,
+        432.0,
+        1228.0,
+        486.0
+       ]
+      },
+      {
+       "text": "from a cracked window to a missing fire extinguisher.",
+       "tokens": [
+        "from",
+        "a",
+        "cracked",
+        "window",
+        "to",
+        "a",
+        "missing",
+        "fire",
+        "extinguisher"
+       ],
+       "bbox": [
+        159.0,
+        513.0,
+        1093.0,
+        574.0
+       ]
+      }
+     ],
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The quarterly inspection of the harbour warehouse began on a windy Tuesday morning. Inspectors measured the loading docks, counted forty-two pallets of ceramic tiles, and recorded every serial number in a battered blue notebook. By noon the crew had finished the eastern wing, while the cold storage room still waited for its turn. The final report will list seventeen defects, from a cracked window to a missing fire extinguisher.",
+       "bbox": [
+        159.0,
+        102.0,
+        1247.0,
+        574.0
+       ]
+      }
+     ]
+    }
+   ],
+   "extras": {
+    "note": "perspective warp, as a photographed page; line boxes are the axis-aligned box of the warped line"
+   }
+  }
+ }
+}
