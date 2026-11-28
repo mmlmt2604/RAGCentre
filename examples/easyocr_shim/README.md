@@ -28,8 +28,9 @@ The first line installs PyTorch's CPU build. Skip it on a machine with an NVIDIA
 (where the default build is the CPU/MPS one anyway). EasyOCR uses CUDA or Apple's MPS when PyTorch has
 them; set `EASYOCR_SHIM_GPU=0` to force the CPU.
 
-The first parse downloads the detection model and the recognition model for the languages
-(about 100 MB each) into `~/.EasyOCR`, so it is slow.
+The first parse downloads the detection model (83 MB) and the recognition model for each language
+(15 to 22 MB for English, the Latin scripts, Japanese and simplified Chinese) into `~/.EasyOCR`, so it
+is slow.
 
 ### With Docker
 
@@ -69,8 +70,8 @@ The parse route's `options` are passed to the service. A typo in an option name 
 | `paragraphs` | `true` | Group lines into paragraphs. Off, every line is its own block |
 | `headings` | `false` | Guess headings from the text height |
 | `min_confidence` | `0` | Drop text EasyOCR read with a confidence below this, in percent |
-| `decoder` | `greedy` | `greedy`, `beamsearch` or `wordbeamsearch` (slower, sometimes more accurate) |
-| `rotated_text` | `false` | Also try each text box turned by 90, 180 and 270 degrees (slower) |
+| `decoder` | `greedy` | `greedy`, `beamsearch` or `wordbeamsearch`. Avoid `beamsearch`: EasyOCR 1.7.2 cuts the end off every piece of text longer than about 40 characters (on a clean test paragraph it read 67% of the words, `greedy` and `wordbeamsearch` 100%), whatever the beam width |
+| `rotated_text` | `false` | Also try each text box turned by 90, 180 and 270 degrees (slower). It reads a page that is upside down (99% of the words against 3%). A page scanned sideways is found as many small pieces and is read only in part (39% against 0%): turn it upright first |
 | `canvas_size` | `2560` | Longest side, in pixels, that text detection works at; a larger page is scaled down. Raise it with `dpi` for small print |
 | `include_page_images` | `false` | Return each page image as a base64 PNG in `pages[].image` |
 
@@ -81,7 +82,9 @@ EasyOCR returns pieces of text with a box and a confidence. `shimkit.layout` tur
 1. Pieces on the same text line that are close together are joined (EasyOCR splits a line at a wide
    gap). Pieces far apart, like the columns of a table, stay separate lines.
 2. A line joins the paragraph above it when it starts close below it, overlaps it horizontally and has
-   about the same height. Paragraphs are ordered top to bottom, then left to right. That is right for a
+   about the same height. With `headings`, a line that looks like a heading (see below) never joins a
+   paragraph of body lines, so a title a little taller than the text under it stays a block of its own.
+   Paragraphs are ordered top to bottom, then left to right. That is right for a
    single column; on a page with columns side by side, the paragraphs of the two columns interleave.
 3. With `headings`, a short paragraph (one or two lines, at most 15 words, no closing full stop or
    comma) whose text is at least 1.25 times as tall as the document's median line is a heading. The

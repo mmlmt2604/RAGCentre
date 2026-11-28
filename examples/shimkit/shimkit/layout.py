@@ -21,13 +21,16 @@ from __future__ import annotations
 
 import re
 import statistics
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from shimkit.ir import build_ir
 
 Box = tuple[float, float, float, float]
+
+HEADING_RATIO = 1.25  # a heading's line is at least this many times as tall as the body text
+HEADING_MAX_WORDS = 15
 
 
 @dataclass(frozen=True)
@@ -134,11 +137,23 @@ def merge_rows(pieces: Iterable[Line], *, gap: float = 1.0) -> list[Line]:
     return sorted(lines, key=lambda line: (line.bbox[1], line.bbox[0]))
 
 
-def group_paragraphs(lines: Iterable[Line], *, gap: float = 0.8, height_tolerance: float = 0.3) -> list[Paragraph]:
+def group_paragraphs(
+    lines: Iterable[Line],
+    *,
+    gap: float = 0.8,
+    height_tolerance: float = 0.3,
+    is_heading: Callable[[Line], bool] | None = None,
+) -> list[Paragraph]:
     """Group lines into paragraphs (see the module docstring). A line joins a paragraph when the
     space between them is at most ``gap`` times the taller line's height, their horizontal extents
     overlap, and their heights differ by at most ``height_tolerance`` of the taller one (so a title
-    does not run into the text under it)."""
+    does not run into the text under it).
+
+    The height tolerance alone cannot keep a heading apart: it is looser than the ratio that makes a
+    line a heading, so a heading up to about 1.4 times as tall as the text beside it would join that
+    text. ``is_heading`` closes the gap: a line for which it is true never joins a paragraph whose
+    last line it is false for, and the other way round. Lines that are both headings still join, so
+    a heading of two lines stays one block."""
     paragraphs: list[Paragraph] = []
     for line in sorted(lines, key=lambda item: (item.bbox[1], item.bbox[0])):
         best: Paragraph | None = None
@@ -147,6 +162,8 @@ def group_paragraphs(lines: Iterable[Line], *, gap: float = 0.8, height_toleranc
             last = paragraph.lines[-1]
             taller = max(last.height, line.height)
             if taller <= 0:
+                continue
+            if is_heading is not None and is_heading(last) != is_heading(line):
                 continue
             space = line.bbox[1] - last.bbox[3]
             if not -0.5 * taller <= space <= gap * taller:
@@ -164,8 +181,19 @@ def group_paragraphs(lines: Iterable[Line], *, gap: float = 0.8, height_toleranc
     return sorted(paragraphs, key=lambda p: (p.lines[0].bbox[1], p.lines[0].bbox[0]))
 
 
+def _looks_like_heading(text: str, height: float, body: float, *, ratio: float, max_words: int) -> bool:
+    """Few words, no closing ``.``, ``,`` or ``;``, a letter in it, and ``ratio`` times as tall as ``body``."""
+    if len(text.split()) > max_words or text[-1:] in (".", ",", ";") or not any(c.isalpha() for c in text):
+        return False
+    return height >= ratio * body
+
+
 def guess_heading_levels(
-    paragraphs: Sequence[Paragraph], *, ratio: float = 1.25, max_words: int = 15, max_levels: int = 4
+    paragraphs: Sequence[Paragraph],
+    *,
+    ratio: float = HEADING_RATIO,
+    max_words: int = HEADING_MAX_WORDS,
+    max_levels: int = 4,
 ) -> list[int | None]:
     """A heading level (1 to ``max_levels``) or ``None`` for each paragraph.
 
@@ -179,13 +207,11 @@ def guess_heading_levels(
     body = statistics.median(heights)
     candidates: dict[int, float] = {}
     for index, paragraph in enumerate(paragraphs):
-        text = paragraph.text
-        if len(paragraph.lines) > 2 or len(text.split()) > max_words:
+        if len(paragraph.lines) > 2:
             continue
-        if text[-1:] in (".", ",", ";") or not any(c.isalpha() for c in text):
-            continue
-        if paragraph.line_height >= ratio * body:
-            candidates[index] = paragraph.line_height
+        height = paragraph.line_height
+        if _looks_like_heading(paragraph.text, height, body, ratio=ratio, max_words=max_words):
+            candidates[index] = height
     levels: dict[float, int] = {}
     level, top = 0, 0.0
     for size in sorted(set(candidates.values()), reverse=True):
@@ -193,6 +219,20 @@ def guess_heading_levels(
             level, top = level + 1, size
         levels[size] = min(level, max_levels)
     return [levels[candidates[i]] if i in candidates else None for i in range(len(paragraphs))]
+
+
+def _heading_test(rows: Sequence[Line]) -> Callable[[Line], bool] | None:
+    """The test :func:`group_paragraphs` takes as ``is_heading``: a line that :func:`guess_heading_levels` would
+    call a heading, judged against the median height of all ``rows`` of the document (``None`` without a height)."""
+    heights = [row.height for row in rows if row.height > 0]
+    if not heights:
+        return None
+    body = statistics.median(heights)
+
+    def is_heading(row: Line) -> bool:
+        return _looks_like_heading(row.text, row.height, body, ratio=HEADING_RATIO, max_words=HEADING_MAX_WORDS)
+
+    return is_heading
 
 
 def _confidence(value: Any) -> float | None:
@@ -221,7 +261,7 @@ def lines_to_ir(
     With ``headings`` the guess of :func:`guess_heading_levels` (over the whole document) turns some
     blocks into ``heading`` blocks. A block's ``metadata.confidence`` is the mean of its lines'."""
     ir_pages: list[dict[str, Any]] = []
-    laid_out: list[tuple[int, Paragraph]] = []
+    page_rows: list[tuple[int, list[Line]]] = []
     for page in sorted(pages, key=lambda p: int(p["page"])):
         number = int(page["page"])
         entry: dict[str, Any] = {"page": number, "width": float(page["width"]), "height": float(page["height"])}
@@ -236,8 +276,11 @@ def lines_to_ir(
                 continue
             x0, y0, x1, y1 = (float(v) for v in raw["bbox"])
             pieces.append(Line(text, (x0, y0, x1, y1), confidence))
-        rows = merge_rows(pieces)
-        grouped = group_paragraphs(rows) if paragraphs else [Paragraph([row]) for row in rows]
+        page_rows.append((number, merge_rows(pieces)))
+    is_heading = _heading_test([row for _, rows in page_rows for row in rows]) if headings else None
+    laid_out: list[tuple[int, Paragraph]] = []
+    for number, rows in page_rows:
+        grouped = group_paragraphs(rows, is_heading=is_heading) if paragraphs else [Paragraph([row]) for row in rows]
         laid_out.extend((number, paragraph) for paragraph in grouped)
     levels = guess_heading_levels([p for _, p in laid_out]) if headings else [None] * len(laid_out)
     blocks: list[dict[str, Any]] = []
