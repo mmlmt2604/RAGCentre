@@ -88,7 +88,10 @@ Run it and check it:
 ```sh
 uvicorn tesseract_shim:app --port 8710
 ragcentre parser check http://127.0.0.1:8710 --file scan.png
+ragcentre provider add -f examples/providers/tesseract-parser.yaml   # to route files to it
 ```
+
+The check needs `--file` because this service reads images only, and the check's built-in sample is a PDF.
 
 What `create_app` gives you:
 

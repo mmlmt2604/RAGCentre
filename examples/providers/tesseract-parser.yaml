@@ -1,0 +1,11 @@
+# The example Tesseract parser service in examples/shimkit/example/tesseract_shim.py (ragcentre.parser/v1).
+# It reads images only (PNG, JPEG, TIFF, BMP, WebP), and its one option is `lang`.
+# Start the service first: RAGCentre reads its /info when the provider is created.
+# There is no Compose profile for it, so base_url is the address where you run it.
+name: tesseract
+kind: parser
+type: http
+config:
+  base_url: http://127.0.0.1:8710
+  timeout_seconds: 600
+  max_concurrency: 1
