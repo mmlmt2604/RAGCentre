@@ -17,6 +17,7 @@ export interface ConfigField {
   exclusiveMin: number | null;
   minLength: number | null;
   format: string | null;
+  urlSchemes: string[];
 }
 
 /** Fields the server fills in itself; never shown as inputs. */
@@ -64,6 +65,7 @@ export function configFields(schema: Record<string, unknown> | undefined): Confi
         exclusiveMin: num(main.exclusiveMinimum),
         minLength: num(main.minLength),
         format: typeof main.format === "string" ? main.format : null,
+        urlSchemes: Array.isArray(raw["x-url-schemes"]) ? raw["x-url-schemes"].filter((s): s is string => typeof s === "string") : [],
       };
     });
 }
@@ -130,7 +132,13 @@ export function toConfig(fields: ConfigField[], values: FormValues): { config: R
       errors[f.key] = `Choose one of ${f.options.join(", ")}.`;
       continue;
     }
-    if ((f.format === "uri" || f.key.endsWith("url")) && !URL_RE.test(text)) {
+    if (f.urlSchemes.length) {
+      const valid = f.urlSchemes.some(scheme => text.startsWith(`${scheme}://`)) && /^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(text);
+      if (!valid) {
+        errors[f.key] = `Enter a URL starting with ${f.urlSchemes.map(scheme => `${scheme}://`).join(" or ")}.`;
+        continue;
+      }
+    } else if ((f.format === "uri" || f.key.endsWith("url")) && !URL_RE.test(text)) {
       errors[f.key] = "Enter a URL starting with http:// or https://.";
       continue;
     }

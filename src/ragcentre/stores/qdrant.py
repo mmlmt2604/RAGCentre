@@ -175,6 +175,7 @@ class QdrantStore:
         self._hnsw_ef = hnsw_ef
         self._meta_cache: dict[str, tuple[int, Metric, dict[str, FieldType], dict[str, Any]]] = {}
         self._cache_lock = threading.Lock()
+        self._schema_lock = threading.Lock()
 
     @classmethod
     def connect(
@@ -333,6 +334,10 @@ class QdrantStore:
             )
 
     def ensure_collection(self, spec: CollectionSpec) -> None:
+        with self._schema_lock:
+            self._ensure_collection(spec)
+
+    def _ensure_collection(self, spec: CollectionSpec) -> None:
         check_spec(spec, self.capabilities)
         m = self._models
         physical = self._physical(spec.name)
@@ -427,7 +432,14 @@ class QdrantStore:
         if k < 1:
             return []
         query_filter = None if filter is None else translate_filter(filter, fields, self._models)
-        search_params = self._models.SearchParams(hnsw_ef=self._hnsw_ef) if self._hnsw_ef is not None else None
+        search_params = None
+        if self._hnsw_ef is not None or self._quantization != "none":
+            search_params = self._models.SearchParams(
+                hnsw_ef=self._hnsw_ef,
+                quantization=self._models.QuantizationSearchParams(rescore=True)
+                if self._quantization != "none"
+                else None,
+            )
         result = self._call(name, "query", self._client.query_points, self._physical(name), query=list(vector),
                             limit=k, query_filter=query_filter, search_params=search_params,
                             with_payload=False, with_vectors=False)  # fmt: skip

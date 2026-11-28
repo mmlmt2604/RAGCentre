@@ -466,19 +466,22 @@ class WeaviateStore:
             self._apply_ef(physical)
 
     def _apply_ef(self, physical: str) -> None:
-        cfg = self._config(physical)
-        if cfg is None:
-            return
-        current = cfg.vector_config["default"].vector_index_config
-        if getattr(current, "ef", None) == self._ef:
-            return
-        rc = self._w.classes.config.Reconfigure
-        try:
-            self._client.collections.get(physical).config.update(
-                vector_config=rc.Vectors.update(name="default", vector_index_config=rc.VectorIndex.hnsw(ef=self._ef))
-            )
-        except Exception as exc:
-            raise StoreError(f"weaviate: could not set hnsw ef on {physical}: {exc}") from exc
+        with self._catalog_lock:
+            cfg = self._config(physical)
+            if cfg is None:
+                return
+            current = cfg.vector_config["default"].vector_index_config
+            if getattr(current, "ef", None) == self._ef:
+                return
+            rc = self._w.classes.config.Reconfigure
+            try:
+                self._client.collections.get(physical).config.update(
+                    vector_config=rc.Vectors.update(
+                        name="default", vector_index_config=rc.VectorIndex.hnsw(ef=self._ef)
+                    )
+                )
+            except Exception as exc:
+                raise StoreError(f"weaviate: could not set hnsw ef on {physical}: {exc}") from exc
 
     def collection_info(self, name: str) -> CollectionInfo | None:
         check_collection_name(name)
@@ -568,6 +571,8 @@ class WeaviateStore:
             )
         flt = None if filter is None else translate_filter(filter, entry.fields)
         try:
+            if self._ef is not None:
+                self._apply_ef(self._physical(name))
             result = self._client.collections.get(self._physical(name)).query.near_vector(
                 near_vector=list(vector),
                 limit=k,

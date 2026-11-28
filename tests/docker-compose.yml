@@ -4,6 +4,12 @@
 #   uv run pytest -m integration
 #   docker compose -f tests/docker-compose.yml down
 services:
+  qdrant:
+    image: qdrant/qdrant:v1.16.0
+    ports:
+      - "127.0.0.1:56333:6333"
+      - "127.0.0.1:56334:6334"
+
   pgvector:
     image: pgvector/pgvector:pg17
     environment:

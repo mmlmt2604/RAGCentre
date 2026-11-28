@@ -345,6 +345,12 @@ class ChromaStore:
             config["ef_search"] = self._ef_search
         return config
 
+    def _apply_search_config(self, col: Any) -> None:
+        if self._ef_search is not None:
+            current = ((col.configuration or {}).get("hnsw") or {}).get("ef_search")
+            if current != self._ef_search:
+                col.modify(configuration={"hnsw": {"ef_search": self._ef_search}})
+
     def _collection_metadata(self, spec: CollectionSpec) -> dict[str, Any]:
         meta: dict[str, Any] = {
             "rc_dim": spec.dim,
@@ -397,11 +403,7 @@ class ChromaStore:
             merged = {**fields, **spec.fields}
             if merged != fields:
                 col.modify(metadata={**(col.metadata or {}), "rc_fields": json.dumps(merged, sort_keys=True)})
-            # ef_search is query-time mutable: apply it when it differs from the live collection.
-            if self._ef_search is not None:
-                current = ((col.configuration or {}).get("hnsw") or {}).get("ef_search")
-                if current != self._ef_search:
-                    col.modify(configuration={"hnsw": {"ef_search": self._ef_search}})
+            self._apply_search_config(col)
 
     def collection_info(self, name: str) -> CollectionInfo | None:
         col = self._get(name)
@@ -458,7 +460,8 @@ class ChromaStore:
         if k < 1:
             return []
         where = None if filter is None else translate_filter(filter, {**fields, "document_id": "str"})
-        with self._errors(name, "query"):
+        with self._lock, self._errors(name, "query"):
+            self._apply_search_config(col)
             res = col.query(query_embeddings=[list(map(float, vector))], n_results=k, where=where,
                             include=["distances"])  # fmt: skip
         ids = (res.get("ids") or [[]])[0]

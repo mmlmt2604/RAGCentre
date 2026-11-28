@@ -597,3 +597,53 @@ def test_concurrent_ensure_from_separate_stores(prefix: str) -> None:
     finally:
         s.drop_collection("rc_race_0001")
         s.close()
+
+
+@pytest.mark.integration
+def test_query_tuning_preserves_concurrent_field_addition(prefix: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    store = _connect(prefix=prefix, hnsw_ef=77)
+    name = "rc_tuning_race_0001"
+    try:
+        store.ensure_collection(CollectionSpec(name, 3, "cosine", {"group": "str"}))
+        store.upsert(name, [Record("one", [1.0, 0.0, 0.0], {"group": "kept"})])
+        physical = physical_name(prefix, name)
+        rc = store._w.classes.config.Reconfigure
+        store._client.collections.get(physical).config.update(
+            vector_config=rc.Vectors.update(name="default", vector_index_config=rc.VectorIndex.hnsw(ef=32))
+        )
+        paused, writer_started, writer_done = Event(), Event(), Event()
+        connection = store._client._connection
+        original_put = connection.put
+
+        def put(*args: Any, **kwargs: Any) -> Any:
+            if kwargs.get("path") == f"/schema/{physical}" and not paused.is_set():
+                paused.set()
+                assert writer_started.wait(10)
+                writer_done.wait(1)
+            return original_put(*args, **kwargs)
+
+        def add_field() -> None:
+            writer_started.set()
+            try:
+                store.ensure_collection(CollectionSpec(name, 3, "cosine", {"year": "int"}))
+            finally:
+                writer_done.set()
+
+        monkeypatch.setattr(connection, "put", put)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            query = executor.submit(store.query, name, [1.0, 0.0, 0.0], 1)
+            assert paused.wait(10)
+            writer = executor.submit(add_field)
+            assert [match.id for match in query.result(timeout=20)] == ["one"]
+            writer.result(timeout=20)
+        cfg = store._client.collections.get(physical).config.get()
+        entry = json.loads(cfg.description[len(DESC_PREFIX) :])
+        assert entry["fields"] == {"document_id": "str", "group": "str", "year": "int"}
+        assert {"f_document_id", "f_group", "f_year"} <= {prop.name for prop in cfg.properties}
+        assert cfg.vector_config["default"].vector_index_config.ef == 77
+    finally:
+        store.drop_collection(name)
+        store.close()

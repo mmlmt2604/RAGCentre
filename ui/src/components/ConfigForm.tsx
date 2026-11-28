@@ -89,6 +89,7 @@ function defaultHint(f: ConfigField): string | null {
 }
 
 function placeholder(f: ConfigField): string | undefined {
+  if (f.urlSchemes.length) return typeof f.default === "string" ? f.default : `${f.urlSchemes[0]}://host:port`;
   if (f.format === "uri" || f.key.endsWith("url")) return "http://host:port";
   if (f.default !== undefined && f.default !== null && f.default !== "") return String(f.default);
   if (f.nullable) return "Not set";
