@@ -223,6 +223,16 @@ PROBES: list[Probe] = [
         tier="B",
         note="Measured with paragraphs off: with them on, the seven lines are one block and no line box exists to compare.",
     ),
+    Probe(
+        id="doctr.line_boxes.default_grouping",
+        engine="doctr",
+        fixture="scan_clean.png",
+        predicate=P.line_boxes(min_iou=0.5, min_fraction=0.8),
+        gate="record",
+        tier="C",
+        note="The plan's literal probe, recorded: with the default grouping the seven lines are one block, so no block "
+        "matches a line box.",
+    ),
     # Two option probes in tier B.
     Probe(
         id="doctr.paragraphs",
