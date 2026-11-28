@@ -56,7 +56,7 @@ class HttpParserConfig(HttpConfig):
         le=604800,
         description="How long to wait for one document when the service parses asynchronously (default 6 hours)",
     )
-    revision: str = Field(default="", description="Optional revision tag; change it to force a new fingerprint")
+    revision: str = Field(default="", description="Optional revision tag; set at creation; a new value is a new fingerprint")
     on_version_drift: Literal["fail", "warn"] = Field(
         default="fail", description="What to do when the service reports a different version"
     )

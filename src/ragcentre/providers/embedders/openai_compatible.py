@@ -25,7 +25,7 @@ class OpenAICompatibleConfig(HttpConfig):
     document_prefix: str = Field(default="", description="Prepended to documents before embedding")
     batch_size: int = Field(default=64, ge=1, le=4096, description="Texts per request")
     max_input_chars: int | None = Field(default=None, ge=1, description="Longer inputs are truncated")
-    revision: str = Field(default="", description="Optional revision tag; change it to force a new fingerprint")
+    revision: str = Field(default="", description="Optional revision tag; set at creation; a new value is a new fingerprint")
 
 
 class OpenAICompatibleEmbedder(HttpService):
