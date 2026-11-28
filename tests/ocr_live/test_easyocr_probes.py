@@ -114,3 +114,25 @@ def test_pages_read_needs_exactly_the_pages_and_stores_how_many_were_read():
     assert not check(observe(ir([block("a", 2)], pages))).ok  # page 3 has no block
     assert not check(observe(ir([block("a", 1), block("b", 2), block("c", 3)], [sized(10, 10, 1), *pages]))).ok
     assert not check(observe(ir([block("a", 2), block("b", 3)], [*pages, sized(10, 10, 4)]))).ok  # extra declared page
+
+
+# --- exact_words_pair ---------------------------------------------------------------------------
+
+UMLAUTS = {"umlaut_words": ["prüfung", "maßen", "kühlraum"]}
+
+
+def test_exact_words_pair_tells_an_accent_from_the_letter_without_it():
+    fixture = truth({1: "die prüfung maßen kühlraum"}, extras=UMLAUTS)
+    check = E.exact_words_pair("umlaut_words", treatment_min=0.8, control_max=0.3)
+    right, stripped = ir([block("Die Prüfung maßen Kühlraum")], []), ir([block("Die Prufung maBen Kuhlraum")], [])
+    verdict = check(observe(right, stripped, fixture))
+    assert verdict.ok and verdict.numbers == {"umlaut_words_exact": 1.0, "umlaut_words_control_exact": 0.0}
+    assert not check(observe(stripped, stripped, fixture)).ok  # the option on reads no better
+    assert not check(observe(right, right, fixture)).ok  # the control is as good: the option shows nothing
+    assert not check(observe(ir([block("unrelated words")], []), stripped, fixture)).ok
+
+
+def test_exact_word_share_counts_a_repeated_word_once_per_occurrence_and_normalises_unicode():
+    assert E.exact_word_share(ir([block("prüfung")], []), ["prüfung", "prüfung"]) == 0.5
+    assert E.exact_word_share(ir([block("Prüfung")], []), ["prüfung"]) == 1.0  # decomposed ü still matches
+    assert E.exact_word_share(ir([], []), []) == 1.0

@@ -11,6 +11,10 @@ capability of the shim.
 
 from __future__ import annotations
 
+import unicodedata
+from collections import Counter
+from typing import Any
+
 import predicates as P
 from probe import Check, Observation, Probe, Verdict
 
@@ -19,6 +23,36 @@ FIRST_PAGE = {1}
 
 
 # --- checks that only this engine's rows need -----------------------------------------------------
+
+
+def exact_word_share(ir: Any, words: list[str]) -> float:
+    """Share of ``words`` that the result has as a token, letter for letter. ``recall`` forgives one wrong letter
+    in a short word, so it cannot tell "Prüfung" from "Prufung". One result token counts for one word."""
+    pool = Counter(P.result_tokens(ir))
+    found = 0
+    for word in (unicodedata.normalize("NFC", w).lower() for w in words):
+        if pool[word] > 0:
+            pool[word] -= 1
+            found += 1
+    return found / len(words) if words else 1.0
+
+
+def exact_words_pair(key: str, treatment_min: float, control_max: float) -> Check:
+    """The run has at least ``treatment_min`` of the words ``truth.extras[key]`` spelled exactly, and the control at
+    most ``control_max``: the form of a language option, whose effect is the accents and letters of that language."""
+
+    def fn(obs: Observation) -> Verdict:
+        assert obs.control is not None, "exact_words_pair needs a control run"
+        words = list(obs.truth.extras[key])
+        on, off = exact_word_share(obs.run.body, words), exact_word_share(obs.control.body, words)
+        return Verdict(
+            on >= treatment_min and off <= control_max,
+            f"{key} spelled exactly: {on:.2f} with the option (needs {treatment_min:.2f}), "
+            f"{off:.2f} without (allowed {control_max:.2f})",
+            {f"{key}_exact": round(on, 4), f"{key}_control_exact": round(off, 4)},
+        )
+
+    return Check(f"{key}_exact_pair", "recall", fn)
 
 
 def page_width_ratio(expected: float, tolerance: float = 0.05, page: int = 1) -> Check:
@@ -135,9 +169,14 @@ PROBES = [
         fixture="scan_german.png",
         options={"languages": ["de"]},
         control={"languages": ["en"]},
-        predicate=P.recall_above_control(margin=0.01, treatment_min=0.8),
+        predicate=P.all_of(
+            "german_read_and_spelled", P.recall_at_least(0.8), exact_words_pair("umlaut_words", 0.8, 0.3)
+        ),
         tier="B",
-        note="Plan row: German recall is higher with de than with en, and at least 80%.",
+        note="German is read with de (recall of at least 80%) and its umlauts and eszett are spelled right. The "
+        "plan's 'recall higher with de than with en' cannot be seen: en reads 'Prufung' and 'maBen', which the "
+        "0.8 difflib tolerance still counts as found (recall 1.00 with both). Exact spelling of the fixture's "
+        "umlaut words tells the two apart.",
     ),
     Probe(
         id="easyocr.languages_chinese",
