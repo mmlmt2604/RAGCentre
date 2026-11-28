@@ -255,6 +255,17 @@ PROBES = [
         note="The error comes from the real library: easyocr.Reader raises ValueError for an unknown code.",
     ),
     Probe(
+        id="easyocr.languages_incompatible_scripts",
+        engine="easyocr",
+        fixture="scan_clean.png",
+        options={"languages": ["ch_sim", "de"]},
+        expect_status=400,
+        expect_code="invalid_options",
+        tier="C",
+        note="The README: some scripts can only be combined with English, and an impossible combination is a 400. "
+        "The real library refuses ch_sim with de before it loads a model.",
+    ),
+    Probe(
         id="easyocr.languages_empty_falls_back",
         engine="easyocr",
         fixture="scan_clean.png",
@@ -450,6 +461,15 @@ PROBES = [
         )
         for ext in ("jpg", "webp", "bmp")
     ],
+    Probe(
+        id="easyocr.page_range_tiff",
+        engine="easyocr",
+        fixture="multi_frame.tiff",
+        options={"page_range": [2, 3]},
+        predicate=P.all_of("tiff_window_and_recall", pages_read({2, 3}), P.recall_at_least(0.8, pages={2, 3})),
+        tier="C",
+        note="The README: page_range works for multi-page TIFFs, and the frames keep their own numbers.",
+    ),
     Probe(
         id="easyocr.multi_frame_tiff",
         engine="easyocr",
