@@ -352,6 +352,39 @@ def recall_above_control(margin: float = 0.05, treatment_min: float = 0.0, pages
     return Check("recall_above_control", "recall", fn)
 
 
+def _extra_recall(obs: Observation, key: str, run: Any) -> float:
+    return recall(obs.truth.extras[key], result_tokens(run.body))
+
+
+def extra_recall_at_least(key: str, minimum: float) -> Check:
+    """Recall of the token list ``truth.extras[key]``, such as ``image_tokens`` (text that exists only as pixels
+    inside a picture). The fixture's ``tokens`` are not used."""
+
+    def fn(obs: Observation) -> Verdict:
+        value = _extra_recall(obs, key, obs.run)
+        return Verdict(
+            value >= minimum, f"{key} recall {value:.2f}, needs {minimum:.2f}", {f"{key}_recall": round(value, 4)}
+        )
+
+    return Check(f"{key}_recall>={minimum}", "recall", fn)
+
+
+def extra_recall_pair(key: str, treatment_min: float, control_max: float) -> Check:
+    """The option on reads the ``extras[key]`` text (at least ``treatment_min``) and the control does not (at most
+    ``control_max``): the form of ``force_full_page_ocr`` and picture-OCR probes."""
+
+    def fn(obs: Observation) -> Verdict:
+        assert obs.control is not None, "extra_recall_pair needs a control run"
+        on, off = _extra_recall(obs, key, obs.run), _extra_recall(obs, key, obs.control)
+        return Verdict(
+            on >= treatment_min and off <= control_max,
+            f"{key} recall {on:.2f} with the option (needs {treatment_min:.2f}), {off:.2f} without (allowed {control_max:.2f})",
+            {f"{key}_recall": round(on, 4), f"{key}_control_recall": round(off, 4)},
+        )
+
+    return Check(f"{key}_recall_pair", "recall", fn)
+
+
 def line_boxes(min_iou: float = 0.5, min_fraction: float = 0.8) -> Check:
     def fn(obs: Observation) -> Verdict:
         fraction, mean = line_box_iou(obs.run.body, obs.truth, min_iou)

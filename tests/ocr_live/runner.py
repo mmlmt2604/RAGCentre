@@ -357,9 +357,13 @@ def parse_engines(specs: Sequence[str], engine_filter: str | None) -> list[tuple
     return engines
 
 
+def key_variable(name: str) -> str:
+    """The environment variable that holds the API key of engine ``name``."""
+    return "OCR_LIVE_API_KEY_" + re.sub(r"\W", "_", name).upper()
+
+
 def connect(name: str, url: str) -> tuple[EngineClient, dict[str, Any]]:
-    key = os.environ.get("OCR_LIVE_API_KEY_" + re.sub(r"\W", "_", name).upper())
-    client = EngineClient(url, api_key=key)
+    client = EngineClient(url, api_key=os.environ.get(key_variable(name)))
     try:
         reply = client.info()
     except httpx.HTTPError as error:

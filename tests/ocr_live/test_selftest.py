@@ -1,9 +1,11 @@
-"""Tier A self-tests of the live OCR runner. They need no engine, no network and no fonts.
+"""Tier A self-tests of the live OCR runner. They need no engine and no network.
 
 1. Predicate unit tests on hand-built good and bad parse results.
-2. A null shim, which ignores options and returns the truth, must FAIL every paired (option on/off) probe.
-3. A garbage shim, which returns unrelated text, must FAIL every recall probe.
-Plus: the committed fixtures match ``truth.json``, and regenerating them gives identical bytes.
+2. Every probe in ``probes/*.py`` is run against in-process shims. An oracle (the truth, options honoured) passes
+   the ``baseline`` and ``shim`` probes. A null shim, which ignores options and returns the truth, must FAIL every
+   paired (option on/off) probe. A garbage shim, which returns unrelated text, must FAIL every recall probe.
+3. The runner: outcomes, exit status, tiers, the shared replies, async engines, the report, calibrate.
+4. The committed fixtures match ``truth.json``, and regenerating them twice gives identical bytes.
 
 ``uv run pytest tests/ocr_live -q`` runs only this file. Live work happens only through ``runner.py``.
 """
@@ -11,19 +13,41 @@ Plus: the committed fixtures match ``truth.json``, and regenerating them gives i
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
+import shutil
+import statistics
 import struct
+import subprocess
+import sys
 import time
 import zlib
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import predicates as P
 import pytest
+import runner
+import shims
 from client import EngineClient, Reply
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
-from probe import FixtureTruth, LineTruth, Observation, PageTruth, Probe, runs_at, unmet_requirements
+from probe import (
+    FIXTURES_DIR,
+    HERE,
+    TRUTH_JSON,
+    Check,
+    FixtureTruth,
+    LineTruth,
+    Observation,
+    PageTruth,
+    Probe,
+    load_truth,
+    runs_at,
+    unmet_requirements,
+)
 
 # --- builders for hand-made truth and results ---------------------------------------------------
 
@@ -145,6 +169,22 @@ def test_recall_above_control_needs_a_margin():
     assert P.recall_above_control(0.2)(observe(full, half)).ok
     assert not P.recall_above_control(0.2)(observe(full, full)).ok
     assert not P.recall_above_control(0.2)(observe(half, full)).ok
+
+
+def test_extra_recall_reads_the_named_token_list_and_not_the_page_tokens():
+    truth = replace(make_truth(), extras={"image_tokens": ["loading", "dock", "closed"]})
+    reads = ir([para("loading dock closed")])
+    page_text_only = ir([para("alpha bravo charlie delta echo")])  # the page tokens, none of the picture's
+    assert P.extra_recall_at_least("image_tokens", 0.8)(observe(reads, truth=truth)).ok
+    assert not P.extra_recall_at_least("image_tokens", 0.8)(observe(page_text_only, truth=truth)).ok
+    pair = P.extra_recall_pair("image_tokens", 0.8, 0.1)
+    assert pair(observe(reads, page_text_only, truth)).ok
+    assert not pair(observe(reads, reads, truth)).ok  # the option changed nothing
+    assert not pair(observe(page_text_only, reads, truth)).ok  # the wrong way round
+    assert pair(observe(reads, page_text_only, truth)).numbers == {
+        "image_tokens_recall": 1.0,
+        "image_tokens_control_recall": 0.0,
+    }
 
 
 # --- boxes --------------------------------------------------------------------------------------
@@ -367,3 +407,371 @@ def test_client_times_a_fast_async_job_by_its_work_not_by_the_two_second_hint(tm
     assert (reply.status, reply.mode, reply.body["blocks"][0]["text"]) == (200, "async", "done")
     assert elapsed < 1.5  # it waited for 2 running polls (0.2 s + 0.3 s), not for the 2 s hint
     assert reply.seconds == pytest.approx(elapsed, abs=0.05)
+
+
+# --- the probe tables against the shims ---------------------------------------------------------
+
+TRUTH = load_truth()
+ENGINE_FREE = "t"
+
+
+def table(*stems: str) -> list[Probe]:
+    """The probes of ``probes/<stem>.py`` files, all of them when no stem is given."""
+    files = [p for p in runner.probe_files() if not stems or p.stem in stems]
+    return [probe for path in files for probe in runner.load_probe_file(path, TRUTH)]
+
+
+def engine_client(app: FastAPI) -> EngineClient:
+    return EngineClient("http://shim", http=TestClient(app))
+
+
+def run_table(probes: list[Probe], app: FastAPI | None = None, tier: str = "C", **kw: Any) -> dict[str, Any]:
+    """Run ``probes`` through the runner against an in-process shim. Requirements count as met unless ``assumed``
+    is given, so a failure here is the predicate's and not a missing program."""
+    client = engine_client(app or shims.oracle_app())
+    info = client.info().body
+    kw.setdefault("assumed", frozenset(r for p in probes for r in p.requires))
+    return runner.run_engine(ENGINE_FREE, client, probes, tier, info=info, truth=TRUTH, **kw)
+
+
+def met_ids(app: FastAPI, probes: list[Probe]) -> list[str]:
+    return [e["id"] for e in run_table(probes, app)["probes"] if e["met"]]
+
+
+def answered_ok(entry: dict[str, Any]) -> bool:
+    """Every reply was a 200: the probe failed on what its predicate saw and not on an error answer."""
+    return bool(entry["replies"]) and all(r["status"] == 200 for r in entry["replies"])
+
+
+def test_every_probe_module_loads_with_unique_ids_and_real_fixtures():
+    probes = table()
+    assert len({p.id for p in probes}) == len(probes)
+    assert {p.stem for p in runner.probe_files()} >= {"baseline", "shim"}
+    assert {p.engine for p in table("baseline")} == {"*"}
+
+
+def test_the_oracle_shim_passes_every_baseline_and_shim_probe():
+    probes = table("baseline", "shim")
+    report = run_table(probes)
+    assert [e["id"] for e in report["probes"] if not e["met"]] == []
+    assert report["summary"]["ok"]
+
+
+def test_the_null_shim_fails_every_paired_probe_on_what_its_predicate_sees():
+    paired = [p for p in table() if p.paired]
+    assert len(paired) >= 3  # an empty set would make this test pass for nothing
+    entries = run_table(paired, shims.null_app())["probes"]
+    assert [e["id"] for e in entries if e["met"]] == []
+    assert all(e["outcome"] == "fail" and answered_ok(e) for e in entries)
+
+
+def test_the_garbage_shim_fails_every_recall_probe_on_what_its_predicate_sees():
+    recall = [p for p in table() if p.predicate is not None and p.predicate.kind == "recall"]
+    assert len(recall) >= 5
+    entries = run_table(recall, shims.garbage_app())["probes"]
+    assert [e["id"] for e in entries if e["met"]] == []
+    assert all(answered_ok(e) for e in entries)
+
+
+def test_the_null_shim_check_has_teeth_a_paired_probe_that_ignores_its_control_slips_through():
+    ignores_control = Probe(
+        id="weak",
+        engine="shim",
+        fixture="scan_clean.png",
+        options={"ocr": True},
+        control={"ocr": False},
+        predicate=P.recall_at_least(0.8),  # looks only at the run, so a shim that ignores options passes it
+    )
+    strict = Probe(
+        id="strict",
+        engine="shim",
+        fixture="scan_clean.png",
+        options={"ocr": True},
+        control={"ocr": False},
+        predicate=P.recall_pair(0.8, 0.1),
+    )
+    assert met_ids(shims.null_app(), [ignores_control, strict]) == ["weak"]
+    assert met_ids(shims.oracle_app(), [ignores_control, strict]) == ["weak", "strict"]
+
+
+# --- the runner ---------------------------------------------------------------------------------
+
+
+def probe(id: str, predicate: Check | None = None, **kw: Any) -> Probe:
+    if predicate is None and "expect_status" not in kw:
+        predicate = P.recall_at_least(0.8)
+    return Probe(id=id, engine=ENGINE_FREE, fixture=kw.pop("fixture", "scan_clean.png"), predicate=predicate, **kw)
+
+
+def test_a_failing_gate_probe_fails_the_run_and_a_failing_record_probe_does_not():
+    impossible = P.recall_at_least(1.1)
+    report = run_table([probe("gate", impossible), probe("kept", impossible, gate="record")])
+    outcomes = {e["id"]: (e["outcome"], e["met"]) for e in report["probes"]}
+    assert outcomes == {"gate": ("fail", False), "kept": ("record", False)}
+    assert report["summary"]["failed_gates"] == ["gate"] and not report["summary"]["ok"]
+    only_record = run_table([probe("kept", impossible, gate="record")])
+    assert only_record["summary"]["ok"]
+    assert only_record["probes"][0]["numbers"] == {"recall": 1.0}  # the numbers are stored all the same
+
+
+def test_an_error_probe_passes_on_the_expected_status_and_code_only():
+    refuses = probe("refuses", fixture="scan_clean.gif", expect_status=415, expect_code="unsupported_media_type")
+    wrong_code = probe("wrong", fixture="scan_clean.gif", expect_status=415, expect_code="something_else")
+    wrong_status = probe("accepted", expect_status=415)  # a png the oracle reads: 200
+    entries = {e["id"]: e for e in run_table([refuses, wrong_code, wrong_status])["probes"]}
+    assert [entries[i]["met"] for i in ("refuses", "wrong", "accepted")] == [True, False, False]
+    assert "answered 200, expected 415" in entries["accepted"]["detail"]
+
+
+def test_a_reply_other_than_200_fails_a_predicate_probe_with_the_engines_reason():
+    entry = run_table([probe("typo", options={"no_such_option": 1})])["probes"][0]
+    assert entry["outcome"] == "fail" and entry["numbers"] == {}
+    assert "run answered 400 invalid_options" in entry["detail"]
+    paired = probe("paired", options={"ocr": True}, control={"typo": 1}, predicate=P.recall_above_control())
+    assert "control answered 400 invalid_options" in run_table([paired])["probes"][0]["detail"]
+
+
+def test_a_predicate_that_raises_is_an_error_and_an_error_in_a_gate_probe_fails_the_run():
+    boom = Check("boom", "structure", lambda obs: 1 / 0)
+    report = run_table([probe("boom", boom), probe("boom_recorded", boom, gate="record")])
+    assert [(e["outcome"], "ZeroDivisionError" in e["detail"]) for e in report["probes"]] == [
+        ("error", True),
+        ("error", True),
+    ]
+    assert report["summary"]["failed_gates"] == ["boom"]  # a record probe that errors does not fail the run
+
+
+def test_a_probe_with_an_unmet_requirement_is_skipped_unless_the_requirement_is_assumed():
+    needs = probe("needs", requires=("bin:ocr-live-no-such-program",))
+    report = run_table([needs], assumed=frozenset())
+    entry = report["probes"][0]
+    assert (entry["outcome"], entry["met"], entry["detail"]) == ("skipped", None, "needs bin:ocr-live-no-such-program")
+    assert report["summary"]["ok"] and report["summary"]["skipped"] == 1
+    assert run_table([needs], assumed=frozenset({"bin:ocr-live-no-such-program"}))["probes"][0]["outcome"] == "pass"
+
+
+def test_tier_and_id_globs_choose_the_probes_that_run():
+    a, b, c = probe("a.x", tier="A"), probe("b.x", tier="B"), probe("b.y", tier="C")
+    report = run_table([a, b, c], tier="B")
+    assert [e["id"] for e in report["probes"]] == ["a.x", "b.x"]
+    assert report["summary"]["not_run_by_tier_or_filter"] == 1
+    assert [e["id"] for e in run_table([a, b, c], tier="C", only=["b.*"])["probes"]] == ["b.x", "b.y"]
+
+
+def test_replies_for_the_same_fixture_and_options_are_shared_between_probes():
+    app = shims.oracle_app()
+    posts: list[str] = []
+
+    @app.middleware("http")
+    async def count(request: Any, call_next: Any) -> Any:
+        if request.method == "POST":
+            posts.append(request.url.path)
+        return await call_next(request)
+
+    probes = [
+        probe("one", P.ir_valid()),
+        probe("two"),
+        probe("three", options={"ocr": True}, control={"ocr": False}, predicate=P.recall_pair(0.8, 0.1)),
+    ]
+    one, two, three = run_table(probes, app)["probes"]
+    assert len(posts) == 3  # {}, {"ocr": true} and {"ocr": false}: four replies were read, three parses ran
+    assert [r["cached"] for r in one["replies"] + two["replies"] + three["replies"]] == [False, True, False, False]
+    assert two["seconds"] == 0.0 and one["seconds"] > 0.0
+
+
+def test_the_runner_follows_an_engine_that_answers_with_jobs():
+    report = run_table(
+        [probe("one", P.ir_valid()), probe("two", fixture="scan_german.png")], shims.oracle_app(jobs=True)
+    )
+    assert report["info"]["capabilities"]["async"] is True
+    assert [e["met"] for e in report["probes"]] == [True, True]
+    assert {r["mode"] for e in report["probes"] for r in e["replies"]} == {"async"}
+    assert all(e["seconds"] > 0 for e in report["probes"])  # each waited for its own job
+
+
+def test_engine_arguments_are_checked():
+    assert runner.parse_engines(["a=http://x:1", "b=https://y"], None) == [("a", "http://x:1"), ("b", "https://y")]
+    assert runner.parse_engines(["a=http://x", "b=http://y"], "b") == [("b", "http://y")]
+    for bad in ("a", "a=ftp://x", "=http://x", "../a=http://x", "baseline=http://x", "a b=http://x"):
+        with pytest.raises(runner.UsageError):
+            runner.parse_engines([bad], None)
+    for specs, engine_filter in ((["a=http://x", "a=http://y"], None), (["a=http://x"], "zzz"), ([], None)):
+        with pytest.raises(runner.UsageError):
+            runner.parse_engines(specs, engine_filter)
+    assert runner.key_variable("my-engine.v2") == "OCR_LIVE_API_KEY_MY_ENGINE_V2"
+
+
+@pytest.fixture(scope="module")
+def served():
+    with (
+        shims.serving(shims.oracle_app()) as oracle,
+        shims.serving(shims.null_app()) as null,
+        shims.serving(shims.garbage_app()) as garbage,
+    ):
+        yield {"oracle": oracle, "null": null, "garbage": garbage}
+
+
+def cli(*args: str) -> int:
+    return runner.main(list(args))
+
+
+def test_the_command_line_exits_0_on_the_oracle_and_writes_a_complete_report(served, tmp_path, capsys):
+    path = tmp_path / "report.json"
+    assert cli("--engine", f"shim={served['oracle']}", "--tier", "C", "--report", str(path)) == 0
+    report = json.loads(path.read_text())
+    engine = report["engines"]["shim"]
+    assert report["ok"] and engine["engine_version"] == "0.0.0+oracle-shim"
+    assert engine["info"]["capabilities"] == {"page_images": False}
+    assert {"system", "arch", "cpu_count", "memory_gb", "python"} <= set(report["machine"])
+    assert "node" not in report["machine"]  # no host name in a report that gets shared
+    assert (engine["summary"]["fail"], engine["summary"]["error"], engine["summary"]["skipped"]) == (0, 0, 1)
+    first = engine["probes"][0]
+    assert {"id", "outcome", "met", "seconds", "numbers", "replies"} <= set(first)
+    assert "shim.ocr_off_reads_nothing" in capsys.readouterr().out
+
+
+def test_the_command_line_exits_1_when_a_gate_probe_fails(served, tmp_path):
+    for shim, failed in (
+        ("null", {"shim.ocr_off_reads_nothing", "shim.fast_reads_less", "shim.merge_makes_fewer_blocks"}),
+        ("garbage", {"baseline.clean_scan_recall", "shim.recall_chinese", "shim.recall_multipage_pdf"}),
+    ):
+        path = tmp_path / f"{shim}.json"
+        assert cli("--engine", f"shim={served[shim]}", "--tier", "C", "--report", str(path)) == 1
+        report = json.loads(path.read_text())
+        assert not report["ok"] and failed <= set(report["engines"]["shim"]["summary"]["failed_gates"])
+
+
+def test_the_command_line_exits_2_for_usage_errors_and_an_engine_that_is_not_there(served, capsys):
+    assert cli("--engine", "shim=http://127.0.0.1:1") == 2  # nothing listens on port 1
+    assert "cannot reach" in capsys.readouterr().err
+    assert cli("--engine", "shim") == 2
+    assert cli("--engine", f"shim={served['oracle']}", "--probe", "no.such.probe") == 2
+    assert cli() == 2  # no engine given
+    with pytest.raises(SystemExit) as bad_flag:
+        cli("--engine", f"shim={served['oracle']}", "--tier", "Z")
+    assert bad_flag.value.code == 2
+
+
+def test_the_engine_filter_and_probe_globs_pick_what_runs(served, tmp_path):
+    path = tmp_path / "r.json"
+    code = cli(
+        "--engine",
+        f"shim={served['oracle']}",
+        "--engine",
+        "other=http://127.0.0.1:1",  # not reachable, but filtered out before it is contacted
+        "--engine-filter",
+        "shim",
+        "--probe",
+        "baseline.*",
+        "--tier",
+        "A",
+        "--report",
+        str(path),
+    )
+    report = json.loads(path.read_text())
+    assert code == 0 and list(report["engines"]) == ["shim"]
+    assert [e["id"] for e in report["engines"]["shim"]["probes"]] == [
+        "baseline.unknown_option",
+        "baseline.gif_unsupported",
+    ]
+
+
+def test_list_shows_the_probe_table_without_contacting_the_engine(capsys):
+    assert cli("--engine", "shim=http://127.0.0.1:1", "--list") == 0
+    listed = capsys.readouterr().out
+    assert "baseline.py + shim.py" in listed and "paired  shim.ocr_off_reads_nothing" in listed
+
+
+def test_the_runner_sends_the_key_found_in_the_environment(monkeypatch):
+    monkeypatch.setenv("OCR_LIVE_SHIM_API_KEY", "s3cret")  # the shim's own key: it refuses parse calls without it
+    with shims.serving(shims.oracle_app()) as url:
+        monkeypatch.delenv("OCR_LIVE_API_KEY_SHIM", raising=False)
+        assert cli("--engine", f"shim={url}", "--tier", "A") == 1  # 401 where 400 and 415 were expected
+        monkeypatch.setenv("OCR_LIVE_API_KEY_SHIM", "s3cret")
+        assert cli("--engine", f"shim={url}", "--tier", "A") == 0
+
+
+def test_calibrate_times_the_clean_scan_cold_then_warm(served, tmp_path, capsys):
+    path = tmp_path / "cal.json"
+    assert cli("calibrate", "--engine", f"shim={served['null']}", "--runs", "3", "--report", str(path)) == 0
+    calibration = json.loads(path.read_text())["engines"]["shim"]["calibration"]
+    assert (calibration["fixture"], calibration["pages"], len(calibration["seconds"])) == ("scan_clean.png", 1, 3)
+    assert calibration["cold_seconds"] == calibration["seconds"][0]
+    assert calibration["warm_seconds"] == pytest.approx(statistics.median(calibration["seconds"][1:]), abs=1e-3)
+    assert calibration["warm_seconds_per_page"] == calibration["warm_seconds"]  # one page
+    assert "cold" in capsys.readouterr().out
+    assert cli("calibrate", "--engine", f"shim={served['null']}", "--runs", "1") == 2  # no warm run to time
+
+
+def test_calibrate_fails_when_the_engine_cannot_read_the_scan(tmp_path):
+    only_gif = shims.oracle_app(extensions=frozenset({"gif"}))
+    with shims.serving(only_gif) as url:
+        assert cli("calibrate", "--engine", f"shim={url}", "--report", str(tmp_path / "c.json")) == 1
+    result = json.loads((tmp_path / "c.json").read_text())["engines"]["shim"]["calibration"]
+    assert result["ok"] is False and "415" in result["detail"]
+
+
+def test_the_runner_runs_as_a_script():
+    done = subprocess.run(
+        [sys.executable, str(HERE / "runner.py"), "--engine", "shim=http://127.0.0.1:1", "--list"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0 and "baseline.ir_valid" in done.stdout, done.stderr
+
+
+# --- the fixtures -------------------------------------------------------------------------------
+
+MAX_FIXTURE_BYTES = 200 * 1024
+NO_FONTS = 3  # make_fixtures.EXIT_NO_FONTS
+
+
+def test_the_committed_fixtures_are_the_files_truth_json_describes():
+    described = json.loads(TRUTH_JSON.read_text(encoding="utf-8"))["fixtures"]
+    assert {p.name for p in FIXTURES_DIR.iterdir()} == set(described)
+    for name, entry in described.items():
+        data = (FIXTURES_DIR / name).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == entry["sha256"], name
+        assert len(data) == entry["bytes"] < MAX_FIXTURE_BYTES, name
+
+
+def test_every_fixture_has_tokens_to_find_and_line_boxes_inside_its_page():
+    for name, truth in TRUTH.items():
+        assert truth.tokens(), name
+        for page in truth.pages:
+            assert page.tokens, (name, page.page)
+            if not page.width:  # a text or office file has no page geometry
+                continue
+            for line in page.lines:
+                x0, y0, x1, y1 = line.bbox
+                assert 0 <= x0 < x1 <= page.width + 1 and 0 <= y0 < y1 <= page.height + 1, (name, page.page, line.text)
+
+
+def generate(out: Path) -> subprocess.CompletedProcess[str]:
+    command = ["uv", "run", "--offline", "--with", "pillow", "--with", "reportlab", "python"]
+    return subprocess.run(
+        [*command, str(HERE / "make_fixtures.py"), "--out", str(out)], capture_output=True, text=True, timeout=300
+    )
+
+
+def test_regenerating_the_fixtures_twice_gives_identical_bytes(tmp_path):
+    if shutil.which("uv") is None:
+        pytest.skip("uv is not on PATH, and the generator needs pillow and reportlab (not project dependencies)")
+    available = subprocess.run(
+        ["uv", "run", "--offline", "--with", "pillow", "--with", "reportlab", "python", "-c", "import PIL, reportlab"],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if available.returncode != 0:
+        pytest.skip("pillow and reportlab cannot be resolved offline: " + available.stderr.strip()[-200:])
+    first, second = generate(tmp_path / "a"), generate(tmp_path / "b")
+    if NO_FONTS in (first.returncode, second.returncode):
+        pytest.skip(first.stdout.strip())
+    assert (first.returncode, second.returncode) == (0, 0), first.stderr[-500:] + second.stderr[-500:]
+    files_a = sorted(p.relative_to(tmp_path / "a") for p in (tmp_path / "a").rglob("*") if p.is_file())
+    files_b = sorted(p.relative_to(tmp_path / "b") for p in (tmp_path / "b").rglob("*") if p.is_file())
+    assert files_a == files_b and len(files_a) == len(TRUTH) + 1  # every fixture and truth.json
+    differing = [str(f) for f in files_a if (tmp_path / "a" / f).read_bytes() != (tmp_path / "b" / f).read_bytes()]
+    assert differing == []

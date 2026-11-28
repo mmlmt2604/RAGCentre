@@ -47,6 +47,7 @@ rl_config.useA85 = 0  # raw Flate for images: ASCII85 would make them a quarter 
 
 SEED = 20261128
 MAX_BYTES = 200 * 1024
+EXIT_NO_FONTS = 3  # the self-test skips, rather than fails, when the macOS fonts are absent
 
 SYSTEM = Path("/System/Library/Fonts")
 TIMES = SYSTEM / "Supplemental" / "Times New Roman.ttf"
@@ -1063,6 +1064,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", type=Path, default=HERE, help="folder that gets fixtures/ and truth.json")
     args = parser.parse_args(argv)
+    missing = [str(p) for p in (TIMES, ARIAL, ARIAL_BOLD, COURIER, CHINESE) if not p.is_file()]
+    if missing:
+        print("the fixtures are drawn with macOS system fonts, which are missing here: " + ", ".join(missing))
+        return EXIT_NO_FONTS
     built = build_all()
     write(args.out, built)
     for name, b in built.items():
